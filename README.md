@@ -1,0 +1,115 @@
+# MConvert
+
+> 个人自用的 Clash + Surge 订阅转换器,带 Web 配置中心。
+
+替代 [subconverter](https://github.com/tindy2013/subconverter),只服务 **Clash Meta (Mihomo) + Surge 5**。后端 Node.js + Hono,前端 React + 现代 UI,单 Docker 镜像部署,文件系统持久化(改完即生效)。
+
+---
+
+## 特性
+
+- **多 Profile**: 一份配置中心,生成多套订阅 URL,每个 Profile 独立 token
+- **节点源混合**: 在线订阅链接 + 本地节点文件 + 手输节点,统一去重
+- **规则模块化**: 拼装规则模块,支持 RULE-SET URL / DOMAIN-SET / inline ruleset
+- **链式代理**: 任意节点可配置前置代理(Clash `dialer-proxy` / Surge `underlying-proxy`)
+- **Surge 高级特性**: Module / MITM / URL Rewrite / Header Rewrite / Script / inline ruleset / REJECT-DROP 全套参数
+- **Clash 高级特性**: proxy-providers / rule-providers / DNS / TUN / sniffer / 全协议(VLESS+Reality / Hysteria2 / TUIC v5 / WireGuard 等)
+- **多机场流量聚合**: 标准 `Subscription-UserInfo` 聚合 + Web 仪表板每机场详情 + 阈值告警
+- **URL token 鉴权**: 12 字符 nanoid,Profile 级独立,可一键重生
+- **改完不重启**: 文件即真相,chokidar 自动失效缓存,所有配置变化即时生效
+
+---
+
+## 快速开始
+
+### Docker(推荐生产部署)
+
+```bash
+git clone <this-repo> MConvert && cd MConvert
+cp .env.example .env       # 编辑 INITIAL_PASSWORD / SESSION_SECRET / PUBLIC_BASE_URL
+docker build -f docker/Dockerfile -t mconvert:latest .
+docker compose -f docker/docker-compose.yml up -d
+```
+
+打开 `http://your-vps:8080`,首次登录用 `admin` + 你设置的 `INITIAL_PASSWORD`,系统会强制改密。
+
+### 本地开发
+
+```bash
+pnpm install
+pnpm dev          # 后端 8080 + 前端 5173 (反代 /api 与 /sub 到后端)
+```
+
+### 订阅 URL
+
+每个 Profile 在 Web UI 中创建后会自动生成订阅 URL:
+
+```
+# Clash (Mihomo)
+http://your-vps:8080/sub?profile=home&target=clash&t=V1StGXR8_Z5j
+
+# Surge 5
+http://your-vps:8080/sub?profile=home&target=surge&t=V1StGXR8_Z5j
+```
+
+Profile 列表页有「复制 URL」按钮,直接粘贴到客户端的"订阅"中即可。
+
+---
+
+## 文档
+
+- [设计概览](docs/design.md)
+- [协议字段对照表 (Clash ↔ Surge)](docs/protocol-mapping.md)
+- [链式代理用法](docs/chain-proxy.md)
+- [部署指南 (含 nginx / Caddy 反代)](docs/deployment.md)
+- [给 AI 的指南 (AGENTS.md)](AGENTS.md)
+
+---
+
+## 架构
+
+```
+backend/   Node.js 20 + Hono + TypeScript
+frontend/  React 18 + Vite + Tailwind + shadcn-style + TanStack Query + Monaco
+docker/    multi-stage Dockerfile + docker-compose.yml
+data/      运行时持久化(YAML + JSON,挂载到容器,gitignored)
+docs/      设计 / 字段映射 / 链式代理 / 部署文档
+```
+
+---
+
+## 范围说明
+
+**本项目专注做好**:
+
+- Clash Meta (Mihomo) 与 Surge 5 的高质量订阅生成
+- Web 可视化配置(节点源 / 规则 / 策略组 / Surge 模块 / General 预设 / Profile)
+- 多机场流量信息透传与可视化
+- 链式代理统一抽象
+
+**显式排除**:
+
+- 公共服务 / 多用户 / SSO / 计费
+- Quantumult X / Loon / V2RayN 等其他客户端的输出
+- 内置 TLS 终止(交给前置 nginx/Caddy)
+
+---
+
+## 开发命令
+
+```bash
+pnpm install              # 安装依赖
+pnpm dev                  # 同时起后端 + 前端
+pnpm typecheck            # 全 workspace 类型检查
+pnpm test                 # backend vitest run
+pnpm build                # 构建生产产物
+pnpm docker:build         # 构建镜像
+pnpm docker:up            # docker compose up -d
+pnpm docker:logs          # 看日志
+```
+
+---
+
+## License
+
+MIT

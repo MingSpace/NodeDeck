@@ -1,0 +1,19 @@
+services:
+  mconvert:
+    image: mconvert:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: mconvert
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../data:/app/data
+    environment:
+      - NODE_ENV=production
+      - PORT=8080
+      - DATA_DIR=/app/data
+      - INITIAL_PASSWORD=${INITIAL_PASSWORD:-changeme}
+      - SESSION_SECRET=${SESSION_SECRET:-please-change-this-to-a-long-random-string}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://localhost:8080}
+    restart: unless-stopped

@@ -1,0 +1,50 @@
+node_modules/
+dist/
+build/
+.pnpm-store/
+*.log
+
+# Runtime data (mounted as volume in production)
+data/*
+!data/.gitkeep
+
+# Local env
+.env
+.env.local
+
+# Editor
+.vscode/
+.idea/
+.DS_Store
+
+# Test artifacts
+coverage/
+*.tsbuildinfo
+.cache/
+
+# === 补充规则 ===
+
+# 环境与密钥
+.env.*.local
+*.key
+*.pem
+
+# 日志
+logs/
+
+# 构建/缓存
+.vite/
+
+# 临时文件
+*.tmp
+*.bak
+
+# 测试
+.nyc_output/
+
+# 系统
+Thumbs.db
+
+# data 占位文件白名单
+!data/README.md
+!data/example/

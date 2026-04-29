@@ -1,0 +1,152 @@
+import { describe, expect, it } from "vitest";
+import yaml from "js-yaml";
+import { generateClashConfig } from "../../src/generators/clash.js";
+import type { Profile } from "../../src/schemas/profile.js";
+import type { Node } from "../../src/schemas/node.js";
+import type { ProxyGroup } from "../../src/schemas/proxy-group.js";
+import type { RuleSet } from "../../src/schemas/ruleset.js";
+
+function baseProfile(overrides: Partial<Profile> = {}): Profile {
+  return {
+    id: "home",
+    name: "Home",
+    token: "abcdefghij12",
+    providers: [],
+    include_manual_nodes: true,
+    node_filter: { rename_rules: [], exclude_types: [] },
+    chain_rules: [],
+    proxy_groups: [],
+    rule_modules: [],
+    surge_modules: [],
+    userinfo: { mode: "sum", expose_per_provider_headers: true },
+    managed_config_url: "auto",
+    managed_config_interval: 86400,
+    managed_config_strict: false,
+    clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
+    ...overrides,
+  };
+}
+
+describe("generateClashConfig", () => {
+  it("emits proxies, proxy-groups, rules with rule-providers", () => {
+    const nodes: Node[] = [
+      {
+        name: "🇭🇰 HK-01",
+        type: "trojan",
+        server: "gz.example.com",
+        port: 12101,
+        password: "secret",
+        sni: "m.ctrip.com",
+        skip_cert_verify: true,
+        udp: true,
+        tls: true,
+        tags: [],
+      },
+      {
+        name: "🇯🇵 JP-01",
+        type: "ss",
+        server: "jp.example.com",
+        port: 8388,
+        cipher: "2022-blake3-aes-128-gcm",
+        password: "pwd",
+        udp: true,
+        tags: [],
+      },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "Proxys",
+        name: "Proxys",
+        type: "url-test",
+        proxies: [],
+        selector: { include_other_group: [], from_providers: [], exclude_type: [] },
+        url: "http://cp.cloudflare.com",
+        interval: 600,
+      },
+    ];
+    const rules = [
+      {
+        ref: "cn-direct",
+        policy: "DIRECT",
+        ruleset: {
+          id: "cn-direct",
+          name: "CN Direct",
+          type: "remote_url",
+          url: "https://example.com/cn.list",
+          behavior: "domain",
+          format: "yaml",
+          clash_format: "rule_provider",
+          surge_format: "rule_set",
+          update_interval: 86400,
+        } satisfies RuleSet,
+      },
+    ];
+    const out = generateClashConfig({
+      profile: baseProfile({ proxy_groups: ["Proxys"] }),
+      nodes,
+      groups,
+      rules,
+      finalRule: { policy: "Proxys" },
+      geoipFallback: { policy: "DIRECT" },
+      warnings: [],
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    expect(parsed.proxies).toHaveLength(2);
+    expect(parsed["rule-providers"]).toMatchObject({
+      "cn-direct": { type: "http", behavior: "domain", url: "https://example.com/cn.list" },
+    });
+    expect((parsed.rules as string[])).toEqual([
+      "RULE-SET,cn-direct,DIRECT",
+      "GEOIP,CN,DIRECT,no-resolve",
+      "MATCH,Proxys",
+    ]);
+    const proxies = parsed.proxies as Record<string, unknown>[];
+    expect(proxies[0]).toMatchObject({
+      name: "🇭🇰 HK-01",
+      type: "trojan",
+      "skip-cert-verify": true,
+      udp: true,
+    });
+    expect(proxies[1]).toMatchObject({
+      type: "ss",
+      cipher: "2022-blake3-aes-128-gcm",
+    });
+  });
+
+  it("translates chain_via to dialer-proxy", () => {
+    const nodes: Node[] = [
+      {
+        name: "WARP",
+        type: "wireguard",
+        server: "wg.example.com",
+        port: 2408,
+        private_key: "PRIV",
+        public_key: "PUB",
+        ip: "172.16.0.2/32",
+        tags: [],
+      },
+      {
+        name: "HK-01",
+        type: "trojan",
+        server: "gz.example.com",
+        port: 443,
+        password: "x",
+        sni: "x.com",
+        chain_via: "WARP",
+        tls: true,
+        tags: [],
+      },
+    ];
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes,
+      groups: [],
+      rules: [],
+      finalRule: { policy: "DIRECT" },
+      warnings: [],
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const proxies = parsed.proxies as Record<string, unknown>[];
+    expect(proxies[1]["dialer-proxy"]).toBe("WARP");
+  });
+});
