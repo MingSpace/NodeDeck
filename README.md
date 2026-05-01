@@ -9,12 +9,12 @@
 ## 特性
 
 - **多 Profile**: 一份配置中心,生成多套订阅 URL,每个 Profile 独立 token
-- **节点源混合**: 在线订阅链接 + 本地节点文件 + 手输节点,统一去重
-- **规则模块化**: 拼装规则模块,支持 RULE-SET URL / DOMAIN-SET / inline ruleset
-- **链式代理**: 任意节点可配置前置代理(Clash `dialer-proxy` / Surge `underlying-proxy`)
-- **Surge 高级特性**: Module / MITM / URL Rewrite / Header Rewrite / Script / inline ruleset / REJECT-DROP 全套参数
-- **Clash 高级特性**: proxy-providers / rule-providers / DNS / TUN / sniffer / 全协议(VLESS+Reality / Hysteria2 / TUIC v5 / WireGuard 等)
-- **多机场流量聚合**: 标准 `Subscription-UserInfo` 聚合 + Web 仪表板每机场详情 + 阈值告警
+- **节点源混合**: 在线订阅链接 + 本地节点文件 + 手输节点,统一去重 + 自动同名加 ` #2` 后缀避免冲突
+- **规则模块化**: 拼装规则模块,支持 RULE-SET URL / inline payload / GEOSITE / GEOIP / DOMAIN-SET / Surge inline ruleset
+- **链式代理**: 任意节点可配置前置代理(Clash `dialer-proxy` / Surge `underlying-proxy`),应用前自动做环检测 + 悬空引用降级
+- **Surge 高级特性**: Module / MITM / URL Rewrite / Header Rewrite / Script / inline ruleset / REJECT-DROP 子类型 + 通知参数 / `Profile-Update-Interval` / 节点名非法字符自动净化
+- **Clash 高级特性**: proxy-providers (按机场切片,独立健康检查) / rule-providers / DNS / TUN / sniffer / 全协议(VLESS+Reality / Hysteria2 / TUIC v5 / WireGuard 等) / Surge 专属 REJECT 子类型自动降级
+- **多机场流量聚合**: 标准 `Subscription-UserInfo` 聚合 (sum / primary 两种模式) + Web 仪表板每机场详情 + 自定义 `X-MConvert-Userinfo-<id>` header
 - **URL token 鉴权**: 12 字符 nanoid,Profile 级独立,可一键重生
 - **改完不重启**: 文件即真相,chokidar 自动失效缓存,所有配置变化即时生效
 
@@ -52,7 +52,16 @@ http://your-vps:8080/sub?profile=home&target=clash&t=V1StGXR8_Z5j
 http://your-vps:8080/sub?profile=home&target=surge&t=V1StGXR8_Z5j
 ```
 
+启用 `clash_options.use_proxy_providers` + 单个 provider 的 `clash_proxy_provider.enabled` 后,主订阅会引用每机场独立的拉取目标:
+
+```
+# Mihomo proxy-provider 自动拉取(由主订阅 yaml 中的 proxy-providers 段引用,不需要手动添加)
+http://your-vps:8080/sub/provider/airport-a/clash.yaml?profile=home&t=V1StGXR8_Z5j
+```
+
 Profile 列表页有「复制 URL」按钮,直接粘贴到客户端的"订阅"中即可。
+
+更多用法见 [docs/cookbook.md](docs/cookbook.md)。
 
 ---
 
@@ -60,6 +69,7 @@ Profile 列表页有「复制 URL」按钮,直接粘贴到客户端的"订阅"�
 
 - [设计概览](docs/design.md)
 - [协议字段对照表 (Clash ↔ Surge)](docs/protocol-mapping.md)
+- [使用手册 (规则/链式/proxy-providers 示例)](docs/cookbook.md)
 - [链式代理用法](docs/chain-proxy.md)
 - [部署指南 (含 nginx / Caddy 反代)](docs/deployment.md)
 - [给 AI 的指南 (AGENTS.md)](AGENTS.md)

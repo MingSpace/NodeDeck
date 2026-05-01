@@ -51,6 +51,13 @@ export const rulesetSchema = z
     behavior: rulesetBehaviorSchema.default("classical"),
     format: rulesetFormatSchema.default("yaml"),
 
+    // 当 type=geosite 时,优先使用此分类名(如 "cn"/"youtube")作为 GEOSITE 关键字;
+    // 缺省时回退到 id。url 字段仅在 Surge 端走 DOMAIN-SET fallback 时使用。
+    geosite_category: z.string().min(1).optional(),
+    // 当 type=geoip 时,优先使用此国家代码(如 "CN"/"US")作为 GEOIP 关键字;
+    // 缺省时回退到 id。url 字段保留给后续可能的 Mihomo 自定义 mmdb 拉取。
+    geoip_country_code: z.string().min(1).optional(),
+
     surge_flags: surgeFlagsSchema.optional(),
     surge_reject_options: surgeRejectOptionsSchema.optional(),
 

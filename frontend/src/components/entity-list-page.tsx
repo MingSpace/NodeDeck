@@ -15,6 +15,13 @@ interface EntityListPageProps<T extends { id: string }> {
   template?: Partial<T>;
   /** Optional custom create dialog (e.g. Providers uses a richer form); falls back to YAML dialog if absent */
   CustomCreateButton?: React.ComponentType;
+  /** Optional custom dialog renderer (replaces default YAML dialog) */
+  renderDialog?: (props: {
+    entity: T | null;
+    open: boolean;
+    onOpenChange: (v: boolean) => void;
+    defaultId: string;
+  }) => React.ReactNode;
 }
 
 export function EntityListPage<T extends { id: string; name?: string }>({
@@ -24,6 +31,7 @@ export function EntityListPage<T extends { id: string; name?: string }>({
   renderRow,
   template,
   CustomCreateButton,
+  renderDialog,
 }: EntityListPageProps<T>) {
   const list = useEntityList<T>(kind);
   const del = useDeleteEntity(kind);
@@ -102,14 +110,23 @@ export function EntityListPage<T extends { id: string; name?: string }>({
         </Card>
       )}
 
-      <EntityYamlDialog<T>
-        kind={kind}
-        entity={editing}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        templateValue={template}
-        defaultId={editing?.id ?? `${kind.slice(0, -1)}-${Date.now().toString(36)}`}
-      />
+      {renderDialog ? (
+        renderDialog({
+          entity: editing,
+          open: dialogOpen,
+          onOpenChange: setDialogOpen,
+          defaultId: editing?.id ?? `${kind.slice(0, -1)}-${Date.now().toString(36)}`,
+        })
+      ) : (
+        <EntityYamlDialog<T>
+          kind={kind}
+          entity={editing}
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          templateValue={template}
+          defaultId={editing?.id ?? `${kind.slice(0, -1)}-${Date.now().toString(36)}`}
+        />
+      )}
     </div>
   );
 }

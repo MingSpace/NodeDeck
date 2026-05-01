@@ -5,7 +5,8 @@ import type { RuleSet } from "../schemas/ruleset.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
 import type { SurgeModule } from "../schemas/surge-module.js";
 import { applyNodeFilter } from "./node-filter.js";
-import { applyChainRules } from "../chain/apply.js";
+import { applyChainRules, validateChain } from "../chain/apply.js";
+import { uniquifyNodeNames, escapeSurgeNames } from "./node-naming.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 
 export interface SurgeGenerateInput {
@@ -23,7 +24,14 @@ export interface SurgeGenerateInput {
 
 export function generateSurgeConfig(input: SurgeGenerateInput): string {
   const { profile, general } = input;
-  const filteredNodes = applyChainRules(applyNodeFilter(input.nodes, profile.node_filter), profile);
+  const filtered = applyNodeFilter(input.nodes, profile.node_filter);
+  const uniqued = uniquifyNodeNames(filtered, input.warnings);
+  // Surge 专属:把 = , " 等会破坏 INI 行解析的字符替换掉,且同步改写所有引用。
+  const escaped = escapeSurgeNames(uniqued, input.groups, input.warnings);
+  const chained = applyChainRules(escaped.nodes, profile);
+  const groupNames = new Set(escaped.groups.map((g) => g.name));
+  const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
+  const sanitizedGroups = escaped.groups;
   const lines: string[] = [];
 
   // managed-config header
@@ -86,9 +94,9 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   lines.push("");
 
   // [Proxy Group]
-  if (input.groups.length > 0) {
+  if (sanitizedGroups.length > 0) {
     lines.push("[Proxy Group]");
-    for (const g of input.groups) {
+    for (const g of sanitizedGroups) {
       lines.push(buildSurgeProxyGroup(g, filteredNodes));
     }
     lines.push("");
@@ -121,27 +129,55 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
       }
     }
 
-    if (rs.type === "remote_url" && rs.url) {
-      const parts = [`RULE-SET,${rs.url}`, policy, ...extraParams, ...flags];
-      lines.push(parts.join(","));
-    } else if (rs.type === "geosite") {
-      // Surge does not support GEOSITE; emit as DOMAIN-SET if url provided, otherwise warn
-      if (rs.url) lines.push(`DOMAIN-SET,${rs.url},${policy}${flags.length ? "," + flags.join(",") : ""}`);
-      else input.warnings.push(`GEOSITE rule "${rs.id}" needs a url to be emitted in Surge`);
-    } else if (rs.type === "geoip") {
-      lines.push(`GEOIP,${rs.url ?? rs.id},${policy}${flags.length ? "," + flags.join(",") : ""}`);
-    } else if (rs.surge_format === "inline_ruleset" && rs.payload && rs.payload.length > 0) {
-      inlineRulesets.push({ name: rs.id, payload: rs.payload });
-      const parts = [`RULE-SET,${rs.id}`, policy, ...extraParams, ...flags];
-      lines.push(parts.join(","));
-    } else if (rs.surge_format === "domain_set" && rs.url) {
-      lines.push(`DOMAIN-SET,${rs.url},${policy}${flags.length ? "," + flags.join(",") : ""}`);
-    } else if (rs.payload && rs.payload.length > 0) {
-      // emit each line directly with policy
-      for (const item of rs.payload) {
-        const parts = [item, policy, ...extraParams, ...flags];
+    const flagSuffix = flags.length ? "," + flags.join(",") : "";
+    // 分发顺序:按 rs.type 优先,surge_format 仅在同 type 内部决定细节。
+    if (rs.type === "remote_url") {
+      if (!rs.url) {
+        input.warnings.push(`Ruleset "${rs.id}" type=remote_url but url missing, skipped`);
+        continue;
+      }
+      if (rs.surge_format === "domain_set") {
+        lines.push(`DOMAIN-SET,${rs.url},${policy}${flagSuffix}`);
+      } else {
+        const parts = [`RULE-SET,${rs.url}`, policy, ...extraParams, ...flags];
         lines.push(parts.join(","));
       }
+    } else if (rs.type === "inline_list") {
+      if (!rs.payload || rs.payload.length === 0) {
+        input.warnings.push(`Ruleset "${rs.id}" type=inline_list but payload empty, skipped`);
+        continue;
+      }
+      if (rs.surge_format === "inline_ruleset") {
+        // [Ruleset id] 段引用,在文件后面追加该段的内容
+        inlineRulesets.push({ name: rs.id, payload: rs.payload });
+        const parts = [`RULE-SET,${rs.id}`, policy, ...extraParams, ...flags];
+        lines.push(parts.join(","));
+      } else {
+        for (const item of rs.payload) {
+          const parts = [item, policy, ...extraParams, ...flags];
+          lines.push(parts.join(","));
+        }
+      }
+    } else if (rs.type === "geosite") {
+      // Surge 没有原生 GEOSITE,按三级回退:
+      // 1) 用户在 ruleset 上写了 inline payload → 展开为内联规则(最稳)
+      // 2) 用户提供了 url → 当作 DOMAIN-SET 引用(适合 SukkaW 那种 list)
+      // 3) 都没有 → warning,跳过
+      if (rs.payload && rs.payload.length > 0) {
+        for (const item of rs.payload) {
+          const parts = [item, policy, ...extraParams, ...flags];
+          lines.push(parts.join(","));
+        }
+      } else if (rs.url) {
+        lines.push(`DOMAIN-SET,${rs.url},${policy}${flagSuffix}`);
+      } else {
+        input.warnings.push(
+          `GEOSITE rule "${rs.id}" cannot be emitted in Surge: provide either inline payload or DOMAIN-SET url`,
+        );
+      }
+    } else if (rs.type === "geoip") {
+      const country = rs.geoip_country_code ?? rs.id;
+      lines.push(`GEOIP,${country},${policy}${flagSuffix}`);
     }
   }
   // Module-level [Rule] additions (only DIRECT/REJECT allowed in modules)
@@ -352,7 +388,7 @@ function buildSurgeProxyLine(node: Node, warnings: string[]): string | null {
       break;
     case "http":
     case "https":
-      // username & password go positionally
+      // username/password go positionally in head; see below
       break;
     default:
       warnings.push(`Skipped unsupported node type "${node.type}" in surge output ("${node.name}")`);
@@ -368,8 +404,16 @@ function buildSurgeProxyLine(node: Node, warnings: string[]): string | null {
   if (node.chain_via) params.push(`underlying-proxy=${node.chain_via}`);
 
   let head = `${node.type}, ${node.server}, ${node.port}`;
-  if ((node.type === "http" || node.type === "https") && node.username) {
-    head += `, ${node.username}, ${node.password ?? ""}`;
+  if (node.type === "http" || node.type === "https") {
+    // Surge http/https 凭据格式: 必须 username 与 password 同时存在用位置参数;
+    // 任一缺失 Surge 5 会拒绝解析,这里直接降级为无认证 + warning。
+    if (node.username && node.password !== undefined) {
+      head += `, ${node.username}, ${escapeValue(node.password)}`;
+    } else if (node.username || node.password !== undefined) {
+      warnings.push(
+        `${node.type} proxy "${node.name}" requires both username and password; credentials skipped`,
+      );
+    }
   }
 
   return `${node.name} = ${head}${params.length > 0 ? ", " + params.join(", ") : ""}`;
@@ -426,6 +470,11 @@ function buildSurgeProxyGroup(g: ProxyGroup, allNodes: Node[]): string {
 function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
   const members = new Set<string>(g.proxies);
   if (g.selector) {
+    // selector.include_other_group(数组形式)直接展开为成员引用,
+    // 与顶层 g.include_other_group(Surge 原生展平参数)互补——后者保留为 params。
+    if (g.selector.include_other_group && g.selector.include_other_group.length > 0) {
+      for (const otherGroup of g.selector.include_other_group) members.add(otherGroup);
+    }
     let pool = allNodes.slice();
     if (g.selector.from_providers && g.selector.from_providers.length > 0) {
       pool = pool.filter((n) => n.source_provider_id && g.selector!.from_providers.includes(n.source_provider_id));

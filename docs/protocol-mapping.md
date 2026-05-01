@@ -147,11 +147,16 @@
 
 | 内部抽象 | Clash | Surge |
 |---|---|---|
-| 远程 URL | `rule-providers:` 段 + `rules: RULE-SET,<id>` | 直接 `RULE-SET,<url>,POLICY` |
-| inline | `rules:` 段直接列出 | `[Ruleset Name]` 段 + `RULE-SET,<name>` (Mac 5.3.1+) |
-| DOMAIN-SET | `rule-providers behavior: domain` | `DOMAIN-SET,<url>,POLICY` |
-| GEOSITE | `GEOSITE,cn,DIRECT` | — (用 ruleset URL 替代) [C] |
-| GEOIP | `GEOIP,CN,DIRECT` | `GEOIP,CN,DIRECT` | [CS] |
+| 远程 URL (`type: remote_url`) | `rule-providers:` 段 + `rules: RULE-SET,<id>`(默认 `clash_format: rule_provider`) | 直接 `RULE-SET,<url>,POLICY`(默认 `surge_format: rule_set`) 或 `DOMAIN-SET,<url>,POLICY`(`surge_format: domain_set`) |
+| inline list (`type: inline_list`) | `rules:` 段直接展开每行 | 直接展开;或 `surge_format: inline_ruleset` 时生成 `[Ruleset Name]` 段 + `RULE-SET,<name>` (Mac 5.3.1+) |
+| GEOSITE (`type: geosite`) | `GEOSITE,<geosite_category 或 id>,POLICY` | 三级回退:① `payload` 展开内联 → ② `url` 走 `DOMAIN-SET` → ③ warning |
+| GEOIP (`type: geoip`) | `GEOIP,<geoip_country_code 或 id>,POLICY` | 同 Clash |
+
+**关键字段**:
+- `geosite_category`: GEOSITE 关键字(如 `cn`/`google`/`youtube`)。缺省回退到 `id`,所以可以直接把 ruleset id 命名为 `cn`/`youtube` 等。
+- `geoip_country_code`: GEOIP 关键字(如 `CN`/`US`)。缺省回退到 `id`。
+- `surge_reject_options.type` 在 Surge 端覆盖 `policy`,在 Clash 端会自动降级到合法 `REJECT`(见第 12 节)。
+- 分发顺序:**先按 `rs.type` 大类分,再按 `clash_format` / `surge_format` 决定细节**。`type=remote_url` 配 `clash_format=inline` 不被支持,会自动降级为 rule-provider 并 warning。
 
 ## 14. 终止规则
 
@@ -177,6 +182,30 @@
 - Clash `peers:` (WireGuard 多 peer) → 仅取第一个 peer + warning
 - Clash `GEOSITE,xxx` → 改为 `DOMAIN-SET,<url>` 若 ruleset 提供了 url,否则 warning
 - Clash `mrs` 格式 → 不支持 + warning(由 generator 注释提示)
+
+---
+
+## 16. Clash proxy-providers 模式
+
+`profile.clash_options.use_proxy_providers = true` 时启用,把每个 `provider.clash_proxy_provider.enabled = true` 的机场切片为独立 mihomo proxy-provider:
+
+| 主订阅(profile) | proxy-provider 拉取目标 |
+|---|---|
+| `proxy-providers:` 段列出 N 个机场 | `GET /sub/provider/<id>/clash.yaml?profile=<pid>&t=<token>` |
+| `proxies:` 仅含手动节点 + 不属于这些机场的节点 | 仅 `proxies:` 段(经过该 profile 的 `node_filter`) |
+| `proxy-groups[i].use: [<provider_id>]` | — |
+
+**好处**:主订阅文件更小;客户端可对每机场独立健康检查;一键切换/禁用某机场只动 provider 即可。
+
+**字段**:`provider.clash_proxy_provider`:
+```yaml
+clash_proxy_provider:
+  enabled: true
+  health_check_url: http://www.gstatic.com/generate_204
+  health_check_interval: 300
+```
+
+`group.selector.from_providers` 决定该 group 的 `use:` 引用哪些机场;留空则自动包含所有启用了 proxy-provider 的机场。
 
 ---
 

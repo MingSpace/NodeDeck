@@ -5,6 +5,7 @@ import { providerActionsRouter } from "./provider-actions.js";
 import { dashboardRouter } from "./dashboard.js";
 import { importRouter } from "./import.js";
 import { profilePreviewRouter } from "./profile-preview.js";
+import { configRouter } from "./config.js";
 import { requireSession, ipAllowlist } from "../auth/middleware.js";
 
 export function mountApiRoutes(app: Hono): void {
@@ -20,10 +21,13 @@ export function mountApiRoutes(app: Hono): void {
   app.use("/api/dashboard/*", ipAllowlist, requireSession);
   app.use("/api/import/*", ipAllowlist, requireSession);
   app.use("/api/profiles/*", ipAllowlist, requireSession);
+  app.use("/api/config/*", ipAllowlist, requireSession);
+  app.use("/api/config", ipAllowlist, requireSession);
 
   app.route("/api/entities", entitiesRouter);
   app.route("/api/providers", providerActionsRouter);
   app.route("/api/dashboard", dashboardRouter);
   app.route("/api/import", importRouter);
   app.route("/api/profiles", profilePreviewRouter);
+  app.route("/api/config", configRouter);
 }

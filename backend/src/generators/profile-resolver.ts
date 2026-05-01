@@ -4,12 +4,15 @@ import type { RuleSet } from "../schemas/ruleset.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
 import type { SurgeModule } from "../schemas/surge-module.js";
 import type { Node } from "../schemas/node.js";
-import { proxyGroupRepo, rulesetRepo, generalPresetRepo, surgeModuleRepo } from "../storage/repos.js";
+import type { Provider } from "../schemas/provider.js";
+import { providerRepo, proxyGroupRepo, rulesetRepo, generalPresetRepo, surgeModuleRepo } from "../storage/repos.js";
 import { buildNodePool } from "../providers/pool.js";
 
 export interface ResolvedProfile {
   profile: Profile;
   nodes: Node[];
+  // 启用且被该 profile 引用的 provider 元数据(给 clash proxy-providers 模式合成 URL 用)
+  providers: Provider[];
   groups: ProxyGroup[];
   rules: { ref: string; policy: string; ruleset: RuleSet }[];
   finalRule?: { policy: string; dns_failed?: boolean };
@@ -25,6 +28,12 @@ export async function resolveProfile(profile: Profile): Promise<ResolvedProfile>
     providerIds: profile.providers,
     includeManual: profile.include_manual_nodes,
   });
+
+  const providers: Provider[] = [];
+  for (const id of profile.providers) {
+    const entry = await providerRepo.get(id);
+    if (entry && entry.data.enabled) providers.push(entry.data);
+  }
 
   const groups: ProxyGroup[] = [];
   for (const id of profile.proxy_groups) {
@@ -68,6 +77,7 @@ export async function resolveProfile(profile: Profile): Promise<ResolvedProfile>
   return {
     profile,
     nodes: pool.nodes,
+    providers,
     groups,
     rules,
     finalRule,

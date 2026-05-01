@@ -9,7 +9,7 @@ import { GroupsPage } from "@/pages/groups";
 import { ModulesPage } from "@/pages/modules";
 import { GeneralsPage } from "@/pages/generals";
 import { ProfilesPage } from "@/pages/profiles";
-import { ProfileEditorPage } from "@/pages/profile-editor";
+import { ProfileEditorPage } from "@/pages/profile-editor/index";
 import { SettingsPage } from "@/pages/settings";
 import { ImportPage } from "@/pages/import";
 import { RequireAuth } from "@/components/require-auth";

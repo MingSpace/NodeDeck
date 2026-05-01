@@ -4,9 +4,17 @@ import type { Profile } from "../schemas/profile.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { RuleSet } from "../schemas/ruleset.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
+import type { Provider } from "../schemas/provider.js";
 import { applyNodeFilter } from "./node-filter.js";
-import { applyChainRules } from "../chain/apply.js";
+import { applyChainRules, validateChain } from "../chain/apply.js";
+import { uniquifyNodeNames } from "./node-naming.js";
 import { logger } from "../logger.js";
+import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
+
+function downgradeClashPolicy(policy: string): string {
+  const mapped = REJECT_TYPE_MAP[policy as keyof typeof REJECT_TYPE_MAP];
+  return mapped ? mapped.clash : policy;
+}
 
 export interface ClashGenerateInput {
   profile: Profile;
@@ -17,48 +25,110 @@ export interface ClashGenerateInput {
   geoipFallback?: { policy: string };
   general?: GeneralPreset;
   warnings: string[];
+  // proxy-providers 模式所需:启用了 clash_proxy_provider 的 providers 元数据,
+  // 以及订阅 base url 与 profile token(用于合成 mihomo 拉取的 URL)。
+  // 仅在 profile.clash_options.use_proxy_providers === true 时生效。
+  providers?: Provider[];
+  baseUrl?: string;
+  profileToken?: string;
 }
 
 export function generateClashConfig(input: ClashGenerateInput): string {
   const { profile, general } = input;
-  const filteredNodes = applyChainRules(applyNodeFilter(input.nodes, profile.node_filter), profile);
+  const filtered = applyNodeFilter(input.nodes, profile.node_filter);
+  const uniqued = uniquifyNodeNames(filtered, input.warnings);
+  const chained = applyChainRules(uniqued, profile);
+  const groupNames = new Set(input.groups.map((g) => g.name));
+  const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
 
-  const proxies = filteredNodes.map((n) => buildClashProxy(n, input.warnings)).filter((p): p is Record<string, unknown> => p !== null);
-  const proxyGroups = input.groups.map((g) => buildClashProxyGroup(g, filteredNodes));
+  // Mihomo proxy-providers 模式:把启用了 clash_proxy_provider 的机场节点剥离出主订阅,
+  // 让客户端自己去拉取 /sub/provider/:id/clash.yaml,主订阅中只保留手动节点 + 不属于
+  // 这些机场的节点。proxy-providers 段在生成器中按 provider 元数据合成。
+  const useProxyProviders = profile.clash_options.use_proxy_providers
+    && (input.providers ?? []).some((p) => p.clash_proxy_provider.enabled)
+    && Boolean(input.baseUrl)
+    && Boolean(input.profileToken);
+  const eligibleProviders = useProxyProviders
+    ? (input.providers ?? []).filter((p) => p.clash_proxy_provider.enabled)
+    : [];
+  const eligibleProviderIds = new Set(eligibleProviders.map((p) => p.id));
+
+  const inlineNodes = useProxyProviders
+    ? filteredNodes.filter((n) => !n.source_provider_id || !eligibleProviderIds.has(n.source_provider_id))
+    : filteredNodes;
+
+  const proxies = inlineNodes.map((n) => buildClashProxy(n, input.warnings)).filter((p): p is Record<string, unknown> => p !== null);
+  const proxyGroups = input.groups.map((g) => buildClashProxyGroup(g, filteredNodes, eligibleProviderIds));
   const ruleProviders: Record<string, unknown> = {};
-  const inlineRulesSections: { lines: string[]; comment: string }[] = [];
+
+  const proxyProviders: Record<string, unknown> = {};
+  if (useProxyProviders) {
+    for (const p of eligibleProviders) {
+      proxyProviders[p.id] = buildProxyProviderEntry(p, input.baseUrl!, input.profileToken!, profile.id);
+    }
+  }
 
   const rules: string[] = [];
   for (const r of input.rules) {
     const rs = r.ruleset;
-    if (rs.clash_format === "rule_provider" && rs.type === "remote_url" && rs.url) {
-      ruleProviders[rs.id] = {
-        type: "http",
-        behavior: rs.behavior,
-        url: rs.url,
-        path: `./ruleset/${rs.id}.yaml`,
-        interval: rs.update_interval,
-        format: rs.format,
-      };
-      const noResolve = rs.surge_flags?.no_resolve ? ",no-resolve" : "";
-      rules.push(`RULE-SET,${rs.id},${r.policy}${noResolve}`);
-    } else if (rs.type === "geosite") {
-      rules.push(`GEOSITE,${rs.url ?? rs.id},${r.policy}`);
-    } else if (rs.type === "geoip") {
-      const noResolve = rs.surge_flags?.no_resolve ? ",no-resolve" : "";
-      rules.push(`GEOIP,${rs.url ?? rs.id},${r.policy}${noResolve}`);
-    } else if (rs.payload && rs.payload.length > 0) {
-      // inline payload -> emit each line directly into rules with the policy
-      for (const item of rs.payload) {
-        rules.push(`${item},${r.policy}`);
+    // surge_reject_options.type(如 REJECT-DROP)在 Surge 端会覆盖 r.policy;
+    // Clash 不识别 Surge 子类型,这里统一降级到合法 REJECT。
+    const rawPolicy = rs.surge_reject_options?.type ?? r.policy;
+    const policy = downgradeClashPolicy(rawPolicy);
+    const noResolve = rs.surge_flags?.no_resolve ? ",no-resolve" : "";
+
+    // 分发顺序:按 rs.type 优先,clash_format 仅在同 type 内部决定细节(如 remote_url 的输出方式)。
+    if (rs.type === "remote_url") {
+      if (!rs.url) {
+        input.warnings.push(`Ruleset "${rs.id}" type=remote_url but url missing, skipped`);
+        continue;
       }
+      if (rs.clash_format === "rule_provider") {
+        ruleProviders[rs.id] = {
+          type: "http",
+          behavior: rs.behavior,
+          url: rs.url,
+          path: `./ruleset/${rs.id}.yaml`,
+          interval: rs.update_interval,
+          format: rs.format,
+        };
+        rules.push(`RULE-SET,${rs.id},${policy}${noResolve}`);
+      } else {
+        // clash_format === "inline":Clash 没有 inline-from-url 能力,继续走 RULE-SET 并 warning
+        input.warnings.push(
+          `Ruleset "${rs.id}" clash_format=inline + remote_url 不被支持,自动降级为 rule-provider`,
+        );
+        ruleProviders[rs.id] = {
+          type: "http",
+          behavior: rs.behavior,
+          url: rs.url,
+          path: `./ruleset/${rs.id}.yaml`,
+          interval: rs.update_interval,
+          format: rs.format,
+        };
+        rules.push(`RULE-SET,${rs.id},${policy}${noResolve}`);
+      }
+    } else if (rs.type === "inline_list") {
+      if (!rs.payload || rs.payload.length === 0) {
+        input.warnings.push(`Ruleset "${rs.id}" type=inline_list but payload empty, skipped`);
+        continue;
+      }
+      for (const item of rs.payload) {
+        rules.push(`${item},${policy}`);
+      }
+    } else if (rs.type === "geosite") {
+      const category = rs.geosite_category ?? rs.id;
+      rules.push(`GEOSITE,${category},${policy}`);
+    } else if (rs.type === "geoip") {
+      const country = rs.geoip_country_code ?? rs.id;
+      rules.push(`GEOIP,${country},${policy}${noResolve}`);
     }
   }
   if (input.geoipFallback) {
-    rules.push(`GEOIP,CN,${input.geoipFallback.policy},no-resolve`);
+    rules.push(`GEOIP,CN,${downgradeClashPolicy(input.geoipFallback.policy)},no-resolve`);
   }
   if (input.finalRule) {
-    rules.push(`MATCH,${input.finalRule.policy}`);
+    rules.push(`MATCH,${downgradeClashPolicy(input.finalRule.policy)}`);
   }
 
   const out: Record<string, unknown> = {};
@@ -114,25 +184,73 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     }
   }
 
+  if (Object.keys(proxyProviders).length > 0) out["proxy-providers"] = proxyProviders;
   out.proxies = proxies;
   out["proxy-groups"] = proxyGroups;
   if (Object.keys(ruleProviders).length > 0) out["rule-providers"] = ruleProviders;
   out.rules = rules;
 
-  inlineRulesSections.forEach((s) => logger.debug({ s }, "inline ruleset"));
+  logger.debug({ inlineNodes: inlineNodes.length, useProxyProviders }, "clash output composed");
 
+  // flag 影响客户端识别(mihomo / stash 都用 mihomo schema,但 stash 在头注释里期待 # !flag: stash);
+  // group_style:block(每键独立成行) vs flow(嵌套用紧凑 inline 写法,主订阅文件更小)。
+  const flagLine = profile.clash_options.flag === "stash" ? "# !flag: stash" : "# !flag: mihomo";
   const header = [
     "# Generated by MConvert",
+    flagLine,
     `# Profile: ${profile.id}`,
     `# Generated at: ${new Date().toISOString()}`,
     ...input.warnings.map((w) => `# WARN: ${w}`),
     "",
   ].join("\n");
 
-  return header + yaml.dump(out, { noRefs: true, lineWidth: 200, sortKeys: false });
+  const flowLevel = profile.clash_options.group_style === "flow" ? 2 : -1;
+  return header + yaml.dump(out, {
+    noRefs: true,
+    lineWidth: 200,
+    sortKeys: false,
+    flowLevel,
+  });
 }
 
-function buildClashProxy(node: Node, warnings: string[]): Record<string, unknown> | null {
+/**
+ * 输出 mihomo proxy-provider 拉取目标的 yaml(仅 proxies: 段),
+ * 单独给 /sub/provider/:id/clash.yaml 路由使用。
+ */
+export function generateProxyProviderYaml(nodes: Node[], warnings: string[]): string {
+  const uniqued = uniquifyNodeNames(nodes, warnings);
+  const proxies = uniqued
+    .map((n) => buildClashProxy(n, warnings))
+    .filter((p): p is Record<string, unknown> => p !== null);
+  const header = [
+    "# Generated by MConvert (proxy-provider)",
+    `# Generated at: ${new Date().toISOString()}`,
+    ...warnings.map((w) => `# WARN: ${w}`),
+    "",
+  ].join("\n");
+  return header + yaml.dump({ proxies }, { noRefs: true, lineWidth: 200, sortKeys: false });
+}
+
+function buildProxyProviderEntry(
+  provider: Provider,
+  baseUrl: string,
+  token: string,
+  profileId: string,
+): Record<string, unknown> {
+  return {
+    type: "http",
+    url: `${baseUrl.replace(/\/$/, "")}/sub/provider/${provider.id}/clash.yaml?profile=${encodeURIComponent(profileId)}&t=${encodeURIComponent(token)}`,
+    interval: provider.refresh.interval_minutes * 60,
+    path: `./providers/${provider.id}.yaml`,
+    "health-check": {
+      enable: true,
+      url: provider.clash_proxy_provider.health_check_url,
+      interval: provider.clash_proxy_provider.health_check_interval,
+    },
+  };
+}
+
+export function buildClashProxy(node: Node, warnings: string[]): Record<string, unknown> | null {
   if (node.type === "snell") {
     warnings.push(`Skipped snell node "${node.name}" in clash output (use surge target instead)`);
     return null;
@@ -252,8 +370,27 @@ function writeTransport(out: Record<string, unknown>, node: Node): void {
   }
 }
 
-function buildClashProxyGroup(g: ProxyGroup, allNodes: Node[]): Record<string, unknown> {
-  const proxies = resolveGroupMembers(g, allNodes);
+function buildClashProxyGroup(
+  g: ProxyGroup,
+  allNodes: Node[],
+  proxyProviderIds: Set<string>,
+): Record<string, unknown> {
+  // proxy-providers 模式下:
+  // - 来自 eligible providers 的节点不在主订阅 proxies 段,group 通过 use: [provider_id] 引用
+  // - g.use 字段(若用户手动指定)优先生效
+  const useList = new Set<string>(g.use ?? []);
+  if (proxyProviderIds.size > 0) {
+    if (g.selector?.from_providers && g.selector.from_providers.length > 0) {
+      for (const pid of g.selector.from_providers) {
+        if (proxyProviderIds.has(pid)) useList.add(pid);
+      }
+    } else {
+      // 默认把所有启用了 proxy-provider 的机场都加入 use
+      for (const pid of proxyProviderIds) useList.add(pid);
+    }
+  }
+
+  const proxies = resolveGroupMembers(g, allNodes, proxyProviderIds);
   const out: Record<string, unknown> = {
     name: g.name,
     type: g.type === "smart" ? "url-test" : g.type === "ssid" ? "select" : g.type,
@@ -265,14 +402,28 @@ function buildClashProxyGroup(g: ProxyGroup, allNodes: Node[]): Record<string, u
   if (g.timeout !== undefined) out.timeout = g.timeout;
   if (g.lazy !== undefined) out.lazy = g.lazy;
   if (g.disable_udp !== undefined) out["disable-udp"] = g.disable_udp;
-  if (g.use && g.use.length > 0) out.use = g.use;
+  if (useList.size > 0) out.use = Array.from(useList);
   return out;
 }
 
-function resolveGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
+function resolveGroupMembers(
+  g: ProxyGroup,
+  allNodes: Node[],
+  proxyProviderIds: Set<string>,
+): string[] {
   const members = new Set<string>(g.proxies);
+  // 顶层 include_other_group(Surge 风格的单组引用)在 Clash 端没有原生字段,
+  // 这里直接当成"成员组名"展开,与 Surge 把它放进 params 的语义对齐。
+  if (g.include_other_group) members.add(g.include_other_group);
   if (g.selector) {
+    if (g.selector.include_other_group && g.selector.include_other_group.length > 0) {
+      for (const otherGroup of g.selector.include_other_group) members.add(otherGroup);
+    }
     let pool = allNodes.slice();
+    // proxy-providers 模式:剥离掉 use 段引用的 provider 节点,避免重复
+    if (proxyProviderIds.size > 0) {
+      pool = pool.filter((n) => !n.source_provider_id || !proxyProviderIds.has(n.source_provider_id));
+    }
     if (g.selector.from_providers && g.selector.from_providers.length > 0) {
       pool = pool.filter((n) => n.source_provider_id && g.selector!.from_providers.includes(n.source_provider_id));
     }
@@ -297,6 +448,8 @@ function resolveGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
     }
     for (const n of pool) members.add(n.name);
   }
-  if (members.size === 0) members.add("DIRECT");
+  // proxy-providers 模式下,group 可以仅靠 use 引用,proxies 列表允许为空(mihomo 接受);
+  // 否则保持原行为,空就回退到 DIRECT。
+  if (members.size === 0 && proxyProviderIds.size === 0) members.add("DIRECT");
   return Array.from(members);
 }

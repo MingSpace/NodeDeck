@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { listProvidersWithCache } from "../providers/pool.js";
+import { listProvidersWithCache, buildNodePool } from "../providers/pool.js";
 import { readProviderCache } from "../providers/cache-store.js";
 import { providerRepo, profileRepo } from "../storage/repos.js";
 
@@ -33,5 +33,36 @@ dashboardRouter.get("/summary", async (c) => {
   return c.json({
     providers: providers.length,
     profiles: profiles.length,
+  });
+});
+
+dashboardRouter.get("/node-pool", async (c) => {
+  const pool = await buildNodePool({ includeManual: true });
+  const byProvider: Record<string, Array<{ name: string; type: string; server: string; port: number; region?: string; level?: string; line?: string }>> = {};
+  for (const [provId, nodes] of pool.byProvider) {
+    byProvider[provId] = nodes.map((n) => ({
+      name: n.name,
+      type: n.type,
+      server: n.server,
+      port: n.port,
+      region: n.region,
+      level: n.level,
+      line: n.line,
+    }));
+  }
+  return c.json({
+    nodes: pool.nodes.map((n) => ({
+      name: n.name,
+      type: n.type,
+      server: n.server,
+      port: n.port,
+      region: n.region,
+      level: n.level,
+      line: n.line,
+      source_provider_id: n.source_provider_id,
+      tags: n.tags,
+    })),
+    count: pool.nodes.length,
+    by_provider: byProvider,
   });
 });

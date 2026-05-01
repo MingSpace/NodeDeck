@@ -271,9 +271,15 @@ function extractInlineModules(text: string): SurgeModule[] {
 }
 
 function stripComment(line: string): string {
-  for (const c of ["#", ";", "//"]) {
+  for (const c of ["#", ";"]) {
     const i = line.indexOf(c);
     if (i >= 0) return line.slice(0, i);
+  }
+  // // is a comment marker only at line start or after whitespace
+  // (otherwise it's part of a URL like https://, quic://)
+  const i = line.indexOf("//");
+  if (i === 0 || (i > 0 && /\s/.test(line[i - 1]))) {
+    return line.slice(0, i);
   }
   return line;
 }

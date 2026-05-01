@@ -60,7 +60,9 @@ Providers → Fetch + Cache → Parse → Normalize (region/level/line tag)
 - Clash 输出 → `dialer-proxy: <name>`
 - Surge 输出 → `underlying-proxy=<name>`
 
-环检测在生成前完成,有环则拒绝输出。
+generator 入口会做两层校验:
+1. **悬空引用**: chain_via 指向的节点/组若不存在(或被 `node_filter` 排除),自动清空该字段并 warning。
+2. **环检测**: A→B→A 的环被发现后,把环上所有节点的 chain_via 清空并 warning,不再让用户看到 500。
 
 详见 [`chain-proxy.md`](chain-proxy.md)。
 

@@ -1,0 +1,344 @@
+import { useMemo, useState } from "react";
+import { Layers, Puzzle, Settings as SettingsIcon, Link as LinkIcon, Plus, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useEntityList } from "@/api/entities";
+import type { Profile, ChainRule } from "./types";
+
+interface NamedItem {
+  id: string;
+  name: string;
+}
+
+interface Props {
+  draft: Profile;
+  onChange: (patch: Partial<Profile>) => void;
+}
+
+export function RightPanel({ draft, onChange }: Props) {
+  const groups = useEntityList<NamedItem>("groups");
+  const modules = useEntityList<NamedItem>("modules");
+  const generals = useEntityList<NamedItem>("generals");
+  const providers = useEntityList<NamedItem>("providers");
+
+  return (
+    <div className="flex flex-col h-full min-h-0 overflow-auto">
+      <Section icon={<Layers className="h-3.5 w-3.5" />} title="策略组" count={`${draft.proxy_groups.length}/${groups.data?.items.length ?? 0}`}>
+        <ChipPicker
+          items={groups.data?.items ?? []}
+          selected={draft.proxy_groups}
+          onToggle={(id) =>
+            onChange({
+              proxy_groups: draft.proxy_groups.includes(id)
+                ? draft.proxy_groups.filter((g) => g !== id)
+                : [...draft.proxy_groups, id],
+            })
+          }
+          empty="暂无策略组,前往「策略组」添加"
+        />
+      </Section>
+
+      <Section icon={<Puzzle className="h-3.5 w-3.5" />} title="Surge 模块" count={`${draft.surge_modules.length}/${modules.data?.items.length ?? 0}`}>
+        <ChipPicker
+          items={modules.data?.items ?? []}
+          selected={draft.surge_modules}
+          onToggle={(id) =>
+            onChange({
+              surge_modules: draft.surge_modules.includes(id)
+                ? draft.surge_modules.filter((m) => m !== id)
+                : [...draft.surge_modules, id],
+            })
+          }
+          empty="暂无模块"
+        />
+      </Section>
+
+      <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="General 预设">
+        <Select
+          value={draft.general_preset ?? "__none__"}
+          onValueChange={(v) => onChange({ general_preset: v === "__none__" ? undefined : v })}
+        >
+          <SelectTrigger className="h-8 text-xs">
+            <SelectValue placeholder="选择 General" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__none__" className="text-xs italic text-muted-foreground">
+              不引用
+            </SelectItem>
+            {generals.data?.items.map((g) => (
+              <SelectItem key={g.id} value={g.id} className="text-xs">
+                {g.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Section>
+
+      <Section icon={<LinkIcon className="h-3.5 w-3.5" />} title="链式代理 (chain_rules)" count={String(draft.chain_rules.length)}>
+        <ChainRulesEditor
+          rules={draft.chain_rules}
+          providers={providers.data?.items ?? []}
+          onChange={(rules) => onChange({ chain_rules: rules })}
+        />
+      </Section>
+
+      <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="流量信息 (Subscription-UserInfo)">
+        <div className="space-y-2">
+          <Select
+            value={draft.userinfo.mode}
+            onValueChange={(v) =>
+              onChange({ userinfo: { ...draft.userinfo, mode: v as "primary" | "sum" } })
+            }
+          >
+            <SelectTrigger className="h-8 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="sum" className="text-xs">sum (各机场求和)</SelectItem>
+              <SelectItem value="primary" className="text-xs">primary (单机场)</SelectItem>
+            </SelectContent>
+          </Select>
+          {draft.userinfo.mode === "primary" && (
+            <Select
+              value={draft.userinfo.primary_provider ?? ""}
+              onValueChange={(v) =>
+                onChange({ userinfo: { ...draft.userinfo, primary_provider: v || undefined } })
+              }
+            >
+              <SelectTrigger className="h-8 text-xs">
+                <SelectValue placeholder="选择主机场" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.data?.items.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.userinfo.expose_per_provider_headers}
+              onChange={(e) =>
+                onChange({ userinfo: { ...draft.userinfo, expose_per_provider_headers: e.target.checked } })
+              }
+              className="h-3.5 w-3.5"
+            />
+            暴露每机场 X-MConvert-Userinfo-* 响应头
+          </label>
+        </div>
+      </Section>
+
+      <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="Clash 输出选项">
+        <div className="space-y-2">
+          <div>
+            <label className="text-xs block mb-1">flag (客户端方言)</label>
+            <Select
+              value={draft.clash_options.flag}
+              onValueChange={(v) =>
+                onChange({ clash_options: { ...draft.clash_options, flag: v as "mihomo" | "stash" } })
+              }
+            >
+              <SelectTrigger className="h-7 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="mihomo" className="text-xs">mihomo (Clash Meta)</SelectItem>
+                <SelectItem value="stash" className="text-xs">stash</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={draft.clash_options.use_proxy_providers}
+              onChange={(e) =>
+                onChange({
+                  clash_options: { ...draft.clash_options, use_proxy_providers: e.target.checked },
+                })
+              }
+              className="h-3.5 w-3.5"
+            />
+            使用 proxy-providers (远程拉取)
+          </label>
+        </div>
+      </Section>
+    </div>
+  );
+}
+
+function Section({
+  icon,
+  title,
+  count,
+  children,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  count?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-b">
+      <div className="px-4 py-2 bg-muted/30 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        {icon}
+        <span className="flex-1">{title}</span>
+        {count && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{count}</Badge>}
+      </div>
+      <div className="px-4 py-3">{children}</div>
+    </div>
+  );
+}
+
+function ChipPicker({
+  items,
+  selected,
+  onToggle,
+  empty,
+}: {
+  items: NamedItem[];
+  selected: string[];
+  onToggle: (id: string) => void;
+  empty: string;
+}) {
+  if (items.length === 0) {
+    return <div className="text-xs text-muted-foreground">{empty}</div>;
+  }
+  const selSet = new Set(selected);
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((item) => {
+        const active = selSet.has(item.id);
+        return (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onToggle(item.id)}
+            className={
+              active
+                ? "px-2 py-1 rounded-md text-xs font-medium border bg-primary text-primary-foreground border-primary"
+                : "px-2 py-1 rounded-md text-xs font-medium border bg-background text-foreground hover:bg-accent border-input"
+            }
+            title={item.id}
+          >
+            {item.name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ChainRulesEditor({
+  rules,
+  providers,
+  onChange,
+}: {
+  rules: ChainRule[];
+  providers: NamedItem[];
+  onChange: (rules: ChainRule[]) => void;
+}) {
+  const [draft, setDraft] = useState<ChainRule>({ selector: {}, via: "" });
+
+  const add = () => {
+    if (!draft.via.trim()) return;
+    onChange([...rules, draft]);
+    setDraft({ selector: {}, via: "" });
+  };
+
+  const providerNames = useMemo(() => providers.map((p) => p.id), [providers]);
+
+  return (
+    <div className="space-y-2">
+      {rules.length === 0 && (
+        <div className="text-xs text-muted-foreground">暂无链式规则</div>
+      )}
+      {rules.map((r, i) => (
+        <div key={i} className="border rounded-md p-2 space-y-1.5 bg-muted/20">
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px]">via</Badge>
+            <span className="text-xs font-mono flex-1 truncate">{r.via}</span>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => onChange(rules.filter((_, idx) => idx !== i))}
+            >
+              <Trash2 className="h-3 w-3 text-destructive" />
+            </Button>
+          </div>
+          <div className="text-[11px] text-muted-foreground space-y-0.5">
+            {r.selector.include_regex && <div>include: <code>{r.selector.include_regex}</code></div>}
+            {r.selector.exclude_regex && <div>exclude: <code>{r.selector.exclude_regex}</code></div>}
+            {(r.selector.from_providers?.length ?? 0) > 0 && (
+              <div>from: {r.selector.from_providers!.join(", ")}</div>
+            )}
+            {(r.selector.exclude_type?.length ?? 0) > 0 && (
+              <div>exclude type: {r.selector.exclude_type!.join(", ")}</div>
+            )}
+          </div>
+        </div>
+      ))}
+
+      <details className="border rounded-md">
+        <summary className="px-2 py-1.5 cursor-pointer text-xs font-medium hover:bg-muted/40">
+          <Plus className="h-3 w-3 inline mr-1" />
+          添加链式规则
+        </summary>
+        <div className="p-2 space-y-2 border-t">
+          <div>
+            <label className="text-[11px] block mb-1">via (出口节点/组名)</label>
+            <Input
+              value={draft.via}
+              onChange={(e) => setDraft({ ...draft, via: e.target.value })}
+              placeholder="例如: 🇯🇵 JP-DIP"
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] block mb-1">include_regex</label>
+            <Input
+              value={draft.selector.include_regex ?? ""}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  selector: { ...draft.selector, include_regex: e.target.value || undefined },
+                })
+              }
+              placeholder="(?i)stream"
+              className="h-7 text-xs"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] block mb-1">from_providers (逗号分隔)</label>
+            <Input
+              value={(draft.selector.from_providers ?? []).join(", ")}
+              onChange={(e) =>
+                setDraft({
+                  ...draft,
+                  selector: {
+                    ...draft.selector,
+                    from_providers: e.target.value
+                      .split(",")
+                      .map((s) => s.trim())
+                      .filter(Boolean),
+                  },
+                })
+              }
+              placeholder={providerNames.slice(0, 2).join(", ")}
+              className="h-7 text-xs"
+            />
+          </div>
+          <Button size="sm" onClick={add} disabled={!draft.via.trim()} className="w-full h-7 text-xs">
+            <Plus className="h-3 w-3" />
+            添加
+          </Button>
+        </div>
+      </details>
+    </div>
+  );
+}

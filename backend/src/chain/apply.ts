@@ -82,3 +82,67 @@ export function detectChainCycle(
     dfs(name, []);
   }
 }
+
+const CHAIN_BUILTINS = new Set(["DIRECT", "REJECT"]);
+
+/**
+ * 校验 + 归零所有节点的 chain_via 字段:
+ * 1. 引用悬空(指向不存在的节点/组)→ 清空 + warning(降级为直接出口)
+ * 2. 应用后形成环 → 把环上所有节点的 chain_via 清空 + warning
+ *
+ * 与 applyChainRules 的关系:这是 generator 的 *入口校验*,在 chain_rules 应用之后调用。
+ * 之所以放在 generator 阶段而不是 schema 校验,是因为引用合法性依赖 *运行时* 的节点池
+ * (机场拉取后才能知道有哪些节点名)。
+ */
+export function validateChain(
+  nodes: Node[],
+  options: { groupNames: Set<string>; warnings: string[] },
+): Node[] {
+  const { groupNames, warnings } = options;
+  const nodeNames = new Set(nodes.map((n) => n.name));
+
+  let cleaned: Node[] = nodes.map((n) => {
+    if (!n.chain_via) return n;
+    if (nodeNames.has(n.chain_via) || groupNames.has(n.chain_via) || CHAIN_BUILTINS.has(n.chain_via)) {
+      return n;
+    }
+    warnings.push(
+      `Chain dangling: node "${n.name}" chain_via "${n.chain_via}" not found, falling back to direct dial`,
+    );
+    const { chain_via: _omit, ...rest } = n;
+    return rest as Node;
+  });
+
+  // DIRECT/REJECT 是合法终点,不计入 detectChainCycle 的"组"集合,但也不应视作节点;
+  // detectChainCycle 把"非节点 = 终止"处理,所以把 builtins 加入 groupNames 子集合即可。
+  const sinks = new Set([...groupNames, ...CHAIN_BUILTINS]);
+
+  // 反复跑 detectChainCycle:每次发现一条环就把环上节点 chain_via 清掉,直到无环。
+  // 防御性的最大循环次数 = 节点数,避免极端 case 死循环。
+  for (let guard = 0; guard < cleaned.length + 1; guard++) {
+    const nameToVia = new Map<string, string>();
+    for (const n of cleaned) {
+      if (n.chain_via) nameToVia.set(n.name, n.chain_via);
+    }
+    try {
+      detectChainCycle(nameToVia, sinks);
+      return cleaned;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const match = /Chain proxy cycle detected: (.+)$/.exec(msg);
+      if (!match) {
+        warnings.push(`Chain validation error: ${msg}`);
+        return cleaned;
+      }
+      const cyclePath = match[1].split(" -> ").map((s) => s.trim());
+      warnings.push(`Chain cycle detected: ${cyclePath.join(" -> ")}; chain_via cleared on all involved nodes`);
+      const cycleSet = new Set(cyclePath);
+      cleaned = cleaned.map((n) => {
+        if (!cycleSet.has(n.name)) return n;
+        const { chain_via: _omit, ...rest } = n;
+        return rest as Node;
+      });
+    }
+  }
+  return cleaned;
+}
