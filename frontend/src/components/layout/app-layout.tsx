@@ -7,9 +7,9 @@ import {
   Layers,
   Puzzle,
   Settings as SettingsIcon,
-  FileText,
   Upload,
   Power,
+  ScrollText,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -29,8 +29,8 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/groups", label: "策略组", icon: Layers },
   { to: "/modules", label: "Surge 模块", icon: Puzzle },
   { to: "/generals", label: "通用预设", icon: SettingsIcon },
-  { to: "/profiles", label: "Profile", icon: FileText },
   { to: "/import", label: "导入", icon: Upload },
+  { to: "/logs", label: "日志", icon: ScrollText },
 ];
 
 export function AppLayout() {

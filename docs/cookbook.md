@@ -26,15 +26,22 @@ name: 机场 A
 type: http
 url: https://airport-a.example.com/api/v1/client/subscribe?token=XXX
 user_agent: Surge/2400
-parser_hint: auto      # auto / clash / surge / v2ray_base64 / ss_links / ...
+parser_hint: auto      # auto / clash / surge / v2ray_base64 / ss_links / mixed / ...
 refresh:
-  interval_minutes: 60 # 每小时拉一次
-  on_demand: true
+  interval: 12h        # never / 4h / 12h / 24h / 1week / on_request
 enabled: true
 tags: [primary]
 clash_proxy_provider:
   enabled: false       # 见第 4 节
 ```
+
+`refresh.interval` 取值含义:
+
+| 值 | 含义 |
+| --- | --- |
+| `4h` / `12h` / `24h` / `1week` | 后端 cron 每分钟扫一次,过期才去机场拉 |
+| `on_request` | 每次客户端访问 `/sub` 时都同步去机场拉(实时,响应耗时取决于机场) |
+| `never` | 第一次拉到后**永久缓存**,即便点"强制刷新"也无效;需重新拉取请临时改成其他选项,等后台拉到再改回 |
 
 ```yaml
 # data/providers/airport-b.yaml
@@ -44,10 +51,14 @@ type: http
 url: https://airport-b.example.com/sub?token=YYY
 parser_hint: clash
 refresh:
-  interval_minutes: 240
+  interval: 24h
 enabled: true
 tags: [backup]
 ```
+
+> 老格式 `{ interval_minutes, on_demand }` 启动时会自动迁移到新 enum(运行时转换,文件不主动重写;在 Web UI 编辑保存后才落新格式)。映射规则:`interval_minutes <= 240 → 4h`、`<= 720 → 12h`、`<= 1440 → 24h`、`> 1440 → 1week`;`on_demand: false` 一律视为 `never`。
+
+> **首次保存自动拉取**:Web UI 新建一个 `enabled: true` 的 provider 时,后端会立即在后台异步拉取一次,无需手动点刷新。在节点拉到之前,列表会显示黄色「拉取中...」徽标,几秒后自动变为绿色「N 个节点」(成功)或红色「失败」。`enabled: false` 的草稿态以及编辑保存已存在的 provider 都不会触发自动拉取(沿用老的 cron / on_request / 手动刷新行为)。
 
 自建节点写 `data/manual-nodes.yaml`:
 
@@ -72,6 +83,48 @@ nodes:
 ```
 
 **节点名同名怎么办?** 两家机场都叫 "🇭🇰 香港 01" 时,MConvert 自动给后出现的加 ` #2`/` #3` 后缀,生成的 yaml/conf 不会因 key 重复加载报错。重命名信息会作为 `# WARN:` 注释附在订阅文件头部。
+
+### 1.1 inline provider — 单节点 / local node list
+
+只想测一两个节点 / 拼盘自建节点,不需要订阅 URL 时,用 `type: inline` 直接把节点文本贴进 `content`:
+
+```yaml
+# data/providers/test-node.yaml
+id: test-node
+name: 测试节点
+type: inline
+parser_hint: auto
+refresh:
+  interval: never        # inline 不需要刷新,但写 never 也行
+enabled: true
+content: |
+  🇨🇳 Taiwan 04 = trojan, 8dc9ef6261.example.com, 21409, password=xxx, sni=v.example.com, skip-cert-verify=true, tfo=true, udp-relay=true
+```
+
+`content` 支持以下任一格式,`parser_hint: auto` 会自动识别:
+
+| 格式 | 例子 | 说明 |
+| --- | --- | --- |
+| Clash YAML | `proxies:\n  - {name: A, type: trojan, ...}` | 必须有 `proxies:` 段标头 |
+| Surge `[Proxy]` 段 | `[Proxy]\nA = trojan, host, 443, password=pw` | 标准 Surge `.conf` 风格 |
+| **裸 Surge 行** | `A = trojan, host, 443, password=pw` | 不要求 `[Proxy]` header,等同 subconverter 的 `set_isolated_items_section("Proxy")` |
+| URI 列表 | 一行一个 `ss://` `vmess://` `vless://` `trojan://` `hysteria2://` `tuic://` 等 | |
+| v2ray base64 | base64 编码的 URI 列表 | |
+
+**混贴场景**:同时想粘 URI 和 Surge 行,把 `parser_hint` 改成 `mixed`,会按 Sub-Store 风格逐行 try-each-parser:
+
+```yaml
+parser_hint: mixed
+content: |
+  ss://YWVzLTEyOC1nY206cHdk@a.com:8388#A
+  HK = trojan, hk.example.com, 443, password=pw
+  trojan://pwx@b.com:443?sni=x.com#B
+  # 注释行和空行会被自动跳过
+```
+
+**保存即重解析**:改完 inline content 在 Web UI 点保存即可,后端会自动 force-refresh 一次(inline 没有"上游"可拉,只有"内容"可重新读;UI 不提供刷新按钮就是这个原因)。http/file 类型的编辑保存仍然不会触发刷新——避免每次编辑都打机场,需要时手动点右上角的刷新按钮或等 cron。
+
+**0 节点怎么排查**:在 Web UI 的 providers 页,展开卡片会看到具体原因(content 为空 / 解析未识别)+ 一键跳转到编辑器修正;后端也会把 cache 状态写成 `error` 而不是装作 `ok`。
 
 ---
 
@@ -98,6 +151,29 @@ surge_flags:
 
 → Clash 输出 `rule-providers:` 段 + `RULE-SET,cn-direct,DIRECT,no-resolve`
 → Surge 输出 `RULE-SET,https://...,DIRECT,no-resolve`
+
+### 2.1a 远程 DOMAIN-SET (Surge 风格的纯域名表)
+
+Surge `[Rule]` 里的 `DOMAIN-SET,<url>,POLICY` 文件每行一个域名,首字母 `.` 表示包含子域名。
+mihomo 的 `DomainTrie` 同时支持 `.example.com` 与 `+.example.com` 前缀,所以同一份 list 可以两端共用。
+
+```yaml
+# data/rules/cn-domains.yaml
+id: cn-domains
+name: 国内域名集
+type: remote_url
+url: https://ruleset.skk.moe/List/domainset/cdn.conf  # 文件每行一个域名,无规则前缀
+behavior: domain               # mihomo 用 trie 高效匹配
+format: text
+clash_format: rule_provider
+surge_format: domain_set       # 走 DOMAIN-SET,而非 RULE-SET
+update_interval: 86400
+```
+
+→ Clash 输出 `rule-providers.cn-domains: { behavior: domain, format: text, ... }` + `RULE-SET,cn-domains,DIRECT`
+→ Surge 输出 `DOMAIN-SET,https://...,DIRECT`
+
+> Web UI 一键导入 Surge `.conf` 时,`DOMAIN-SET` 行会被自动识别为这种形态; URL 后缀 `.list/.conf` 会推断为 `format: text`,`.yaml/.yml` 为 `yaml`,`.mrs` 为 `mrs`。
 
 ### 2.2 inline payload (自己写规则)
 
@@ -306,6 +382,7 @@ surge_modules: [google-cn]
 general_preset: home
 
 userinfo:
+  enabled: true         # 默认 false;关闭时下面这些字段不生效,响应头里也不会出现 UserInfo 相关字段
   mode: sum             # primary 模式则用 primary_provider 字段
   expose_per_provider_headers: true
 
@@ -330,8 +407,8 @@ http://your-vps:8080/sub?profile=home&target=surge&t=V1StGXR8_Z5j
 
 | Header | 说明 |
 |---|---|
-| `Subscription-UserInfo` | 聚合后的流量信息(upload/download/total/expire) |
-| `X-MConvert-Userinfo-<provider_id>` | 每机场原始 header 的透传 |
+| `Subscription-UserInfo` | 聚合后的流量信息(upload/download/total/expire),**仅当 `userinfo.enabled: true` 时输出** |
+| `X-MConvert-Userinfo-<provider_id>` | 每机场原始 header 的透传,**仅当 `userinfo.enabled: true` 且 `expose_per_provider_headers: true`** |
 | `Profile-Update-Interval` | 客户端建议的轮询间隔(小时) |
 | `Content-Disposition` | `attachment; filename="<profile>.yaml/.conf"` |
 

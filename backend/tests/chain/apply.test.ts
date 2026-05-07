@@ -26,7 +26,7 @@ function profile(rules: Profile["chain_rules"]): Profile {
     proxy_groups: [],
     rule_modules: [],
     surge_modules: [],
-    userinfo: { mode: "sum", expose_per_provider_headers: true },
+    userinfo: { enabled: false, mode: "sum", expose_per_provider_headers: true },
     managed_config_url: "auto",
     managed_config_interval: 86400,
     managed_config_strict: false,

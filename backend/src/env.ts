@@ -10,6 +10,7 @@ const envSchema = z.object({
   SESSION_SECRET: z.string().min(16).default("dev-secret-please-change-in-production"),
   PUBLIC_BASE_URL: z.string().url().optional(),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
+  LOG_BUFFER_SIZE: z.coerce.number().int().positive().default(2000),
 });
 
 export type Env = z.infer<typeof envSchema>;

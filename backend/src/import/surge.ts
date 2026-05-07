@@ -31,6 +31,13 @@ export function importSurgeConf(text: string): SurgeImportResult {
 
   const manualNodes = annotateNodes(parseSurgeConf(text));
 
+  const directSkipped = countDirectPseudoNodes(text);
+  if (directSkipped > 0) {
+    warnings.push(
+      `Skipped ${directSkipped} pseudo "direct" node line(s) in [Proxy]; DIRECT is a builtin policy and any extra parameters (e.g. interface=) are not yet preserved.`,
+    );
+  }
+
   const { ruleSets, proxyGroups, warnings: ruleWarnings } = parseRuleAndGroupSections(text);
   warnings.push(...ruleWarnings);
 
@@ -155,18 +162,25 @@ function parseRuleAndGroupSections(text: string): {
 
   const rulesBody = extractSection(text, "Rule");
   if (rulesBody) {
-    let counter = 0;
+    let ruleSetCounter = 0;
+    let domainSetCounter = 0;
     for (const raw of rulesBody.split(/\r?\n/)) {
       const line = stripComment(raw).trim();
       if (!line) continue;
-      const ruleMatch = line.match(/^RULE-SET\s*,\s*([^,]+)\s*,\s*([A-Za-z0-9-_+]+)/i);
-      if (!ruleMatch) continue;
-      const url = ruleMatch[1].trim();
-      const policy = ruleMatch[2].trim();
+      // Surge 文档: RULE-SET (含子规则集) 与 DOMAIN-SET (纯域名表) 共用前缀,语义不同。
+      // mihomo 端 DomainTrie 同时支持 `.example.com` 与 `+.example.com` 前缀,
+      // 所以 Surge DOMAIN-SET 文件可直接通过 mihomo `behavior: domain` + `format: text` 消费。
+      const setMatch = line.match(/^(RULE-SET|DOMAIN-SET)\s*,\s*([^,]+)\s*,\s*([A-Za-z0-9-_+]+)/i);
+      if (!setMatch) continue;
+      const setKind = setMatch[1].toUpperCase() as "RULE-SET" | "DOMAIN-SET";
+      const url = setMatch[2].trim();
+      const policy = setMatch[3].trim();
       if (!url.startsWith("http")) continue; // skip SYSTEM/LAN internal sets
-      counter++;
-      const id = `imported-rule-${counter}`;
-      const flagsPart = line.slice(ruleMatch[0].length).split(",").map((s) => s.trim());
+      const id =
+        setKind === "DOMAIN-SET"
+          ? `imported-domainset-${++domainSetCounter}`
+          : `imported-rule-${++ruleSetCounter}`;
+      const flagsPart = line.slice(setMatch[0].length).split(",").map((s) => s.trim());
       const flags: RuleSet["surge_flags"] = {};
       let rejectType: "REJECT" | "REJECT-DROP" | "REJECT-NO-DROP" | "REJECT-TINYGIF" | undefined;
       if (/^REJECT-?(DROP|NO-DROP|TINYGIF)?$/.test(policy)) {
@@ -193,15 +207,17 @@ function parseRuleAndGroupSections(text: string): {
         name: deriveRuleName(url),
         type: "remote_url",
         url,
-        behavior: "classical",
-        format: "yaml",
+        // RULE-SET 文件可含混合规则,mihomo 端只能用 behavior=classical;
+        // DOMAIN-SET 文件每行一个域名,mihomo 端用 behavior=domain。
+        behavior: setKind === "DOMAIN-SET" ? "domain" : "classical",
+        format: detectRulesetFormatFromUrl(url),
         policy: rejectType ? "REJECT" : policy,
         surge_flags: Object.keys(flags).length > 0 ? flags : undefined,
         surge_reject_options: rejectType
           ? { type: rejectType, notification_text: notificationText, notification_interval: notificationInterval }
           : undefined,
         clash_format: "rule_provider",
-        surge_format: "rule_set",
+        surge_format: setKind === "DOMAIN-SET" ? "domain_set" : "rule_set",
         update_interval: 86400,
       });
     }
@@ -245,6 +261,22 @@ function parseRuleAndGroupSections(text: string): {
   }
 
   return { ruleSets, proxyGroups, warnings };
+}
+
+function countDirectPseudoNodes(text: string): number {
+  const body = extractSection(text, "Proxy");
+  if (!body) return 0;
+  let count = 0;
+  for (const raw of body.split(/\r?\n/)) {
+    const line = stripComment(raw).trim();
+    if (!line) continue;
+    const eqIdx = line.indexOf("=");
+    if (eqIdx < 0) continue;
+    const rhs = line.slice(eqIdx + 1).trim();
+    const firstToken = rhs.split(",")[0]?.trim().toLowerCase();
+    if (firstToken === "direct") count++;
+  }
+  return count;
 }
 
 function extractInlineModules(text: string): SurgeModule[] {
@@ -291,6 +323,19 @@ function deriveRuleName(url: string): string {
     return last.replace(/\.[^.]+$/, "");
   } catch {
     return "rule";
+  }
+}
+
+// 按 URL 后缀推断 mihomo `format` 字段。绝大多数 Surge 风格 list (.list/.conf)
+// 实际是 plain text,只有原生 mihomo 资源才用 .yaml/.yml/.mrs。
+function detectRulesetFormatFromUrl(url: string): "yaml" | "text" | "mrs" {
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    if (path.endsWith(".yaml") || path.endsWith(".yml")) return "yaml";
+    if (path.endsWith(".mrs")) return "mrs";
+    return "text";
+  } catch {
+    return "text";
   }
 }
 

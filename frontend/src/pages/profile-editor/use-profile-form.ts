@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEntity, useSaveEntity } from "@/api/entities";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
@@ -47,7 +47,8 @@ export function useProfileForm(id: string) {
       await save.mutateAsync(target);
       toast({ title: "已保存", variant: "success" });
       setDirty(false);
-      queryClient.invalidateQueries({ queryKey: ["preview", id] });
+      // preview 现在以 draft 为输入,保存后无需 invalidate(draft 本就在内存中);
+      // node-pool-preview 仍依赖磁盘 provider 状态,保留 invalidate
       queryClient.invalidateQueries({ queryKey: ["node-pool-preview", id] });
     } catch (err) {
       toast({ title: "保存失败", description: String(err), variant: "error" });
@@ -107,11 +108,32 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
   });
 }
 
-export function useGeneratedPreview(id: string, target: "clash" | "surge", enabled: boolean) {
+export function useGeneratedPreview(
+  id: string,
+  target: "clash" | "surge",
+  draft: Profile | null,
+  enabled: boolean,
+) {
+  const debouncedDraft = useDebounced(draft, 500);
   return useQuery<{ target: string; text: string; warnings: string[]; node_count: number }>({
-    queryKey: ["preview", id, target],
-    queryFn: () => api.get(`/api/profiles/${id}/preview?target=${target}`),
-    enabled,
+    // queryKey 直接用 debouncedDraft 对象,react-query 内部 hashFn 自己做 stable hash,
+    // 不必每次 render 都 JSON.stringify 一遍。
+    queryKey: ["preview", id, target, debouncedDraft],
+    queryFn: ({ signal }) =>
+      api.post(
+        `/api/profiles/${id}/preview`,
+        { profile: debouncedDraft, target },
+        // 上一次请求未完成时,react-query 在 key 变化时自动 abort,省一次往返。
+        { signal },
+      ),
+    enabled: enabled && !!debouncedDraft,
+    // 关键反闪烁:queryKey 变化时保留上一次的 data,YamlEditor 不会卸载,
+    // 头部 RefreshCw 仍会通过 isFetching 提示后台正在刷新。
+    placeholderData: keepPreviousData,
+    // 同 draft 30 秒内不重发(切 tab 来回、collapse 展开等场景免去冗余请求)。
+    staleTime: 30_000,
+    // 个人自用,不需要 windowFocus 自动刷新。
+    refetchOnWindowFocus: false,
   });
 }
 

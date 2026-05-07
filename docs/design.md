@@ -70,8 +70,9 @@ generator 入口会做两层校验:
 
 每个 Provider 拉取时缓存原始 `Subscription-UserInfo` header。Profile 输出时:
 
+- **总开关 `userinfo.enabled`**: **默认关闭**;关闭时 `/sub` 完全跳过聚合分支,不读 cache 也不写任何相关响应头
 - **标准 header `Subscription-UserInfo`**: 按 `userinfo.mode` 聚合(`primary` / `sum`)
-- **自定义 header `X-MConvert-Userinfo-{provider_id}`**: 每机场一条,完整原文
+- **自定义 header `X-MConvert-Userinfo-{provider_id}`**: 每机场一条,完整原文(`expose_per_provider_headers` 控制)
 - **Web UI 仪表板**: 卡片网格,单机场流量进度条 + 到期倒计时 + 阈值告警
 
 ## 8. URL + 鉴权

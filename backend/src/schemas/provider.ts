@@ -9,6 +9,9 @@ export const parserHintSchema = z.enum([
   "ss_links",
   "trojan_links",
   "hysteria2_links",
+  // mixed: 逐行 try-each-parser(URI / Surge 行),允许同一文本内混贴。
+  // 参考 Sub-Store backend line dispatcher 风格,适合"local node list"/单节点拼盘。
+  "mixed",
 ]);
 
 // Clash Mihomo 的 proxy-provider 配置(可选,Profile 启用 use_proxy_providers 时生效)。
@@ -30,7 +33,7 @@ export const providerSchema = z
     path: z.string().optional(),
     content: z.string().optional(),
     user_agent: z.string().default("Surge/2400"),
-    refresh: refreshSchema.default({ interval_minutes: 60, on_demand: true }),
+    refresh: refreshSchema.default({ interval: "12h" }),
     parser_hint: parserHintSchema.default("auto"),
     enabled: z.boolean().default(true),
     tags: tagsSchema,

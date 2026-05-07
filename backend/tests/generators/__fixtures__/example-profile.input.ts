@@ -20,7 +20,7 @@ export const profile: Profile = {
   ],
   surge_modules: [],
   general_preset: "home",
-  userinfo: { mode: "sum", expose_per_provider_headers: true },
+  userinfo: { enabled: false, mode: "sum", expose_per_provider_headers: true },
   managed_config_url: "auto",
   managed_config_interval: 86400,
   managed_config_strict: false,

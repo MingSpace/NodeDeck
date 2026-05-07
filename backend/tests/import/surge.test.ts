@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { importSurgeConf } from "../../src/import/surge.js";
+import { manualNodesSchema } from "../../src/schemas/node.js";
 
 const SAMPLE_SURGE = `
 [General]
@@ -133,5 +134,71 @@ RULE-SET, https://example.com/test.conf, Proxys
     const r = importSurgeConf(text);
     expect(r.ruleSets).toHaveLength(1);
     expect(r.ruleSets[0].url).toBe("https://example.com/test.conf");
+  });
+
+  // 回归: Surge 配置里常见 `DIRECT = direct` 伪节点会被解析成 port=0,
+  // 让 manualNodesSchema 校验失败,导致 /api/import/commit 整个 500。
+  // 现在直接跳过这种伪节点,并通过 warning 告知用户。
+  it("skips pseudo `direct` proxy lines and emits a warning, manualNodesSchema accepts the rest", () => {
+    const text = `
+[Proxy]
+DIRECT = direct
+DIRECT-en0 = direct, interface=en0
+🇭🇰 HK = trojan, hk.example.com, 443, password=secret
+`;
+    const r = importSurgeConf(text);
+    expect(r.manualNodes).toHaveLength(1);
+    expect(r.manualNodes[0].name).toBe("🇭🇰 HK");
+    expect(r.warnings.some((w) => w.includes("direct"))).toBe(true);
+    const parsed = manualNodesSchema.safeParse({ nodes: r.manualNodes });
+    expect(parsed.success).toBe(true);
+  });
+
+  // DOMAIN-SET 与 RULE-SET 共用前缀但语义不同 (Surge manual §4.3.5.1):
+  // - DOMAIN-SET 文件每行一个域名,mihomo 端用 behavior=domain + format=text 消费
+  //   (mihomo DomainTrie 同时支持 `.example.com` 与 `+.example.com` 前缀)
+  // - RULE-SET 文件含混合子规则,mihomo 端用 behavior=classical
+  // 同时根据 URL 后缀推断 mihomo format: .yaml/.yml→yaml, .mrs→mrs, 其余→text。
+  it("recognizes DOMAIN-SET vs RULE-SET and picks behavior/format/surge_format accordingly", () => {
+    const text = `
+[Rule]
+RULE-SET,https://example.com/rules.list,Proxy,extended-matching
+RULE-SET,https://example.com/rules.yaml,DIRECT
+DOMAIN-SET,https://example.com/domains.txt,DIRECT,no-resolve
+DOMAIN-SET,https://example.com/cn.mrs,DIRECT
+RULE-SET,SYSTEM,DIRECT
+`;
+    const r = importSurgeConf(text);
+    expect(r.ruleSets).toHaveLength(4); // SYSTEM 仍被忽略
+
+    const ruleSetText = r.ruleSets.find((rs) => rs.url === "https://example.com/rules.list");
+    expect(ruleSetText).toMatchObject({
+      type: "remote_url",
+      behavior: "classical",
+      format: "text",
+      surge_format: "rule_set",
+      clash_format: "rule_provider",
+      policy: "Proxy",
+    });
+    expect(ruleSetText?.surge_flags?.extended_matching).toBe(true);
+
+    const ruleSetYaml = r.ruleSets.find((rs) => rs.url === "https://example.com/rules.yaml");
+    expect(ruleSetYaml).toMatchObject({ behavior: "classical", format: "yaml", surge_format: "rule_set" });
+
+    const domainSetText = r.ruleSets.find((rs) => rs.url === "https://example.com/domains.txt");
+    expect(domainSetText).toMatchObject({
+      type: "remote_url",
+      behavior: "domain",
+      format: "text",
+      surge_format: "domain_set",
+      clash_format: "rule_provider",
+      policy: "DIRECT",
+    });
+    expect(domainSetText?.surge_flags?.no_resolve).toBe(true);
+    // id 命名按类型分桶,便于后续在 Web UI 区分
+    expect(domainSetText?.id).toMatch(/^imported-domainset-\d+$/);
+
+    const domainSetMrs = r.ruleSets.find((rs) => rs.url === "https://example.com/cn.mrs");
+    expect(domainSetMrs).toMatchObject({ behavior: "domain", format: "mrs", surge_format: "domain_set" });
   });
 });

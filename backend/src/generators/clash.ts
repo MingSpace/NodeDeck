@@ -10,6 +10,7 @@ import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames } from "./node-naming.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
+import { refreshIntervalToSeconds } from "../schemas/common.js";
 
 function downgradeClashPolicy(policy: string): string {
   const mapped = REJECT_TYPE_MAP[policy as keyof typeof REJECT_TYPE_MAP];
@@ -240,7 +241,7 @@ function buildProxyProviderEntry(
   return {
     type: "http",
     url: `${baseUrl.replace(/\/$/, "")}/sub/provider/${provider.id}/clash.yaml?profile=${encodeURIComponent(profileId)}&t=${encodeURIComponent(token)}`,
-    interval: provider.refresh.interval_minutes * 60,
+    interval: refreshIntervalToSeconds(provider.refresh.interval),
     path: `./providers/${provider.id}.yaml`,
     "health-check": {
       enable: true,

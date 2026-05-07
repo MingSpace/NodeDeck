@@ -48,3 +48,12 @@ Thumbs.db
 # data 占位文件白名单
 !data/README.md
 !data/example/
+
+# 后端运行时数据(含密码哈希、订阅缓存等敏感内容)
+backend/data/
+
+# Cursor IDE 工作区
+.cursor/
+
+# Windows / WSL 元数据残留
+*:Zone.Identifier

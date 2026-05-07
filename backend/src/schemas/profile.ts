@@ -63,13 +63,15 @@ export const profileSchema = z.object({
   general_preset: idSchema.optional(),
 
   // userinfo aggregation
+  // enabled=false 时 /sub 完全跳过 aggregateUserInfo,不写 Subscription-UserInfo / X-MConvert-Userinfo-*
   userinfo: z
     .object({
+      enabled: z.boolean().default(false),
       mode: userinfoModeSchema.default("sum"),
       primary_provider: idSchema.optional(),
       expose_per_provider_headers: z.boolean().default(true),
     })
-    .default({ mode: "sum", expose_per_provider_headers: true }),
+    .default({ enabled: false, mode: "sum", expose_per_provider_headers: true }),
 
   // surge managed-config
   managed_config_url: z.union([z.literal("auto"), z.literal("none"), z.string().url()]).default("auto"),

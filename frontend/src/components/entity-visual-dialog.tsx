@@ -116,7 +116,7 @@ export function EntityVisualDialog<T extends { id: string }>({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={`${maxWidth} max-h-[90vh] flex flex-col gap-4`}>
+      <DialogContent className={`${maxWidth} h-[85vh] flex flex-col gap-4`}>
         <DialogHeader>
           <DialogTitle>{title ?? (entity ? `编辑 ${entity.id}` : `新建 ${kind}`)}</DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
@@ -127,7 +127,7 @@ export function EntityVisualDialog<T extends { id: string }>({
             <TabsTrigger value="visual">可视化</TabsTrigger>
             <TabsTrigger value="yaml">YAML 高级</TabsTrigger>
           </TabsList>
-          <TabsContent value="visual" className="flex-1 min-h-0 overflow-auto pr-1">
+          <TabsContent value="visual" className="flex-1 min-h-0 overflow-auto px-1">
             {data && renderForm(data, update, replace)}
           </TabsContent>
           <TabsContent value="yaml" className="flex-1 min-h-0">

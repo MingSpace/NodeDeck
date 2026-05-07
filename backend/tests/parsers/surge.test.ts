@@ -18,9 +18,10 @@ WG = wireguard, wg.example.com, 2408, private-key=PRIV, public-key=PUB, self-ip=
 Auto = url-test, A, B
 `;
     const nodes = parseSurgeConf(conf);
-    expect(nodes).toHaveLength(5);
-    expect(nodes[0]).toMatchObject({ type: "direct", name: "DIRECT" });
-    expect(nodes[1]).toMatchObject({
+    // `DIRECT = direct` 是 Surge 内置策略的伪节点,parser 故意丢弃 (port=0 也无法过 schema)。
+    expect(nodes).toHaveLength(4);
+    expect(nodes.find((n) => n.name === "DIRECT")).toBeUndefined();
+    expect(nodes[0]).toMatchObject({
       type: "trojan",
       name: "🇭🇰 HK-Trojan",
       server: "gzdata1.233netbest.com",
@@ -32,12 +33,12 @@ Auto = url-test, A, B
       udp: true,
       tls: true,
     });
-    expect(nodes[2]).toMatchObject({
+    expect(nodes[1]).toMatchObject({
       type: "ss",
       cipher: "2022-blake3-aes-128-gcm",
       password: "aLBxsnzSc2Gb8Q72O0HHhw==",
     });
-    expect(nodes[3]).toMatchObject({
+    expect(nodes[2]).toMatchObject({
       type: "hysteria2",
       down: "200",
       obfs: "salamander",
@@ -45,7 +46,7 @@ Auto = url-test, A, B
       port_hopping: "443-8443",
       hop_interval: 30,
     });
-    expect(nodes[4]).toMatchObject({
+    expect(nodes[3]).toMatchObject({
       type: "wireguard",
       private_key: "PRIV",
       public_key: "PUB",
@@ -75,7 +76,79 @@ Auto = url-test, A, B
     });
   });
 
-  it("returns empty for missing [Proxy] section", () => {
-    expect(parseSurgeConf("[General]\nfoo=bar")).toEqual([]);
+  it("returns empty for [General]-only conf with no proxy lines anywhere", () => {
+    // 真正"无代理"的配置,fallback 也找不到合法 proxy 行,应该返回 []。
+    expect(parseSurgeConf("[General]\nloglevel = notify\ndns-server = 1.1.1.1")).toEqual([]);
+  });
+
+  it("returns empty for plain text that contains no key=value at all", () => {
+    expect(parseSurgeConf("just some random text\nno equals here")).toEqual([]);
+  });
+});
+
+describe("parseSurgeConf - bare proxy lines (no [Proxy] header)", () => {
+  // 参考 subconverter explodeSurge:`ini.set_isolated_items_section("Proxy")` 让游离行
+  // 自动归入 Proxy 段。本项目用更朴素的实现:无 [Proxy] header 时直接逐行尝试。
+  it("parses single bare trojan line (real user input)", () => {
+    const text =
+      "🇨🇳 Taiwan 04 = trojan, 8dc9ef6261.8c5ecp7fb.sbs, 21409, password=c228a47e-91d1-4a94-8985-4d0ed2b88be0, sni=v-thumb.byteimg.com, skip-cert-verify=true, tfo=true, udp-relay=true";
+    const nodes = parseSurgeConf(text);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).toMatchObject({
+      type: "trojan",
+      name: "🇨🇳 Taiwan 04",
+      server: "8dc9ef6261.8c5ecp7fb.sbs",
+      port: 21409,
+      password: "c228a47e-91d1-4a94-8985-4d0ed2b88be0",
+      sni: "v-thumb.byteimg.com",
+      skip_cert_verify: true,
+      tfo: true,
+      udp: true,
+      tls: true,
+    });
+  });
+
+  it("parses multiple bare proxy lines mixed with comments and blank lines", () => {
+    const text = `
+# leading comment
+🇭🇰 HK = trojan, hk.example.com, 443, password=p1, sni=hk.example.com
+
+; another comment style
+JP = ss, jp.example.com, 8388, encrypt-method=aes-128-gcm, password=p2
+// double-slash comment
+TW = vmess, tw.example.com, 443, username=abc-def, ws=true, ws-path=/path
+`;
+    const nodes = parseSurgeConf(text);
+    expect(nodes).toHaveLength(3);
+    expect(nodes.map((n) => n.type)).toEqual(["trojan", "ss", "vmess"]);
+  });
+
+  it("ignores lines that are not valid surge proxy syntax", () => {
+    const text = `
+🇨🇳 Taiwan 04 = trojan, t.example.com, 443, password=pw
+# 下面的不是 surge 代理行,应被静默忽略
+something_random
+foo: bar
+key=just_a_value
+`;
+    const nodes = parseSurgeConf(text);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].type).toBe("trojan");
+  });
+
+  it("[Proxy] section still takes priority when present (mixed scenario)", () => {
+    // 有 [Proxy] 段时,只解析段内,不再 fallback 到游离行。
+    const text = `
+HEADER = trojan, head.example.com, 443, password=pw1
+
+[Proxy]
+INSIDE = trojan, inside.example.com, 443, password=pw2
+
+[Proxy Group]
+foo = select, INSIDE
+`;
+    const nodes = parseSurgeConf(text);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].name).toBe("INSIDE");
   });
 });

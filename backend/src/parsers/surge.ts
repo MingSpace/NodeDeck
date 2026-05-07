@@ -1,17 +1,25 @@
 import type { Node } from "../schemas/node.js";
 
 /**
- * Parse a Surge .conf [Proxy] section into Node[]. Accepts either:
- * - full conf text (we'll find [Proxy] and [Proxy Group] etc.)
+ * Parse a Surge .conf [Proxy] section into Node[]. Accepts:
+ * - full conf text (we'll find [Proxy] and skip [Proxy Group] etc.)
  * - just the [Proxy] body
+ * - 裸代理行(没有 [Proxy] header,逐行作为 surge proxy line 试解析)
+ *
+ * "裸代理行" 行为参考 subconverter explodeSurge 中的 `set_isolated_items_section("Proxy")`
+ * ——上游 2019 年就把 `if(!strFind(surge, "[Proxy]")) return false;` 注释掉了,
+ * 因为"local node list"和"测试单节点"等场景里,用户经常只粘贴一行 surge 风格代理。
  */
 export function parseSurgeConf(text: string): Node[] {
   const proxySection = extractSection(text, "Proxy");
-  if (!proxySection) return [];
+  const body = proxySection ?? text;
+  const fallback = proxySection === null;
   const nodes: Node[] = [];
-  for (const rawLine of proxySection.split(/\r?\n/)) {
+  for (const rawLine of body.split(/\r?\n/)) {
     const line = stripComment(rawLine).trim();
     if (!line) continue;
+    // fallback 模式整文本逐行扫,要跳过其他 section 标头(如 [General] [Proxy Group])。
+    if (fallback && /^\[.+\]\s*$/.test(line)) continue;
     const node = parseSurgeProxyLine(line);
     if (node) nodes.push(node);
   }
@@ -65,8 +73,11 @@ export function parseSurgeProxyLine(line: string): Node | null {
   const tokens = splitArgs(rhs);
   if (tokens.length === 0) return null;
   const type = tokens[0].trim().toLowerCase();
+  // `direct` is Surge 伪节点 (e.g. `DIRECT = direct` 或 `DIRECT-en0 = direct, interface=en0`)。
+  // DIRECT 是 Surge/Clash 的内置策略,本项目两端 generator 也都跳过 direct 节点不输出。
+  // 而 nodeSchema 要求 port >= 1,所以这里直接 return null,让 importer 在调用层加 warning。
   if (type === "direct") {
-    return { name, type: "direct", server: "127.0.0.1", port: 0, tags: [] };
+    return null;
   }
   if (tokens.length < 3) return null;
   const server = tokens[1].trim();

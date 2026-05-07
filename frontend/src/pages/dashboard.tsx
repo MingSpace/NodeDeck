@@ -1,9 +1,24 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { RefreshCw, AlertCircle, CheckCircle2, Clock, Calendar, Database, Layers } from "lucide-react";
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import {
+  Cloud,
+  AlertCircle,
+  Clock,
+  Calendar,
+  Plus,
+  Edit,
+  Trash2,
+  Copy,
+  Ban,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { RefreshedAt } from "@/components/refreshed-at";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { useEntityList, useDeleteEntity, useSaveEntity } from "@/api/entities";
 import { toast } from "@/components/ui/toast";
 
 interface AirportItem {
@@ -20,100 +35,177 @@ interface AirportItem {
   raw_userinfo_header?: string;
 }
 
-interface DashboardSummary {
-  providers: number;
-  profiles: number;
+interface Profile {
+  id: string;
+  name: string;
+  description?: string;
+  token: string;
+  providers: string[];
+  proxy_groups: string[];
+  rule_modules: unknown[];
+  chain_rules: unknown[];
+  surge_modules: string[];
 }
 
 export function DashboardPage() {
-  const queryClient = useQueryClient();
-  const summary = useQuery<DashboardSummary>({
-    queryKey: ["dashboard", "summary"],
-    queryFn: () => api.get("/api/dashboard/summary"),
-  });
+  const profileList = useEntityList<Profile>("profiles");
+  const delProfile = useDeleteEntity("profiles");
+  const saveProfile = useSaveEntity<Profile>("profiles");
+  const [creating, setCreating] = useState(false);
+
   const airports = useQuery<{ items: AirportItem[] }>({
     queryKey: ["dashboard", "airports"],
     queryFn: () => api.get("/api/dashboard/airports"),
     refetchInterval: 60_000,
   });
-  const refreshOne = useMutation({
-    mutationFn: (id: string) => api.post(`/api/providers/${id}/refresh`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-  });
-  const refreshAll = useMutation({
-    mutationFn: () => api.post("/api/providers/refresh-all"),
-    onSuccess: () => {
-      toast({ title: "已触发刷新", variant: "success" });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
+
+  const onCreateProfile = async () => {
+    setCreating(true);
+    try {
+      const id = `profile-${Date.now().toString(36)}`;
+      const newProfile: Profile = {
+        id,
+        name: "新 Profile",
+        token: randomToken(12),
+        providers: [],
+        proxy_groups: [],
+        rule_modules: [],
+        chain_rules: [],
+        surge_modules: [],
+      };
+      const extras = {
+        include_manual_nodes: true,
+        node_filter: { rename_rules: [], exclude_types: [] },
+        userinfo: { mode: "sum", expose_per_provider_headers: true },
+        managed_config_url: "auto",
+        managed_config_interval: 86400,
+        managed_config_strict: false,
+        clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
+      };
+      await saveProfile.mutateAsync({ ...newProfile, ...(extras as Record<string, unknown>) } as Profile);
+      toast({ title: "已创建", variant: "success" });
+    } finally {
+      setCreating(false);
+    }
+  };
 
   return (
-    <div className="p-8 max-w-7xl">
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">仪表板</h1>
-          <p className="text-muted-foreground mt-1">机场状态与流量信息</p>
-        </div>
-        <Button variant="outline" onClick={() => refreshAll.mutate()} disabled={refreshAll.isPending}>
-          <RefreshCw className={refreshAll.isPending ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-          全部刷新
-        </Button>
+    <div className="p-8 max-w-6xl">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">仪表板</h1>
+        <p className="text-muted-foreground mt-1">订阅与机场状态</p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <StatCard icon={<Database className="h-5 w-5" />} label="Providers" value={summary.data?.providers ?? "-"} />
-        <StatCard icon={<Layers className="h-5 w-5" />} label="Profiles" value={summary.data?.profiles ?? "-"} />
-        <StatCard
-          icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
-          label="健康机场"
-          value={airports.data?.items.filter((a) => a.status === "ok").length ?? "-"}
-        />
-        <StatCard
-          icon={<AlertCircle className="h-5 w-5 text-destructive" />}
-          label="异常机场"
-          value={airports.data?.items.filter((a) => a.status === "error" || a.status === "stale").length ?? "-"}
-        />
-      </div>
-
-      <h2 className="text-sm font-medium text-muted-foreground mb-2">机场列表</h2>
-      {airports.data && airports.data.items.length === 0 && (
-        <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-          暂无机场,前往「节点源」页面添加
+      <section className="mb-10">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-lg font-semibold">我的订阅</h2>
+          <Button onClick={onCreateProfile} disabled={creating}>
+            <Plus className="h-4 w-4" />
+            新建 Profile
+          </Button>
         </div>
-      )}
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
-        {airports.data?.items.map((a) => (
-          <AirportCard key={a.id} airport={a} onRefresh={() => refreshOne.mutate(a.id)} refreshing={refreshOne.isPending && refreshOne.variables === a.id} />
-        ))}
-      </div>
+
+        {profileList.data && profileList.data.items.length === 0 && (
+          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+            暂无 Profile,点击右上角新建
+          </div>
+        )}
+
+        <div className="grid gap-3">
+          {profileList.data?.items.map((p) => (
+            <ProfileCard
+              key={p.id}
+              profile={p}
+              onDelete={async () => {
+                if (!window.confirm(`删除 Profile "${p.name}"?`)) return;
+                await delProfile.mutateAsync(p.id);
+                toast({ title: "已删除", variant: "success" });
+              }}
+            />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-3">
+          <h2 className="text-lg font-semibold">机场状态</h2>
+        </div>
+
+        {airports.data && airports.data.items.length === 0 && (
+          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
+            暂无机场,前往「节点源」页面添加
+          </div>
+        )}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {airports.data?.items.map((a) => (
+            <AirportCard key={a.id} airport={a} />
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
 
-function StatCard({ icon, label, value }: { icon: React.ReactNode; label: string; value: number | string }) {
+function ProfileCard({ profile, onDelete }: { profile: Profile; onDelete: () => void | Promise<void> }) {
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-3">
-        <div className="rounded-md bg-secondary/60 p-2">{icon}</div>
-        <div>
-          <div className="text-xs text-muted-foreground">{label}</div>
-          <div className="text-2xl font-bold">{value}</div>
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-base">{profile.name}</span>
+            <Badge variant="outline" className="text-xs font-mono">
+              {profile.id}
+            </Badge>
+          </div>
+          {profile.description && <p className="text-sm text-muted-foreground mt-1">{profile.description}</p>}
+          <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2">
+            <span>{profile.providers.length} 个 Provider</span>
+            <span>{profile.proxy_groups.length} 个策略组</span>
+            <span>{profile.rule_modules.length} 个规则模块</span>
+            <span>{profile.chain_rules.length} 条链式规则</span>
+            <span>{profile.surge_modules.length} 个 Surge 模块</span>
+          </div>
+          <div className="flex flex-wrap gap-2 mt-3">
+            <SubLinkButton profileId={profile.id} target="clash" />
+            <SubLinkButton profileId={profile.id} target="surge" />
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <Button asChild variant="outline" size="sm">
+            <Link to={`/profiles/${profile.id}`}>
+              <Edit className="h-4 w-4" />
+              编辑
+            </Link>
+          </Button>
+          <Button variant="ghost" size="icon" onClick={() => void onDelete()}>
+            <Trash2 className="h-4 w-4 text-destructive" />
+          </Button>
         </div>
       </div>
     </Card>
   );
 }
 
-function AirportCard({
-  airport,
-  onRefresh,
-  refreshing,
-}: {
-  airport: AirportItem;
-  onRefresh: () => void;
-  refreshing: boolean;
-}) {
+function SubLinkButton({ profileId, target }: { profileId: string; target: "clash" | "surge" }) {
+  const onCopy = async () => {
+    try {
+      const res = await fetch(`/api/profiles/${profileId}/url?target=${target}`, { credentials: "include" });
+      const data = (await res.json()) as { url: string };
+      await navigator.clipboard.writeText(data.url);
+      toast({ title: "URL 已复制", description: data.url, variant: "success" });
+    } catch (err) {
+      toast({ title: "获取 URL 失败", description: String(err), variant: "error" });
+    }
+  };
+  return (
+    <Button size="sm" variant="secondary" onClick={onCopy}>
+      <Copy className="h-3.5 w-3.5" />
+      复制 {target === "clash" ? "Clash" : "Surge"} 订阅 URL
+    </Button>
+  );
+}
+
+function AirportCard({ airport }: { airport: AirportItem }) {
   const ui = airport.userinfo;
   const usedBytes = ui ? ui.upload + ui.download : 0;
   const totalBytes = ui?.total ?? 0;
@@ -145,19 +237,40 @@ function AirportCard({
   })();
 
   return (
-    <Card className={`p-4 ${expireWarn || trafficWarn ? "border-amber-300" : ""}`}>
+    <Card
+      className={cn(
+        "p-4 transition-opacity",
+        expireWarn || trafficWarn ? "border-amber-300" : "",
+        !airport.enabled && "opacity-60 bg-muted/20 hover:opacity-100",
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-medium truncate">{airport.name}</span>
+            <span
+              className={cn(
+                "font-medium truncate",
+                !airport.enabled && "line-through decoration-1",
+              )}
+            >
+              {airport.name}
+            </span>
             {statusBadge}
-            {!airport.enabled && <Badge variant="secondary">已禁用</Badge>}
+            {!airport.enabled && (
+              <Badge variant="disabled" className="flex items-center gap-1">
+                <Ban className="h-3 w-3" /> 已禁用
+              </Badge>
+            )}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">{airport.id} · {airport.node_count} 节点</div>
         </div>
-        <Button size="icon" variant="ghost" onClick={onRefresh} disabled={refreshing}>
-          <RefreshCw className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-        </Button>
+        <div
+          className="text-muted-foreground shrink-0"
+          aria-label="机场"
+          title="机场状态"
+        >
+          <Cloud className="h-5 w-5" />
+        </div>
       </div>
 
       {ui && (
@@ -191,7 +304,7 @@ function AirportCard({
 
       {airport.fetched_at && (
         <div className="mt-3 text-xs text-muted-foreground">
-          上次刷新: {new Date(airport.fetched_at).toLocaleString()}
+          上次刷新 <RefreshedAt ts={airport.fetched_at} />
         </div>
       )}
       {airport.error && (
@@ -211,4 +324,11 @@ function formatBytes(b: number): string {
     i++;
   }
   return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
+}
+
+function randomToken(len: number): string {
+  const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz_-";
+  let out = "";
+  for (let i = 0; i < len; i++) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  return out;
 }

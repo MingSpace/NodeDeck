@@ -8,6 +8,7 @@ import { applyNodeFilter } from "../generators/node-filter.js";
 import { env } from "../env.js";
 import { loadConfig } from "../storage/config-store.js";
 import { loadProviderNodes } from "../providers/load.js";
+import { refreshIntervalToSeconds } from "../schemas/common.js";
 
 export function mountSubRoute(app: Hono): void {
   app.get("/sub", async (c) => handleSub(c));
@@ -60,16 +61,18 @@ async function handleSubInner(
     managedConfigUrl = profile.managed_config_url;
   }
 
-  // userinfo
-  const userinfoResult = await aggregateUserInfo(profile);
-  if (userinfoResult.aggregated) {
-    const headerVal = formatUserInfo(userinfoResult.aggregated);
-    if (headerVal) c.header("Subscription-UserInfo", headerVal);
-  }
-  if (profile.userinfo.expose_per_provider_headers) {
-    for (const item of userinfoResult.perProvider) {
-      if (item.raw_header) {
-        c.header(`X-MConvert-Userinfo-${item.provider_id}`, item.raw_header);
+  // userinfo: 完全可选;关闭时不读 cache 也不写任何相关响应头
+  if (profile.userinfo.enabled) {
+    const userinfoResult = await aggregateUserInfo(profile);
+    if (userinfoResult.aggregated) {
+      const headerVal = formatUserInfo(userinfoResult.aggregated);
+      if (headerVal) c.header("Subscription-UserInfo", headerVal);
+    }
+    if (profile.userinfo.expose_per_provider_headers) {
+      for (const item of userinfoResult.perProvider) {
+        if (item.raw_header) {
+          c.header(`X-MConvert-Userinfo-${item.provider_id}`, item.raw_header);
+        }
       }
     }
   }
@@ -147,7 +150,10 @@ async function handleProviderClashYaml(c: import("hono").Context) {
 
   c.header("Content-Type", "text/yaml; charset=utf-8");
   c.header("Content-Disposition", `attachment; filename="${providerId}.yaml"`);
-  c.header("Profile-Update-Interval", String(Math.max(1, Math.round(provider.refresh.interval_minutes / 60))));
+  c.header(
+    "Profile-Update-Interval",
+    String(Math.max(1, Math.round(refreshIntervalToSeconds(provider.refresh.interval) / 3600))),
+  );
   return c.body(text);
 }
 

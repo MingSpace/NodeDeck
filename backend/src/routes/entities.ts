@@ -9,7 +9,7 @@ import {
   profileRepo,
 } from "../storage/repos.js";
 import { Repo } from "../storage/repo.js";
-import { providerSchema } from "../schemas/provider.js";
+import { providerSchema, type Provider } from "../schemas/provider.js";
 import { rulesetSchema } from "../schemas/ruleset.js";
 import { proxyGroupSchema } from "../schemas/proxy-group.js";
 import { generalPresetSchema } from "../schemas/general-preset.js";
@@ -17,6 +17,8 @@ import { surgeModuleSchema } from "../schemas/surge-module.js";
 import { profileSchema } from "../schemas/profile.js";
 import { readManualNodes, writeManualNodes } from "../storage/manual-nodes.js";
 import { manualNodesSchema } from "../schemas/node.js";
+import { refreshProvider } from "../providers/load.js";
+import { logger } from "../logger.js";
 
 interface EntityKindDef {
   repo: Repo<ZodTypeAny, { id: string } & Record<string, unknown>>;
@@ -49,8 +51,29 @@ entitiesRouter.get("/:kind/:id", async (c) => {
   return c.json(entry.data);
 });
 
+// 保存 provider 时按需异步重拉一次:
+// - 新建任意类型 + enabled=true → 拉一次种子,用户填完几秒内能看到节点
+// - 编辑 inline + enabled=true → 重新解析 content(inline 无"上游"概念,UI 不暴露刷新按钮,
+//   保存即生效;refresh 成本=fs.read+parseSubscription,极低)
+// - 编辑 http/file → 不动 cache,由用户手动点刷新或等 cron(避免每次保存都打机场)
+// - enabled=false(草稿)一律跳过
+// 失败仅记日志;refreshProvider 自身会写 error cache,前端 status 轮询会反映出来。
+function maybeAutoRefreshProvider(kind: string, isNew: boolean, data: unknown): void {
+  if (kind !== "providers") return;
+  const provider = data as Provider;
+  if (!provider.enabled) return;
+  if (!isNew && provider.type !== "inline") return;
+  void refreshProvider(provider, { force: true }).catch((err) => {
+    logger.warn(
+      { err, providerId: provider.id, isNew, type: provider.type },
+      "auto-refresh on provider save failed",
+    );
+  });
+}
+
 entitiesRouter.put("/:kind/:id", async (c) => {
-  const def = KINDS[c.req.param("kind")];
+  const kind = c.req.param("kind");
+  const def = KINDS[kind];
   if (!def) return c.json({ error: "unknown entity kind" }, 404);
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => null);
@@ -59,12 +82,16 @@ entitiesRouter.put("/:kind/:id", async (c) => {
   if (!result.success) {
     return c.json({ error: "validation failed", details: result.error.flatten() }, 400);
   }
+  // PUT 是 upsert,前端"新建/编辑"都走这条路径;先看文件是否存在以区分两种语义。
+  const existed = await def.repo.exists(id);
   const saved = await def.repo.save(result.data);
+  maybeAutoRefreshProvider(kind, !existed, saved.data);
   return c.json(saved.data);
 });
 
 entitiesRouter.post("/:kind", async (c) => {
-  const def = KINDS[c.req.param("kind")];
+  const kind = c.req.param("kind");
+  const def = KINDS[kind];
   if (!def) return c.json({ error: "unknown entity kind" }, 404);
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "invalid json" }, 400);
@@ -73,6 +100,7 @@ entitiesRouter.post("/:kind", async (c) => {
     return c.json({ error: "validation failed", details: result.error.flatten() }, 400);
   }
   const saved = await def.repo.save(result.data);
+  maybeAutoRefreshProvider(kind, true, saved.data);
   return c.json(saved.data, 201);
 });
 

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { useEntityList } from "@/api/entities";
 import type { Profile, ChainRule } from "./types";
 
@@ -84,7 +85,21 @@ export function RightPanel({ draft, onChange }: Props) {
         />
       </Section>
 
-      <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="流量信息 (Subscription-UserInfo)">
+      <Section
+        icon={<SettingsIcon className="h-3.5 w-3.5" />}
+        title="流量信息 (Subscription-UserInfo)"
+        trailing={
+          <Switch
+            checked={draft.userinfo.enabled}
+            onCheckedChange={(v) =>
+              onChange({ userinfo: { ...draft.userinfo, enabled: v } })
+            }
+            aria-label="启用 Subscription-UserInfo"
+          />
+        }
+        collapsed={!draft.userinfo.enabled}
+        collapsedHint="未启用 — 不会输出 Subscription-UserInfo / X-MConvert-Userinfo-* 响应头"
+      >
         <div className="space-y-2">
           <Select
             value={draft.userinfo.mode}
@@ -175,11 +190,17 @@ function Section({
   icon,
   title,
   count,
+  trailing,
+  collapsed,
+  collapsedHint,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   count?: string;
+  trailing?: React.ReactNode;
+  collapsed?: boolean;
+  collapsedHint?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -188,8 +209,15 @@ function Section({
         {icon}
         <span className="flex-1">{title}</span>
         {count && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{count}</Badge>}
+        {trailing}
       </div>
-      <div className="px-4 py-3">{children}</div>
+      {collapsed ? (
+        collapsedHint ? (
+          <div className="px-4 py-2 text-[11px] text-muted-foreground italic">{collapsedHint}</div>
+        ) : null
+      ) : (
+        <div className="px-4 py-3">{children}</div>
+      )}
     </div>
   );
 }

@@ -8,10 +8,10 @@ import { RulesPage } from "@/pages/rules";
 import { GroupsPage } from "@/pages/groups";
 import { ModulesPage } from "@/pages/modules";
 import { GeneralsPage } from "@/pages/generals";
-import { ProfilesPage } from "@/pages/profiles";
 import { ProfileEditorPage } from "@/pages/profile-editor/index";
 import { SettingsPage } from "@/pages/settings";
 import { ImportPage } from "@/pages/import";
+import { LogsPage } from "@/pages/logs";
 import { RequireAuth } from "@/components/require-auth";
 
 export default function App() {
@@ -34,10 +34,10 @@ export default function App() {
         <Route path="groups" element={<GroupsPage />} />
         <Route path="modules" element={<ModulesPage />} />
         <Route path="generals" element={<GeneralsPage />} />
-        <Route path="profiles" element={<ProfilesPage />} />
         <Route path="profiles/:id" element={<ProfileEditorPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="import" element={<ImportPage />} />
+        <Route path="logs" element={<LogsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

@@ -8,7 +8,7 @@ import { env } from "../env.js";
 import { loadConfig } from "../storage/config-store.js";
 import { buildNodePool } from "../providers/pool.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
-import { nodeFilterSchema } from "../schemas/profile.js";
+import { nodeFilterSchema, profileSchema, type Profile } from "../schemas/profile.js";
 
 export const profilePreviewRouter = new Hono();
 
@@ -18,16 +18,99 @@ const nodePoolPreviewSchema = z.object({
   node_filter: nodeFilterSchema.optional(),
 });
 
-profilePreviewRouter.get("/:id/preview", async (c) => {
+const previewBodySchema = z
+  .object({
+    profile: z.unknown().optional(),
+    target: z.enum(["clash", "surge"]).optional(),
+  })
+  .optional();
+
+interface ResolvedDraft {
+  profile: Profile;
+  validationWarnings: string[];
+}
+
+// Best-effort 校验:草稿不合法时,合并磁盘版兜底缺失字段;仍不合法则降级到磁盘版,
+// 把所有 zod issues 转成中文 warnings 让前端预览面板顶部展示。
+async function resolveDraftProfile(
+  id: string,
+  draft: unknown,
+): Promise<{ status: "ok"; result: ResolvedDraft } | { status: "not_found" }> {
+  if (draft === undefined || draft === null) {
+    const entry = await profileRepo.get(id);
+    if (!entry) return { status: "not_found" };
+    return { status: "ok", result: { profile: entry.data, validationWarnings: [] } };
+  }
+
+  const direct = profileSchema.safeParse(draft);
+  if (direct.success) {
+    return { status: "ok", result: { profile: direct.data, validationWarnings: [] } };
+  }
+
+  const saved = await profileRepo.get(id);
+  const draftObj = (typeof draft === "object" && draft !== null ? draft : {}) as Record<string, unknown>;
+  const merged = saved
+    ? { ...(saved.data as Record<string, unknown>), ...draftObj, id }
+    : { ...draftObj, id };
+
+  const lenient = profileSchema.safeParse(merged);
+  if (lenient.success) {
+    return {
+      status: "ok",
+      result: {
+        profile: lenient.data,
+        validationWarnings: formatIssues(direct.error.issues),
+      },
+    };
+  }
+
+  if (saved) {
+    return {
+      status: "ok",
+      result: {
+        profile: saved.data,
+        validationWarnings: [
+          ...formatIssues(direct.error.issues, "(已回退到上次保存的版本)"),
+        ],
+      },
+    };
+  }
+
+  return { status: "not_found" };
+}
+
+function formatIssues(issues: z.ZodIssue[], suffix?: string): string[] {
+  return issues.map((i) => {
+    const path = i.path.length > 0 ? i.path.join(".") : "(root)";
+    const tail = suffix ? ` ${suffix}` : "";
+    return `字段 ${path}: ${i.message}${tail}`;
+  });
+}
+
+profilePreviewRouter.post("/:id/preview", async (c) => {
   const id = c.req.param("id");
-  const target = c.req.query("target") ?? "clash";
+
+  const rawBody = await c.req.json().catch(() => null);
+  const parsedBody = previewBodySchema.safeParse(rawBody ?? undefined);
+  if (!parsedBody.success) {
+    return c.json({ error: "invalid request body", details: parsedBody.error.flatten() }, 400);
+  }
+  const body = parsedBody.data ?? {};
+
+  const target = body.target ?? c.req.query("target") ?? "clash";
   if (target !== "clash" && target !== "surge") {
     return c.json({ error: "target must be clash or surge" }, 400);
   }
-  const entry = await profileRepo.get(id);
-  if (!entry) return c.json({ error: "not found" }, 404);
-  const profile = entry.data;
+
+  const resolution = await resolveDraftProfile(id, body.profile);
+  if (resolution.status === "not_found") {
+    return c.json({ error: "not found" }, 404);
+  }
+  const { profile, validationWarnings } = resolution.result;
+
   const resolved = await resolveProfile(profile);
+  const allWarnings = [...validationWarnings, ...resolved.warnings];
+
   if (target === "clash") {
     const text = generateClashConfig({
       profile,
@@ -37,9 +120,9 @@ profilePreviewRouter.get("/:id/preview", async (c) => {
       finalRule: resolved.finalRule,
       geoipFallback: resolved.geoipFallback,
       general: resolved.general,
-      warnings: resolved.warnings,
+      warnings: allWarnings,
     });
-    return c.json({ target, text, warnings: resolved.warnings, node_count: resolved.nodes.length });
+    return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length });
   }
   const cfg = await loadConfig();
   const baseUrl = cfg.public_base_url ?? env.PUBLIC_BASE_URL ?? new URL(c.req.url).origin;
@@ -59,9 +142,9 @@ profilePreviewRouter.get("/:id/preview", async (c) => {
     general: resolved.general,
     surgeModules: resolved.surgeModules,
     managed_config_url: managedConfigUrl,
-    warnings: resolved.warnings,
+    warnings: allWarnings,
   });
-  return c.json({ target, text, warnings: resolved.warnings, node_count: resolved.nodes.length });
+  return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length });
 });
 
 profilePreviewRouter.get("/:id/url", async (c) => {

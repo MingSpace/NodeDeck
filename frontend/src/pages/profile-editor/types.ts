@@ -36,6 +36,7 @@ export interface Profile {
   surge_modules: string[];
   general_preset?: string;
   userinfo: {
+    enabled: boolean;
     mode: "primary" | "sum";
     primary_provider?: string;
     expose_per_provider_headers: boolean;

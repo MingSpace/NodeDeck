@@ -34,6 +34,9 @@ async function runOnce(): Promise<void> {
   const all = await providerRepo.list();
   for (const entry of all) {
     if (!entry.data.enabled) continue;
+    // on_request 由 /sub 触发,cron 不主动拉,避免无人访问也消耗机场配额。
+    if (entry.data.refresh.interval === "on_request") continue;
+    // never 模式仍允许进入 refreshProvider:无 cache 时拉一次种子,有 ok cache 时内部 short-circuit。
     try {
       await refreshProvider(entry.data, { force: false });
     } catch (err) {
