@@ -19,16 +19,7 @@ providerActionsRouter.get("/:id/nodes", async (c) => {
     provider_id: id,
     count: cache.nodes.length,
     fetched_at: cache.fetched_at,
-    nodes: cache.nodes.map((n) => ({
-      name: n.name,
-      type: n.type,
-      server: n.server,
-      port: n.port,
-      region: n.region,
-      level: n.level,
-      line: n.line,
-      tags: n.tags,
-    })),
+    nodes: cache.nodes,
   });
 });
 

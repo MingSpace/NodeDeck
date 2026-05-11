@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { listProvidersWithCache, buildNodePool } from "../providers/pool.js";
 import { readProviderCache } from "../providers/cache-store.js";
 import { providerRepo, profileRepo } from "../storage/repos.js";
+import type { Node } from "../schemas/node.js";
 
 export const dashboardRouter = new Hono();
 
@@ -36,44 +37,14 @@ dashboardRouter.get("/summary", async (c) => {
   });
 });
 
-interface NodeBriefDTO {
-  name: string;
-  type: string;
-  server: string;
-  port: number;
-  region?: string;
-  level?: string;
-  line?: string;
-  source_provider_id?: string;
-  tags?: string[];
-  udp?: boolean;
-  tfo?: boolean;
-}
-
-function toBrief(n: { name: string; type: string; server: string; port: number; region?: string; level?: string; line?: string; source_provider_id?: string; tags?: string[]; udp?: boolean; tfo?: boolean }): NodeBriefDTO {
-  return {
-    name: n.name,
-    type: n.type,
-    server: n.server,
-    port: n.port,
-    region: n.region,
-    level: n.level,
-    line: n.line,
-    source_provider_id: n.source_provider_id,
-    tags: n.tags,
-    udp: n.udp,
-    tfo: n.tfo,
-  };
-}
-
 dashboardRouter.get("/node-pool", async (c) => {
   const pool = await buildNodePool({ includeManual: true });
-  const byProvider: Record<string, NodeBriefDTO[]> = {};
+  const byProvider: Record<string, Node[]> = {};
   for (const [provId, nodes] of pool.byProvider) {
-    byProvider[provId] = nodes.map(toBrief);
+    byProvider[provId] = nodes;
   }
   return c.json({
-    nodes: pool.nodes.map(toBrief),
+    nodes: pool.nodes,
     count: pool.nodes.length,
     by_provider: byProvider,
   });

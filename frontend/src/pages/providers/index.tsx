@@ -38,6 +38,19 @@ interface ProviderNodesResp {
   nodes: NodeBrief[];
 }
 
+// @business_rule: 列表里的订阅 URL 经常带一长串 query (token / filename / 嵌套 url),
+// 完整展示会撑爆卡片;此处只显示 host + path,query 数量用徽标提示,完整 URL 走 hover title。
+function formatUrlDisplay(raw: string): { text: string; queryCount: number } {
+  try {
+    const u = new URL(raw);
+    const path = u.pathname === "/" ? "" : u.pathname;
+    const queryCount = u.search ? Array.from(u.searchParams.keys()).length : 0;
+    return { text: `${u.host}${path}`, queryCount };
+  } catch {
+    return { text: raw, queryCount: 0 };
+  }
+}
+
 const REFRESH_INTERVAL_LABEL: Record<RefreshInterval, string> = {
   never: "永不刷新",
   "4h": "每 4 小时",
@@ -197,8 +210,27 @@ export function ProvidersPage() {
                     {p.name}
                   </span>
                   {(p.url ?? p.path) && (
-                    <div className="text-xs text-muted-foreground mt-1 truncate">
-                      {p.url ?? p.path}
+                    <div
+                      className="text-xs text-muted-foreground mt-1 truncate"
+                      title={p.url ?? p.path}
+                    >
+                      {p.url ? (
+                        (() => {
+                          const { text, queryCount } = formatUrlDisplay(p.url);
+                          return (
+                            <>
+                              {text}
+                              {queryCount > 0 && (
+                                <span className="ml-1 text-muted-foreground/60">
+                                  · {queryCount} 个参数
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()
+                      ) : (
+                        p.path
+                      )}
                     </div>
                   )}
                   {s?.fetched_at && !isInline && (

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Edit, Plus, Save, Search, Trash2, FileCode } from "lucide-react";
+import { ChevronDown, Edit, Plus, Save, Search, Trash2, FileCode } from "lucide-react";
 import yaml from "js-yaml";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { YamlEditor } from "@/components/yaml-editor";
 import { ManualNodeDialog } from "@/components/manual-node-dialog";
+import { NodeDetail } from "@/components/node-detail";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 
+// @business_rule: 后端 /api/dashboard/node-pool 已透传完整 Node;
+// 这里只列出列表展示用到的核心字段,其它字段(password / uuid / ws_opts 等)用
+// [key: string]: unknown 透传到 NodeDetail YAML 块。
 interface NodeBrief {
   name: string;
   type: string;
@@ -24,6 +28,7 @@ interface NodeBrief {
   tags?: string[];
   udp?: boolean;
   tfo?: boolean;
+  [key: string]: unknown;
 }
 
 interface NodePoolResp {
@@ -276,66 +281,73 @@ function NodeRow({
   const sourceName = providerName(n.source_provider_id);
   const tags = n.tags ?? [];
   const showThirdRow = tags.length > 0 || n.udp || n.tfo;
+  const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="flex items-start gap-3 p-3 hover:bg-muted/30">
-      <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 shrink-0 mt-0.5">
-        {n.type}
-      </Badge>
-      <div className="flex-1 min-w-0 space-y-1">
-        <div className="flex items-center gap-2">
-          <div className="font-medium text-sm truncate flex-1 min-w-0">{n.name}</div>
-          {!hideSource && (
-            manual ? (
-              <Badge
-                variant="default"
-                className="shrink-0 bg-purple-600 hover:bg-purple-600 text-[10px] px-1.5 py-0"
-              >
-                手动添加
-              </Badge>
-            ) : (
-              <Badge
-                variant="secondary"
-                className="shrink-0 text-[10px] px-1.5 py-0 max-w-[180px] truncate"
-                title={n.source_provider_id}
-              >
-                {sourceName}
-              </Badge>
-            )
+    <div className="select-none">
+      <div
+        className="flex items-start gap-3 p-3 cursor-pointer hover:bg-muted/30"
+        onClick={() => setExpanded((v) => !v)}
+      >
+        <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 shrink-0 mt-0.5">
+          {n.type}
+        </Badge>
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center gap-2">
+            <div className="font-medium text-sm truncate flex-1 min-w-0">{n.name}</div>
+            {!hideSource && (
+              manual ? (
+                <Badge
+                  variant="default"
+                  className="shrink-0 bg-purple-600 hover:bg-purple-600 text-[10px] px-1.5 py-0"
+                >
+                  手动添加
+                </Badge>
+              ) : (
+                <Badge
+                  variant="secondary"
+                  className="shrink-0 text-[10px] px-1.5 py-0 max-w-[180px] truncate"
+                  title={n.source_provider_id}
+                >
+                  {sourceName}
+                </Badge>
+              )
+            )}
+          </div>
+          <div className="text-xs text-muted-foreground truncate">
+            {n.server}:{n.port}
+            {n.region && ` · ${n.region}`}
+            {n.level && ` · ${n.level}`}
+            {n.line && ` · ${n.line}`}
+          </div>
+          {showThirdRow && (
+            <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+              {n.udp && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                  udp
+                </Badge>
+              )}
+              {n.tfo && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                  tfo
+                </Badge>
+              )}
+              {tags.map((t) => (
+                <Badge
+                  key={t}
+                  variant="outline"
+                  className="text-[10px] px-1.5 py-0 font-normal text-muted-foreground"
+                >
+                  #{t}
+                </Badge>
+              ))}
+            </div>
           )}
         </div>
-        <div className="text-xs text-muted-foreground truncate">
-          {n.server}:{n.port}
-          {n.region && ` · ${n.region}`}
-          {n.level && ` · ${n.level}`}
-          {n.line && ` · ${n.line}`}
-        </div>
-        {showThirdRow && (
-          <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-            {n.udp && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                udp
-              </Badge>
-            )}
-            {n.tfo && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
-                tfo
-              </Badge>
-            )}
-            {tags.map((t) => (
-              <Badge
-                key={t}
-                variant="outline"
-                className="text-[10px] px-1.5 py-0 font-normal text-muted-foreground"
-              >
-                #{t}
-              </Badge>
-            ))}
-          </div>
-        )}
-      </div>
-      {(onEdit || onDelete) && (
-        <div className="flex items-center gap-1 shrink-0">
+        <div
+          className="flex items-center gap-1 shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        >
           {onEdit && (
             <Button
               size="icon"
@@ -358,6 +370,19 @@ function NodeRow({
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           )}
+          <ChevronDown
+            className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${
+              expanded ? "rotate-180" : ""
+            }`}
+          />
+        </div>
+      </div>
+      {expanded && (
+        <div
+          className="border-t bg-muted/20 p-3"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <NodeDetail node={n} />
         </div>
       )}
     </div>
