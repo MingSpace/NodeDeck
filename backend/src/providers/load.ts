@@ -4,6 +4,7 @@ import { fetchProviderContent } from "./fetcher.js";
 import { readProviderCache, writeProviderCache, type ProviderCache } from "./cache-store.js";
 import { parseSubscription } from "../parsers/index.js";
 import { annotateNodes } from "../parsers/normalize.js";
+import { filterInfoNodes } from "../parsers/info-node-filter.js";
 import { parseUserInfoHeader } from "../schemas/userinfo.js";
 import { providerRepo } from "../storage/repos.js";
 import { REFRESH_INTERVAL_MINUTES } from "../schemas/common.js";
@@ -92,12 +93,14 @@ export async function loadProviderNodes(provider: Provider): Promise<Node[]> {
   // on_request: /sub 请求路径每次都同步去机场拉一次(失败回退 stale cache 由 refreshProvider 处理)。
   if (provider.refresh.interval === "on_request") {
     const refreshed = await refreshProvider(provider);
-    return refreshed.nodes;
+    return filterInfoNodes(refreshed.nodes);
   }
   const cache = await readProviderCache(provider.id);
-  if (cache?.nodes && cache.nodes.length > 0) return cache.nodes;
+  // 保底:旧 cache 可能是过滤规则上线前写入的,里面还残留 Traffic/Expire 信息节点。
+  // 这里再过滤一次,保证下游消费(策略组、profile、订阅生成)永远拿到干净集合。
+  if (cache?.nodes && cache.nodes.length > 0) return filterInfoNodes(cache.nodes);
   const refreshed = await refreshProvider(provider);
-  return refreshed.nodes;
+  return filterInfoNodes(refreshed.nodes);
 }
 
 export interface RefreshAllResult {

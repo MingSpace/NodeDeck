@@ -5,6 +5,7 @@ import type { RuleSet } from "../schemas/ruleset.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
 import type { SurgeModule } from "../schemas/surge-module.js";
+import { generateImportedId } from "./id.js";
 
 export interface SurgeImportResult {
   general?: GeneralPreset;
@@ -15,10 +16,10 @@ export interface SurgeImportResult {
   warnings: string[];
 }
 
-export function importSurgeConf(text: string): SurgeImportResult {
+export function importSurgeConf(text: string, fileName?: string): SurgeImportResult {
   const warnings: string[] = [];
 
-  const general = parseGeneralSection(text);
+  const general = parseGeneralSection(text, fileName);
   const hostMap = parseHostSection(text);
   if (general && Object.keys(hostMap).length > 0) {
     general.hosts = { ...general.hosts, ...hostMap };
@@ -69,7 +70,7 @@ function extractSection(text: string, name: string): string | null {
   return collected.length > 0 ? collected.join("\n") : null;
 }
 
-function parseGeneralSection(text: string): GeneralPreset | undefined {
+function parseGeneralSection(text: string, fileName?: string): GeneralPreset | undefined {
   const body = extractSection(text, "General");
   if (!body) return undefined;
   const kv: Record<string, string> = {};
@@ -81,9 +82,10 @@ function parseGeneralSection(text: string): GeneralPreset | undefined {
     const v = line.slice(idx + 1).trim();
     kv[k] = v;
   }
+  const trimmedFile = fileName?.trim();
   return {
-    id: "imported",
-    name: "Imported from Surge",
+    id: generateImportedId(trimmedFile && trimmedFile.length > 0 ? trimmedFile : "surge"),
+    name: `Imported from ${trimmedFile && trimmedFile.length > 0 ? trimmedFile : "Surge"}`,
     mode: "rule",
     log_level: (kv.loglevel as GeneralPreset["log_level"]) ?? "notify",
     ipv6: kv.ipv6 === "true",
@@ -162,8 +164,6 @@ function parseRuleAndGroupSections(text: string): {
 
   const rulesBody = extractSection(text, "Rule");
   if (rulesBody) {
-    let ruleSetCounter = 0;
-    let domainSetCounter = 0;
     for (const raw of rulesBody.split(/\r?\n/)) {
       const line = stripComment(raw).trim();
       if (!line) continue;
@@ -176,10 +176,13 @@ function parseRuleAndGroupSections(text: string): {
       const url = setMatch[2].trim();
       const policy = setMatch[3].trim();
       if (!url.startsWith("http")) continue; // skip SYSTEM/LAN internal sets
-      const id =
-        setKind === "DOMAIN-SET"
-          ? `imported-domainset-${++domainSetCounter}`
-          : `imported-rule-${++ruleSetCounter}`;
+      // id 中保留 "rule" / "domainset" 前缀语义,文件名形如
+      // imported-rule-cn-abc123.yaml / imported-domainset-cn-abc123.yaml,
+      // 与旧版 imported-rule-N / imported-domainset-N 保持视觉相似但不再依赖计数器。
+      const ruleSlug = deriveRuleName(url);
+      const id = generateImportedId(
+        setKind === "DOMAIN-SET" ? `domainset-${ruleSlug}` : `rule-${ruleSlug}`,
+      );
       const flagsPart = line.slice(setMatch[0].length).split(",").map((s) => s.trim());
       const flags: RuleSet["surge_flags"] = {};
       let rejectType: "REJECT" | "REJECT-DROP" | "REJECT-NO-DROP" | "REJECT-TINYGIF" | undefined;
@@ -246,7 +249,7 @@ function parseRuleAndGroupSections(text: string): {
         }
       }
       proxyGroups.push({
-        id: `imported-${slugify(name)}`,
+        id: generateImportedId(name),
         name,
         type: ["select", "url-test", "fallback", "load-balance", "smart", "ssid", "external"].includes(type as string)
           ? (type as ProxyGroup["type"])
@@ -288,7 +291,7 @@ function extractInlineModules(text: string): SurgeModule[] {
   if (Object.keys(sections).length === 0) return [];
   return [
     {
-      id: "imported-module",
+      id: generateImportedId("module"),
       name: "Imported Module",
       description: "Module sections imported from Surge .conf",
       enabled_by_default: true,
@@ -337,8 +340,4 @@ function detectRulesetFormatFromUrl(url: string): "yaml" | "text" | "mrs" {
   } catch {
     return "text";
   }
-}
-
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "group";
 }

@@ -25,10 +25,10 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "仪表板", icon: LayoutDashboard },
   { to: "/providers", label: "节点源", icon: Cloud },
   { to: "/nodes", label: "节点池", icon: Network },
+  { to: "/generals", label: "通用预设", icon: SettingsIcon },
   { to: "/rules", label: "规则模块", icon: Filter },
   { to: "/groups", label: "策略组", icon: Layers },
   { to: "/modules", label: "Surge 模块", icon: Puzzle },
-  { to: "/generals", label: "通用预设", icon: SettingsIcon },
   { to: "/import", label: "导入", icon: Upload },
   { to: "/logs", label: "日志", icon: ScrollText },
 ];

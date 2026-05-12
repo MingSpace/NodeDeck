@@ -50,3 +50,37 @@ export function useDeleteEntity(kind: EntityKind) {
     },
   });
 }
+
+export interface BulkDeleteResult {
+  succeeded: string[];
+  failed: { id: string; error: string }[];
+}
+
+// 批量删除:后端没有提供批量接口,前端用 Promise.allSettled 并发调用单个 DELETE,
+// 把成功 / 失败拆开返回,UI 可据此提示部分失败的具体 id。
+export function useDeleteEntitiesBulk(kind: EntityKind) {
+  const qc = useQueryClient();
+  return useMutation<BulkDeleteResult, Error, string[]>({
+    mutationFn: async (ids) => {
+      const results = await Promise.allSettled(
+        ids.map((id) => api.delete(`/api/entities/${kind}/${id}`).then(() => id)),
+      );
+      const succeeded: string[] = [];
+      const failed: { id: string; error: string }[] = [];
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          succeeded.push(ids[i]);
+        } else {
+          failed.push({ id: ids[i], error: String(r.reason?.message ?? r.reason ?? "unknown") });
+        }
+      });
+      return { succeeded, failed };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["entities", kind] });
+      if (kind === "providers") {
+        qc.invalidateQueries({ queryKey: ["providers"] });
+      }
+    },
+  });
+}

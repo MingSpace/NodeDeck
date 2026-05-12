@@ -47,6 +47,10 @@ export function EntityVisualDialog<T extends { id: string }>({
   const [mode, setMode] = useState<Mode>("visual");
   const [error, setError] = useState<string | null>(null);
   const save = useSaveEntity<T>(kind);
+  // 编辑现有条目时记录原始 id;保存前若发现 id 被改过则拒绝。
+  // 这样避免后端按新 id 写文件、留下旧文件,造成 Profile 引用悬空。
+  const isEdit = !!entity;
+  const originalId = entity?.id ?? null;
 
   useEffect(() => {
     if (!open) return;
@@ -103,6 +107,14 @@ export function EntityVisualDialog<T extends { id: string }>({
     }
     if (!target || typeof target !== "object" || !("id" in target) || !target.id) {
       setError("缺少 id 字段");
+      return;
+    }
+    if (isEdit && originalId && target.id !== originalId) {
+      setError(
+        `id 不可修改(原 id:${originalId},现 id:${target.id})。\n` +
+          "id 是文件主键,可能被 Profile 等其它实体按 id 引用,直接改会导致引用悬空。\n" +
+          "如需重命名,请改 name 字段(不影响引用);如需基于此条目创建新副本,请先关闭对话框,在列表行使用「复制为新条目」按钮。",
+      );
       return;
     }
     try {

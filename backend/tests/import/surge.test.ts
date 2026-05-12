@@ -195,8 +195,8 @@ RULE-SET,SYSTEM,DIRECT
       policy: "DIRECT",
     });
     expect(domainSetText?.surge_flags?.no_resolve).toBe(true);
-    // id 命名按类型分桶,便于后续在 Web UI 区分
-    expect(domainSetText?.id).toMatch(/^imported-domainset-\d+$/);
+    // id 命名按类型分桶 + 带 url 推断的 slug + 6 位 nanoid 后缀,便于后续在 Web UI / 文件夹区分
+    expect(domainSetText?.id).toMatch(/^imported-domainset-domains-[0-9a-z]{6}$/);
 
     const domainSetMrs = r.ruleSets.find((rs) => rs.url === "https://example.com/cn.mrs");
     expect(domainSetMrs).toMatchObject({ behavior: "domain", format: "mrs", surge_format: "domain_set" });

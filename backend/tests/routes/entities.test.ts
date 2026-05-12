@@ -262,6 +262,59 @@ describe("PUT /api/entities/:kind/:id", () => {
     expect(mockedRefresh).not.toHaveBeenCalled();
   });
 
+  it("body.id !== url id → 400 id mismatch (no save, no refresh)", async () => {
+    const body = fakeRulesetBody({ id: "rs-renamed" });
+
+    const res = await buildApp().request("/api/entities/rules/rs-1", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: string; message?: string };
+    expect(json.error).toBe("id mismatch");
+    expect(json.message).toMatch(/id/);
+    expect(mockedRulesetSave).not.toHaveBeenCalled();
+    expect(mockedRefresh).not.toHaveBeenCalled();
+  });
+
+  it("body without id is allowed (url id is authoritative)", async () => {
+    const { id: _omitted, ...rest } = fakeRulesetBody();
+    void _omitted;
+    mockedRulesetExists.mockResolvedValue(true);
+    mockedRulesetSave.mockResolvedValue({
+      id: "rs-1",
+      path: "",
+      mtimeMs: 0,
+      data: { ...rest, id: "rs-1" },
+    });
+
+    const res = await buildApp().request("/api/entities/rules/rs-1", {
+      method: "PUT",
+      body: JSON.stringify(rest),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockedRulesetSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("body.id === url id → 200 (normal edit path still works)", async () => {
+    const body = fakeRulesetBody();
+    mockedRulesetExists.mockResolvedValue(true);
+    mockedRulesetSave.mockResolvedValue({ id: body.id as string, path: "", mtimeMs: 0, data: body });
+
+    const res = await buildApp().request("/api/entities/rules/rs-1", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockedRulesetSave).toHaveBeenCalledTimes(1);
+  });
+
   it("refresh failure is swallowed (does NOT crash request)", async () => {
     const body = fakeProviderBody();
     mockedProviderExists.mockResolvedValue(false);

@@ -1,17 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Edit, Plus, Save, Search, Trash2, FileCode } from "lucide-react";
+import { ChevronDown, Edit, Loader2, Plus, Save, Search, Trash2, FileCode, X } from "lucide-react";
 import yaml from "js-yaml";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { YamlEditor } from "@/components/yaml-editor";
 import { ManualNodeDialog } from "@/components/manual-node-dialog";
 import { NodeDetail } from "@/components/node-detail";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
+import { cn } from "@/lib/utils";
 
 // @business_rule: 后端 /api/dashboard/node-pool 已透传完整 Node;
 // 这里只列出列表展示用到的核心字段,其它字段(password / uuid / ws_opts 等)用
@@ -84,20 +86,33 @@ export function NodesPage() {
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
-        <TabsList>
-          <TabsTrigger value="all">全部节点</TabsTrigger>
-          <TabsTrigger value="manual">手动节点</TabsTrigger>
-          <TabsTrigger value="by-provider">按 Provider 分组</TabsTrigger>
-        </TabsList>
-        <TabsContent value="all">
-          <AllNodesView onEdit={openEdit} />
-        </TabsContent>
-        <TabsContent value="manual">
-          <ManualNodesView onCreate={openCreate} onEdit={openEdit} />
-        </TabsContent>
-        <TabsContent value="by-provider">
-          <ByProviderView onEdit={openEdit} />
-        </TabsContent>
+        <div
+          className={cn(
+            "mt-3 flex flex-col gap-3",
+            tab === "all" &&
+              "md:grid md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-x-4 md:gap-y-3",
+          )}
+        >
+          <TabsList
+            className={cn(
+              "w-fit max-w-full shrink-0",
+              tab === "all" && "md:col-start-1 md:row-start-1",
+            )}
+          >
+            <TabsTrigger value="all">全部节点</TabsTrigger>
+            <TabsTrigger value="manual">手动节点</TabsTrigger>
+            <TabsTrigger value="by-provider">按 Provider 分组</TabsTrigger>
+          </TabsList>
+          <TabsContent value="all" className="mt-0 md:contents">
+            <AllNodesView onEdit={openEdit} />
+          </TabsContent>
+          <TabsContent value="manual" className="mt-0">
+            <ManualNodesView onCreate={openCreate} onEdit={openEdit} />
+          </TabsContent>
+          <TabsContent value="by-provider" className="mt-0">
+            <ByProviderView onEdit={openEdit} />
+          </TabsContent>
+        </div>
       </Tabs>
 
       <ManualNodeDialog
@@ -163,52 +178,55 @@ function AllNodesView({ onEdit }: { onEdit: (name: string) => void }) {
     return <div className="p-8 text-sm text-destructive">加载失败: {String(pool.error)}</div>;
 
   return (
-    <div className="space-y-3 mt-3">
-      <div className="flex items-center gap-2">
+    <div className="space-y-3 md:contents">
+      <div className="flex min-w-0 w-full items-center gap-2 md:col-start-2 md:row-start-1">
+        <div className="hidden min-w-0 shrink md:block md:flex-1" aria-hidden />
         <Search className="h-4 w-4 text-muted-foreground shrink-0" />
         <Input
           placeholder={`搜索 ${pool.data?.count ?? 0} 个节点 (按 name 或 server)`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="max-w-md"
+          className="max-w-md min-w-0 flex-1 md:w-72 md:max-w-none md:flex-none"
         />
-        <span className="text-xs text-muted-foreground ml-auto">
+        <span className="shrink-0 text-xs text-muted-foreground">
           {filtered.length} / {pool.data?.count ?? 0}
         </span>
       </div>
 
-      <FacetRow
-        label="source"
-        facets={facets.sources}
-        active={filterSource}
-        onChange={setFilterSource}
-        labelMap={providerName}
-      />
-      <FacetRow label="region" facets={facets.regions} active={filterRegion} onChange={setFilterRegion} />
-      <FacetRow label="type" facets={facets.types} active={filterType} onChange={setFilterType} />
-      {facets.levels.size > 0 && (
-        <FacetRow label="level" facets={facets.levels} active={filterLevel} onChange={setFilterLevel} />
-      )}
-      {facets.lines.size > 0 && (
-        <FacetRow label="line" facets={facets.lines} active={filterLine} onChange={setFilterLine} />
-      )}
-
-      <Card className="overflow-hidden">
-        {filtered.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground text-sm">无匹配节点</div>
-        ) : (
-          <div className="divide-y max-h-[60vh] overflow-auto">
-            {filtered.map((n, i) => (
-              <NodeRow
-                key={`${n.name}-${i}`}
-                n={n}
-                providerName={providerName}
-                onEdit={isManual(n) ? () => onEdit(n.name) : undefined}
-              />
-            ))}
-          </div>
+      <div className="space-y-3 md:col-span-2 md:col-start-1 md:row-start-2">
+        <FacetRow
+          label="source"
+          facets={facets.sources}
+          active={filterSource}
+          onChange={setFilterSource}
+          labelMap={providerName}
+        />
+        <FacetRow label="region" facets={facets.regions} active={filterRegion} onChange={setFilterRegion} />
+        <FacetRow label="type" facets={facets.types} active={filterType} onChange={setFilterType} />
+        {facets.levels.size > 0 && (
+          <FacetRow label="level" facets={facets.levels} active={filterLevel} onChange={setFilterLevel} />
         )}
-      </Card>
+        {facets.lines.size > 0 && (
+          <FacetRow label="line" facets={facets.lines} active={filterLine} onChange={setFilterLine} />
+        )}
+
+        <Card className="overflow-hidden">
+          {filtered.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground text-sm">无匹配节点</div>
+          ) : (
+            <div className="divide-y max-h-[60vh] overflow-auto">
+              {filtered.map((n, i) => (
+                <NodeRow
+                  key={`${n.name}-${i}`}
+                  n={n}
+                  providerName={providerName}
+                  onEdit={isManual(n) ? () => onEdit(n.name) : undefined}
+                />
+              ))}
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
@@ -229,33 +247,35 @@ function FacetRow({
   const items = Array.from(facets.entries()).sort((a, b) => b[1] - a[1]);
   if (items.length === 0) return null;
   return (
-    <div className="flex items-start gap-2 text-xs flex-wrap">
-      <span className="text-muted-foreground shrink-0 w-12 mt-1">{label}:</span>
-      <button
-        type="button"
-        onClick={() => onChange(null)}
-        className={
-          active === null
-            ? "px-2 py-0.5 rounded text-xs font-medium border bg-primary text-primary-foreground border-primary"
-            : "px-2 py-0.5 rounded text-xs font-medium border bg-background text-foreground hover:bg-accent border-input"
-        }
-      >
-        全部
-      </button>
-      {items.map(([k, v]) => (
+    <div className="flex items-start gap-2 text-xs">
+      <span className="text-muted-foreground shrink-0 w-12 text-right mt-1">{label}:</span>
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         <button
-          key={k}
           type="button"
-          onClick={() => onChange(active === k ? null : k)}
+          onClick={() => onChange(null)}
           className={
-            active === k
+            active === null
               ? "px-2 py-0.5 rounded text-xs font-medium border bg-primary text-primary-foreground border-primary"
               : "px-2 py-0.5 rounded text-xs font-medium border bg-background text-foreground hover:bg-accent border-input"
           }
         >
-          {labelMap ? labelMap(k) : k} <span className="opacity-70">{v}</span>
+          全部
         </button>
-      ))}
+        {items.map(([k, v]) => (
+          <button
+            key={k}
+            type="button"
+            onClick={() => onChange(active === k ? null : k)}
+            className={
+              active === k
+                ? "px-2 py-0.5 rounded text-xs font-medium border bg-primary text-primary-foreground border-primary"
+                : "px-2 py-0.5 rounded text-xs font-medium border bg-background text-foreground hover:bg-accent border-input"
+            }
+          >
+            {labelMap ? labelMap(k) : k} <span className="opacity-70">{v}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -270,12 +290,18 @@ function NodeRow({
   hideSource,
   onEdit,
   onDelete,
+  selectable,
+  selected,
+  onSelectedChange,
 }: {
   n: NodeBrief;
   providerName: (id: string | undefined) => string;
   hideSource?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectedChange?: (checked: boolean) => void;
 }) {
   const manual = isManual(n);
   const sourceName = providerName(n.source_provider_id);
@@ -284,11 +310,23 @@ function NodeRow({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className="select-none">
+    <div className={cn("select-none", selected && "bg-primary/5")}>
       <div
-        className="flex items-start gap-3 p-3 cursor-pointer hover:bg-muted/30"
+        className={cn(
+          "flex items-start gap-3 p-3 cursor-pointer",
+          selected ? "hover:bg-primary/10" : "hover:bg-muted/30",
+        )}
         onClick={() => setExpanded((v) => !v)}
       >
+        {selectable && (
+          <div className="pt-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <Checkbox
+              checked={!!selected}
+              onCheckedChange={(v) => onSelectedChange?.(v === true)}
+              aria-label={`选择 ${n.name}`}
+            />
+          </div>
+        )}
         <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 shrink-0 mt-0.5">
           {n.type}
         </Badge>
@@ -400,16 +438,39 @@ function ManualNodesView({
   const providerName = useProviderName();
   const [yamlEditing, setYamlEditing] = useState(false);
   const [yamlText, setYamlText] = useState("");
+  // 手动节点没有稳定 id,用 name 作为选择键(后端 schema 也保证 manual nodes 内 name 唯一)。
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const manual = useQuery<ManualNodes>({
     queryKey: ["entities", "manual-nodes"],
     queryFn: () => api.get("/api/entities/manual-nodes"),
   });
 
+  const list = manual.data?.nodes ?? [];
+
+  // 列表刷新后清掉已不存在的选中项,避免幽灵 name 导致"已选 X 项"对不上。
+  const validSelected = useMemo(() => {
+    if (selected.size === 0) return selected;
+    const names = new Set(list.map((n) => n.name));
+    const next = new Set<string>();
+    selected.forEach((name) => {
+      if (names.has(name)) next.add(name);
+    });
+    return next;
+  }, [list, selected]);
+
+  // 进入 YAML 编辑模式时清空选择,避免回到列表时残留选中态。
+  useEffect(() => {
+    if (yamlEditing) setSelected(new Set());
+  }, [yamlEditing]);
+
+  const allSelected = list.length > 0 && validSelected.size === list.length;
+  const partialSelected = validSelected.size > 0 && !allSelected;
+  const hasSelection = validSelected.size > 0;
+
   const saveManual = useMutation({
     mutationFn: (data: ManualNodes) => api.put("/api/entities/manual-nodes", data),
     onSuccess: () => {
-      toast({ title: "已保存", variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["entities", "manual-nodes"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "node-pool"] });
       setYamlEditing(false);
@@ -427,7 +488,9 @@ function ManualNodesView({
   const handleYamlSave = () => {
     try {
       const data = yaml.load(yamlText) as ManualNodes;
-      saveManual.mutate(data);
+      saveManual.mutate(data, {
+        onSuccess: () => toast({ title: "已保存", variant: "success" }),
+      });
     } catch (err) {
       toast({ title: "YAML 错误", description: (err as Error).message, variant: "error" });
     }
@@ -436,10 +499,42 @@ function ManualNodesView({
   const handleDelete = (name: string) => {
     const all = manual.data?.nodes ?? [];
     if (!confirm(`确定要删除节点「${name}」吗?`)) return;
-    saveManual.mutate({ nodes: all.filter((n) => n.name !== name) });
+    saveManual.mutate(
+      { nodes: all.filter((n) => n.name !== name) },
+      { onSuccess: () => toast({ title: "已删除", variant: "success" }) },
+    );
   };
 
-  const list = manual.data?.nodes ?? [];
+  const toggleSelectOne = (name: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(name);
+      else next.delete(name);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) setSelected(new Set(list.map((n) => n.name)));
+    else setSelected(new Set());
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const handleBulkDelete = () => {
+    const names = validSelected;
+    if (names.size === 0) return;
+    if (!confirm(`确认删除选中的 ${names.size} 个手动节点?此操作不可撤销。`)) return;
+    saveManual.mutate(
+      { nodes: list.filter((n) => !names.has(n.name)) },
+      {
+        onSuccess: () => {
+          toast({ title: `已删除 ${names.size} 个节点`, variant: "success" });
+          clearSelection();
+        },
+      },
+    );
+  };
 
   return (
     <div className="space-y-3 mt-3">
@@ -477,18 +572,68 @@ function ManualNodesView({
               暂无手动节点。点击右上角「添加节点」创建一个。
             </div>
           ) : (
-            <div className="divide-y">
-              {list.map((n, i) => (
-                <NodeRow
-                  key={`${n.name}-${i}`}
-                  n={n}
-                  providerName={providerName}
-                  hideSource
-                  onEdit={() => onEdit(n.name)}
-                  onDelete={() => handleDelete(n.name)}
+            <>
+              <div
+                className={cn(
+                  "flex items-center gap-3 px-4 py-2.5 border-b text-xs transition-colors",
+                  hasSelection ? "bg-primary/5" : "bg-muted/30",
+                )}
+              >
+                <Checkbox
+                  checked={allSelected ? true : partialSelected ? "indeterminate" : false}
+                  onCheckedChange={(v) => toggleSelectAll(v === true)}
+                  aria-label="全选"
                 />
-              ))}
-            </div>
+                {hasSelection ? (
+                  <>
+                    <span className="font-medium text-foreground">
+                      已选 {validSelected.size} / {list.length} 个手动节点
+                    </span>
+                    <div className="ml-auto flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearSelection}
+                        disabled={saveManual.isPending}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        取消选择
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleBulkDelete}
+                        disabled={saveManual.isPending}
+                      >
+                        {saveManual.isPending ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        批量删除
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">共 {list.length} 个,勾选以批量操作</span>
+                )}
+              </div>
+              <div className="divide-y">
+                {list.map((n, i) => (
+                  <NodeRow
+                    key={`${n.name}-${i}`}
+                    n={n}
+                    providerName={providerName}
+                    hideSource
+                    onEdit={() => onEdit(n.name)}
+                    onDelete={() => handleDelete(n.name)}
+                    selectable
+                    selected={validSelected.has(n.name)}
+                    onSelectedChange={(checked) => toggleSelectOne(n.name, checked)}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </Card>
       )}

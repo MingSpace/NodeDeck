@@ -12,15 +12,17 @@ import {
   Search,
   Ban,
   Loader2,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { NodeRow, type NodeBrief } from "@/components/node-row";
 import { RefreshedAt } from "@/components/refreshed-at";
-import { useEntityList, useDeleteEntity } from "@/api/entities";
+import { useEntityList, useDeleteEntity, useDeleteEntitiesBulk } from "@/api/entities";
 import { EntityVisualDialog } from "@/components/entity-visual-dialog";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
@@ -72,6 +74,7 @@ interface ProviderStatusItem {
 export function ProvidersPage() {
   const list = useEntityList<ProviderData>("providers");
   const del = useDeleteEntity("providers");
+  const bulkDel = useDeleteEntitiesBulk("providers");
   const status = useQuery<{ items: ProviderStatusItem[] }>({
     queryKey: ["providers", "status"],
     queryFn: () => api.get("/api/providers/status"),
@@ -124,10 +127,26 @@ export function ProvidersPage() {
   const [editing, setEditing] = useState<ProviderData | null>(null);
   const [open, setOpen] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const statusMap = new Map(
     status.data?.items.map((i) => [i.provider.id, i]) ?? [],
   );
+
+  const items = list.data?.items ?? [];
+  // 列表刷新后清掉已被删除的 id,避免幽灵选中导致"已选 X 项"对不上。
+  const validSelected = useMemo(() => {
+    if (selected.size === 0) return selected;
+    const ids = new Set(items.map((p) => p.id));
+    const next = new Set<string>();
+    selected.forEach((id) => {
+      if (ids.has(id)) next.add(id);
+    });
+    return next;
+  }, [items, selected]);
+  const allSelected = items.length > 0 && validSelected.size === items.length;
+  const partialSelected = validSelected.size > 0 && !allSelected;
+  const hasSelection = validSelected.size > 0;
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -136,6 +155,49 @@ export function ProvidersPage() {
       else next.add(id);
       return next;
     });
+  };
+
+  const toggleSelectOne = (id: string, checked: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = (checked: boolean) => {
+    if (checked) setSelected(new Set(items.map((p) => p.id)));
+    else setSelected(new Set());
+  };
+
+  const clearSelection = () => setSelected(new Set());
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(validSelected);
+    if (ids.length === 0) return;
+    if (!window.confirm(`确认删除选中的 ${ids.length} 个节点源?此操作不可撤销。`)) return;
+    try {
+      const res = await bulkDel.mutateAsync(ids);
+      if (res.failed.length === 0) {
+        toast({ title: `已删除 ${res.succeeded.length} 个节点源`, variant: "success" });
+      } else if (res.succeeded.length === 0) {
+        toast({
+          title: "批量删除失败",
+          description: res.failed.slice(0, 3).map((f) => `${f.id}: ${f.error}`).join("; "),
+          variant: "error",
+        });
+      } else {
+        toast({
+          title: `成功 ${res.succeeded.length} · 失败 ${res.failed.length}`,
+          description: res.failed.slice(0, 3).map((f) => `${f.id}: ${f.error}`).join("; "),
+          variant: "error",
+        });
+      }
+      clearSelection();
+    } catch (err) {
+      toast({ title: "批量删除失败", description: String(err), variant: "error" });
+    }
   };
 
   return (
@@ -174,16 +236,65 @@ export function ProvidersPage() {
         </div>
       </div>
 
-      {list.data && list.data.items.length === 0 && (
+      {list.data && items.length === 0 && (
         <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
           暂无节点源,点击右上角「新建」添加
         </div>
       )}
 
+      {items.length > 0 && (
+        <div
+          className={cn(
+            "flex items-center gap-3 px-4 py-2.5 mb-3 rounded-md border text-xs transition-colors",
+            hasSelection ? "bg-primary/5 border-primary/30" : "bg-muted/30",
+          )}
+        >
+          <Checkbox
+            checked={allSelected ? true : partialSelected ? "indeterminate" : false}
+            onCheckedChange={(v) => toggleSelectAll(v === true)}
+            aria-label="全选"
+          />
+          {hasSelection ? (
+            <>
+              <span className="font-medium text-foreground">
+                已选 {validSelected.size} / {items.length} 个节点源
+              </span>
+              <div className="ml-auto flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={clearSelection}
+                  disabled={bulkDel.isPending}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  取消选择
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDel.isPending}
+                >
+                  {bulkDel.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-3.5 w-3.5" />
+                  )}
+                  批量删除
+                </Button>
+              </div>
+            </>
+          ) : (
+            <span className="text-muted-foreground">共 {items.length} 个,勾选以批量操作</span>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-3">
-        {list.data?.items.map((p) => {
+        {items.map((p) => {
           const s = statusMap.get(p.id);
           const expanded = expandedIds.has(p.id);
+          const checked = validSelected.has(p.id);
           // 只要后端有 cache(无论 ok/stale/error/0 节点)都允许展开,展开后 panel 内会展示
           // 节点列表 / 错误原因 / 占位文案——这是查"为什么是 0 个节点"的唯一入口。
           const canExpand = !!s?.cached;
@@ -196,10 +307,21 @@ export function ProvidersPage() {
                 "p-4 transition-colors",
                 canExpand && "cursor-pointer hover:bg-muted/30",
                 !p.enabled && "opacity-60 bg-muted/20 hover:opacity-100",
+                checked && "bg-primary/5 hover:bg-primary/10 ring-1 ring-primary/20",
               )}
               onClick={canExpand ? () => toggleExpand(p.id) : undefined}
             >
               <div className="flex items-start justify-between gap-4">
+                <div
+                  className="pt-0.5 shrink-0"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(v) => toggleSelectOne(p.id, v === true)}
+                    aria-label={`选择 ${p.name}`}
+                  />
+                </div>
                 <div className="flex-1 min-w-0">
                   <span
                     className={cn(
@@ -235,7 +357,7 @@ export function ProvidersPage() {
                   )}
                   {s?.fetched_at && !isInline && (
                     <div className="text-xs text-muted-foreground mt-1">
-                      上次刷新 <RefreshedAt ts={s.fetched_at} /> · 刷新周期{" "}
+                      上次刷新： <RefreshedAt ts={s.fetched_at} /> · 刷新周期{" "}
                       {REFRESH_INTERVAL_LABEL[p.refresh.interval] ?? p.refresh.interval}
                     </div>
                   )}

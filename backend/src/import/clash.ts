@@ -5,6 +5,7 @@ import type { Node } from "../schemas/node.js";
 import type { RuleSet } from "../schemas/ruleset.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
+import { generateImportedId } from "./id.js";
 
 export interface ClashImportResult {
   general?: GeneralPreset;
@@ -40,16 +41,17 @@ interface ClashConfig {
   };
 }
 
-export function importClashYaml(text: string): ClashImportResult {
+export function importClashYaml(text: string, fileName?: string): ClashImportResult {
   const parsed = yaml.load(text) as ClashConfig | null;
   const warnings: string[] = [];
   if (!parsed) return { manualNodes: [], ruleSets: [], proxyGroups: [], warnings: ["empty yaml"] };
 
   const manualNodes = annotateNodes(parseClashYaml(text));
 
+  const trimmedFile = fileName?.trim();
   const general: GeneralPreset = {
-    id: "imported",
-    name: "Imported from Clash",
+    id: generateImportedId(trimmedFile && trimmedFile.length > 0 ? trimmedFile : "clash"),
+    name: `Imported from ${trimmedFile && trimmedFile.length > 0 ? trimmedFile : "Clash"}`,
     port: parsed.port,
     socks_port: parsed["socks-port"],
     mixed_port: parsed["mixed-port"],
@@ -74,7 +76,7 @@ export function importClashYaml(text: string): ClashImportResult {
   if (parsed["rule-providers"]) {
     for (const [name, def] of Object.entries(parsed["rule-providers"])) {
       ruleSets.push({
-        id: `imported-${slugify(name)}`,
+        id: generateImportedId(name),
         name,
         type: "remote_url",
         url: def.url ?? "",
@@ -105,7 +107,7 @@ export function importClashYaml(text: string): ClashImportResult {
     for (const raw of parsed["proxy-groups"] as Array<Record<string, unknown>>) {
       if (!raw.name || !raw.type) continue;
       proxyGroups.push({
-        id: `imported-${slugify(String(raw.name))}`,
+        id: generateImportedId(String(raw.name)),
         name: String(raw.name),
         type: (String(raw.type) as ProxyGroup["type"]),
         proxies: Array.isArray(raw.proxies) ? (raw.proxies as string[]) : [],
@@ -118,8 +120,4 @@ export function importClashYaml(text: string): ClashImportResult {
   }
 
   return { general, manualNodes, ruleSets, proxyGroups, warnings };
-}
-
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "rule";
 }

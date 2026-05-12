@@ -50,7 +50,7 @@ export function NodeDetail({ node }: NodeDetailProps) {
 
   return (
     <div className="relative">
-      <pre className="font-mono text-[11px] leading-relaxed bg-muted/40 border rounded p-3 pr-20 whitespace-pre overflow-auto max-h-72">
+      <pre className="select-text cursor-text font-mono text-[11px] leading-relaxed bg-muted/40 border rounded p-3 pr-20 whitespace-pre overflow-auto max-h-72">
         {yamlText}
       </pre>
       <Button

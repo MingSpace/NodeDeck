@@ -304,7 +304,7 @@ function AirportCard({ airport }: { airport: AirportItem }) {
 
       {airport.fetched_at && (
         <div className="mt-3 text-xs text-muted-foreground">
-          上次刷新 <RefreshedAt ts={airport.fetched_at} />
+          上次刷新： <RefreshedAt ts={airport.fetched_at} />
         </div>
       )}
       {airport.error && (

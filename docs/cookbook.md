@@ -126,6 +126,42 @@ content: |
 
 **0 节点怎么排查**:在 Web UI 的 providers 页,展开卡片会看到具体原因(content 为空 / 解析未识别)+ 一键跳转到编辑器修正;后端也会把 cache 状态写成 `error` 而不是装作 `ok`。
 
+### 1.2 自动过滤机场"信息节点"
+
+很多机场会把套餐用量 / 到期日 / 公告 / 官网链接伪装成 trojan / ss 节点塞在订阅顶部,例如:
+
+- `Traffic: 59.17 GB | 150 GB`
+- `Expire: 2027-05-02`
+- `距离下次重置剩余:25 天`
+- `📢 公告:本周维护`
+- `官网│https://example.com`
+- `https://example.com/dashboard`(整个 name 就是一个 URL)
+
+这些"信息节点"的 `server / port / password` 跟某条真节点**完全一致**,如果不处理:
+
+- 会和真节点共享去重身份(`type|server|port|secret`),被 `dedupeNodes` 的 `keep-first` 策略**把真节点挤掉**,客户端只剩不可用的伪节点
+- 节点池数字虚高 1~5 条(对应 Subscription-UserInfo 的字段数);"全部节点"与"按 Provider 分组"两个 Tab 数字对不上
+
+MConvert 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers/info-node-filter.ts`),所有下游消费(主订阅生成 / Profile 预览 / 策略组节点选择 / proxy-providers 子路由 / 节点池 dashboard)**自动拿到干净的节点池,用户无需配置**。
+
+识别算法:`<LEAD> <KEYWORD> <SEPARATOR>`
+
+| 段 | 内容 |
+|---|---|
+| `LEAD` | 0..N 个装饰字符(emoji / 旗帜 / 空白 / 标点),**不允许出现 ASCII 字母、数字、下划线、汉字** —— 保证关键字位于 name 的语义前缀,避免误伤 `🇯🇵 日本-Traffic-Plus` 这种"关键字出现在中段"的真节点 |
+| `KEYWORD` | 中英文关键字:`流量 / Traffic`、`到期 / Expire`、`下次重置 / Reset In`、`公告 / Notice`、`官网 / Website` 等,完整列表见 `info-node-filter.ts` |
+| `STRONG_SEP` | `: ：| │ ┃ ∶`,两侧空白可有可无 |
+| `WEAK_SEP` | `- = ~ ·` 等,**必须两侧都带空白** —— 否则 `Notice-Premium-01` / `expired-policy-test` 会被误伤 |
+
+另有两条短路规则:整个 name 是 `https?://...` 形式,或以 `t.me/ / tg:// / @<handle>` 起首,也判为信息节点。
+
+**不会丢的事**:
+
+- userinfo(流量 / 到期)从 HTTP `Subscription-UserInfo` header 读取,**与节点池无关**,过滤不影响 Dashboard / 订阅响应头
+- 手动节点(`data/manual-nodes.yaml`)由 zod schema 校验,**不走 parser**,不会被这条规则过滤(也不应该,自加的节点不该长这样)
+
+**遇到新形态没被识别怎么办**:把节点 name 加到 `backend/tests/parsers/info-node-filter.test.ts` 的 `POSITIVE_NAMES` 列表(或 `NEGATIVE_NAMES` 反向测试),跑 `pnpm test`,根据 fail case 在 `KEYWORDS` 或 `STRONG_SEP/WEAK_SEP` 里加一条即可。
+
 ---
 
 ## 2. 四种规则形态
@@ -359,7 +395,7 @@ token: V1StGXR8_Z5j   # 12 字符 nanoid;请用 Web UI 生成,不要复用此示
 providers: [airport-a, airport-b]
 include_manual_nodes: true
 node_filter:
-  exclude_regex: "(?i)(剩余流量|官网|过期)"  # 排除标题节点
+  exclude_regex: "(?i)(测试|trial|试用)"  # 个性化排除;机场"信息节点"(Traffic/Expire/官网...)已由 parser 默认过滤,见 1.2
   exclude_types: [direct]
   rename_rules:
     - pattern: "(?i)\\bIPLC\\b"

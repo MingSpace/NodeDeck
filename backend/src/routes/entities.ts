@@ -36,6 +36,27 @@ const KINDS: Record<string, EntityKindDef> = {
 
 export const entitiesRouter = new Hono();
 
+// Manual nodes (singleton, not part of repo grid).
+// MUST be registered before the dynamic `/:kind` routes — Hono's SmartRouter
+// matches single-segment paths in registration order when a static path collides
+// with a parameter path, so a later `/manual-nodes` route would otherwise be
+// shadowed by the earlier `/:kind` handler.
+entitiesRouter.get("/manual-nodes", async (c) => {
+  const data = await readManualNodes();
+  return c.json(data);
+});
+
+entitiesRouter.put("/manual-nodes", async (c) => {
+  const body = await c.req.json().catch(() => null);
+  if (!body) return c.json({ error: "invalid json" }, 400);
+  const result = manualNodesSchema.safeParse(body);
+  if (!result.success) {
+    return c.json({ error: "validation failed", details: result.error.flatten() }, 400);
+  }
+  await writeManualNodes(result.data);
+  return c.json(result.data);
+});
+
 entitiesRouter.get("/:kind", async (c) => {
   const def = KINDS[c.req.param("kind")];
   if (!def) return c.json({ error: "unknown entity kind" }, 404);
@@ -78,6 +99,25 @@ entitiesRouter.put("/:kind/:id", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json().catch(() => null);
   if (!body) return c.json({ error: "invalid json" }, 400);
+  // id 是文件主键,被 Profile 等其它实体按 id 引用。PUT 只允许写回同一 id;
+  // 如果 body 自带 id 但与 url 不一致,直接拒绝以避免出现:写出新文件、留下旧文件、
+  // 其它实体里的引用变成悬空。要"重命名"请改 name 字段;要"复制"请用 POST。
+  if (
+    typeof body === "object" &&
+    body !== null &&
+    "id" in body &&
+    typeof (body as { id?: unknown }).id === "string" &&
+    (body as { id: string }).id !== id
+  ) {
+    return c.json(
+      {
+        error: "id mismatch",
+        message:
+          "URL 路径中的 id 与请求体 id 不一致。id 是文件主键,不可在编辑流程中修改。请改用 POST /api/entities/:kind 创建新条目,或修改 name 字段。",
+      },
+      400,
+    );
+  }
   const result = def.schema.safeParse({ ...body, id });
   if (!result.success) {
     return c.json({ error: "validation failed", details: result.error.flatten() }, 400);
@@ -111,19 +151,3 @@ entitiesRouter.delete("/:kind/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-// Manual nodes (singleton, not part of repo grid)
-entitiesRouter.get("/manual-nodes", async (c) => {
-  const data = await readManualNodes();
-  return c.json(data);
-});
-
-entitiesRouter.put("/manual-nodes", async (c) => {
-  const body = await c.req.json().catch(() => null);
-  if (!body) return c.json({ error: "invalid json" }, 400);
-  const result = manualNodesSchema.safeParse(body);
-  if (!result.success) {
-    return c.json({ error: "validation failed", details: result.error.flatten() }, 400);
-  }
-  await writeManualNodes(result.data);
-  return c.json(result.data);
-});
