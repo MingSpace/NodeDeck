@@ -218,6 +218,55 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("DOMAIN-SUFFIX,nflxvideo.net");
   });
 
+  it("emits Surge internal ruleset (SYSTEM/LAN) as RULE-SET,<name>,POLICY", () => {
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [
+        {
+          ref: "sys",
+          policy: "DIRECT",
+          ruleset: {
+            id: "imported-rule-system-abc123",
+            name: "SYSTEM",
+            type: "surge_internal",
+            surge_internal_name: "SYSTEM",
+            behavior: "classical",
+            format: "text",
+            clash_format: "rule_provider",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+        {
+          ref: "lan",
+          policy: "DIRECT",
+          ruleset: {
+            id: "imported-rule-lan-def456",
+            name: "LAN",
+            type: "surge_internal",
+            surge_internal_name: "LAN",
+            behavior: "classical",
+            format: "text",
+            // 模拟用户带 no-resolve 的边界,确认 flags 也能透传
+            surge_flags: { no_resolve: true },
+            clash_format: "rule_provider",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+      ],
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(out).toContain("RULE-SET,SYSTEM,DIRECT");
+    expect(out).toContain("RULE-SET,LAN,DIRECT,no-resolve");
+    // 不应该把 surge_internal 当成 remote_url 写出 URL
+    expect(out).not.toContain("SYSTEM,DIRECT,");
+    expect(out).not.toMatch(/RULE-SET,LAN,DIRECT\s*$/m); // 末尾必须带 no-resolve
+  });
+
   it("merges surge module sections", () => {
     const out = generateSurgeConfig({
       profile: baseProfile(),

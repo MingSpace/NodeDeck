@@ -18,17 +18,21 @@ export function GeneralPresetVisualForm({ data, update }: Props) {
       <CollapsibleSection title="DNS">
         <DnsSection data={data} update={update} />
       </CollapsibleSection>
-      <CollapsibleSection title="MITM (Surge)">
-        <MitmSection data={data} update={update} />
-      </CollapsibleSection>
       <CollapsibleSection title="Hosts">
         <HostsSection data={data} update={update} />
       </CollapsibleSection>
-      <CollapsibleSection title="SSID 规则 (Surge)">
-        <SsidSection data={data} update={update} />
-      </CollapsibleSection>
-      <CollapsibleSection title="Surge 专属选项">
-        <SurgeOnlySection data={data} update={update} />
+      <CollapsibleSection title="Surge 专属">
+        <div className="space-y-2">
+          <SubCollapsible title="MITM" defaultOpen>
+            <MitmSection data={data} update={update} />
+          </SubCollapsible>
+          <SubCollapsible title="SSID 规则" defaultOpen>
+            <SsidSection data={data} update={update} />
+          </SubCollapsible>
+          <SubCollapsible title="其他选项" defaultOpen>
+            <SurgeOnlySection data={data} update={update} />
+          </SubCollapsible>
+        </div>
       </CollapsibleSection>
       <div className="text-xs text-muted-foreground border-t pt-2">
         TUN / Sniffer / HTTP API / 其它 Clash 字段请切到「YAML 高级」编辑
@@ -52,6 +56,25 @@ function CollapsibleSection({
         {title}
       </summary>
       <div className="p-3 border-t">{children}</div>
+    </details>
+  );
+}
+
+function SubCollapsible({
+  title,
+  defaultOpen,
+  children,
+}: {
+  title: string;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <details open={defaultOpen} className="border-l-2 border-muted pl-3">
+      <summary className="py-1.5 cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+        {title}
+      </summary>
+      <div className="pt-2 pb-1">{children}</div>
     </details>
   );
 }

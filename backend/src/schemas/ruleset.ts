@@ -29,7 +29,12 @@ export const surgeRejectOptionsSchema = z.object({
   notification_interval: z.number().int().min(1).max(86400).optional(),
 });
 
-export const rulesetTypeSchema = z.enum(["remote_url", "inline_list", "geosite", "geoip"]);
+export const rulesetTypeSchema = z.enum(["remote_url", "inline_list", "geosite", "geoip", "surge_internal"]);
+
+// Surge 内置 ruleset 名(manual.nssurge.com/rule/ruleset.html#internal-ruleset)
+// 平台共有(macOS / iOS),非 Mac 独占。
+// 注意 LAN 会触发 DNS 查询(文档原文 "this ruleset will trigger a DNS lookup")。
+export const surgeInternalRulesetNameSchema = z.enum(["SYSTEM", "LAN"]);
 
 export const rulesetBehaviorSchema = z.enum(["domain", "ipcidr", "classical"]);
 
@@ -58,6 +63,11 @@ export const rulesetSchema = z
     // 缺省时回退到 id。url 字段保留给后续可能的 Mihomo 自定义 mmdb 拉取。
     geoip_country_code: z.string().min(1).optional(),
 
+    // 当 type=surge_internal 时,指定 Surge 内置 ruleset 名(SYSTEM / LAN)。
+    // Clash 端没有等价物:LAN 自动展开为 DOMAIN-SUFFIX/IP-CIDR 内联规则;
+    // SYSTEM 含 USER-AGENT 等 Clash 不支持的规则,会被跳过并 warning。
+    surge_internal_name: surgeInternalRulesetNameSchema.optional(),
+
     surge_flags: surgeFlagsSchema.optional(),
     surge_reject_options: surgeRejectOptionsSchema.optional(),
 
@@ -75,6 +85,13 @@ export const rulesetSchema = z
         code: z.ZodIssueCode.custom,
         message: "inline_list type requires non-empty `payload`",
         path: ["payload"],
+      });
+    }
+    if (r.type === "surge_internal" && !r.surge_internal_name) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "surge_internal type requires `surge_internal_name` (SYSTEM or LAN)",
+        path: ["surge_internal_name"],
       });
     }
   });

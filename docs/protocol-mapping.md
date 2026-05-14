@@ -151,10 +151,12 @@
 | inline list (`type: inline_list`) | `rules:` 段直接展开每行 | 直接展开;或 `surge_format: inline_ruleset` 时生成 `[Ruleset Name]` 段 + `RULE-SET,<name>` (Mac 5.3.1+) |
 | GEOSITE (`type: geosite`) | `GEOSITE,<geosite_category 或 id>,POLICY` | 三级回退:① `payload` 展开内联 → ② `url` 走 `DOMAIN-SET` → ③ warning |
 | GEOIP (`type: geoip`) | `GEOIP,<geoip_country_code 或 id>,POLICY` | 同 Clash |
+| Surge 内置 (`type: surge_internal`) | LAN → 内联 `DOMAIN-SUFFIX,local` + IP-CIDR;SYSTEM → 跳过 + warning | `RULE-SET,<SYSTEM\|LAN>,POLICY` |
 
 **关键字段**:
 - `geosite_category`: GEOSITE 关键字(如 `cn`/`google`/`youtube`)。缺省回退到 `id`,所以可以直接把 ruleset id 命名为 `cn`/`youtube` 等。
 - `geoip_country_code`: GEOIP 关键字(如 `CN`/`US`)。缺省回退到 `id`。
+- `surge_internal_name`: 仅 `SYSTEM` / `LAN`。Surge 平台共有(参考 [Surge 官方 manual](https://manual.nssurge.com/rule/ruleset.html#internal-ruleset));`LAN` 在 Surge 客户端会触发 DNS 查询,Clash 端 generator 把它展开为内联 IP-CIDR/DOMAIN-SUFFIX。`SYSTEM` 含 USER-AGENT / PROCESS-NAME 规则,Clash 不支持,generator 跳过并 warning。
 - `surge_reject_options.type` 在 Surge 端覆盖 `policy`,在 Clash 端会自动降级到合法 `REJECT`(见第 12 节)。
 - 分发顺序:**先按 `rs.type` 大类分,再按 `clash_format` / `surge_format` 决定细节**。`type=remote_url` 配 `clash_format=inline` 不被支持,会自动降级为 rule-provider 并 warning。
 
@@ -177,6 +179,8 @@
 - Surge `[Module]` 段 → 完全跳过
 - Surge `[URL Rewrite]/[Header Rewrite]/[Script]` → 跳过(Clash 无对应)
 - Surge `Snell` 节点 → 跳过 + warning
+- Surge `RULE-SET,SYSTEM` → 跳过 + warning(含 USER-AGENT/PROCESS-NAME 无 Clash 等价)
+- Surge `RULE-SET,LAN` → 展开为内联 DOMAIN-SUFFIX,local + IP-CIDR 列表
 
 ### Surge 输出降级
 - Clash `peers:` (WireGuard 多 peer) → 仅取第一个 peer + warning

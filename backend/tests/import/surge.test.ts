@@ -125,15 +125,41 @@ describe("importSurgeConf", () => {
     expect(r.modules).toEqual([]);
   });
 
-  it("ignores SYSTEM/LAN-style RULE-SET lines (only http url ones)", () => {
+  // Surge 内置 ruleset SYSTEM/LAN (manual.nssurge.com/rule/ruleset.html#internal-ruleset)
+  // 平台共有,导入时识别成 type=surge_internal,留给 generator 各自处理:
+  // - Surge generator: 直接 `RULE-SET,<SYSTEM|LAN>,POLICY`
+  // - Clash generator: LAN 展开为内联 IP-CIDR/DOMAIN-SUFFIX,SYSTEM 跳过 + warning
+  it("recognizes RULE-SET,SYSTEM/LAN as type=surge_internal (preserve, don't drop)", () => {
     const text = `
 [Rule]
 RULE-SET,SYSTEM,DIRECT
+RULE-SET,LAN, DIRECT
 RULE-SET, https://example.com/test.conf, Proxys
+RULE-SET,UNKNOWN-NAME,DIRECT
 `;
     const r = importSurgeConf(text);
-    expect(r.ruleSets).toHaveLength(1);
-    expect(r.ruleSets[0].url).toBe("https://example.com/test.conf");
+    // SYSTEM + LAN + http url = 3 条,UNKNOWN-NAME 不是内置名也不是 http URL,跳过
+    expect(r.ruleSets).toHaveLength(3);
+
+    const sys = r.ruleSets.find((rs) => rs.surge_internal_name === "SYSTEM");
+    expect(sys).toMatchObject({
+      type: "surge_internal",
+      surge_internal_name: "SYSTEM",
+      policy: "DIRECT",
+      surge_format: "rule_set",
+      clash_format: "rule_provider",
+      name: "SYSTEM",
+    });
+    expect(sys?.id).toMatch(/^imported-rule-system-[0-9a-z]{6}$/);
+
+    const lan = r.ruleSets.find((rs) => rs.surge_internal_name === "LAN");
+    expect(lan).toMatchObject({
+      type: "surge_internal",
+      surge_internal_name: "LAN",
+      policy: "DIRECT",
+    });
+
+    expect(r.ruleSets.find((rs) => rs.url === "https://example.com/test.conf")).toBeDefined();
   });
 
   // 回归: Surge 配置里常见 `DIRECT = direct` 伪节点会被解析成 port=0,
@@ -166,10 +192,10 @@ RULE-SET,https://example.com/rules.list,Proxy,extended-matching
 RULE-SET,https://example.com/rules.yaml,DIRECT
 DOMAIN-SET,https://example.com/domains.txt,DIRECT,no-resolve
 DOMAIN-SET,https://example.com/cn.mrs,DIRECT
-RULE-SET,SYSTEM,DIRECT
+RULE-SET,FOO_BAR_NOT_INTERNAL,DIRECT
 `;
     const r = importSurgeConf(text);
-    expect(r.ruleSets).toHaveLength(4); // SYSTEM 仍被忽略
+    expect(r.ruleSets).toHaveLength(4); // 非 SYSTEM/LAN 且非 http URL 的引用仍被忽略
 
     const ruleSetText = r.ruleSets.find((rs) => rs.url === "https://example.com/rules.list");
     expect(ruleSetText).toMatchObject({

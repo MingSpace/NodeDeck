@@ -7,11 +7,12 @@ export interface RuleSetData {
   name: string;
   description?: string;
   policy?: string;
-  type: "remote_url" | "inline_list" | "geosite" | "geoip";
+  type: "remote_url" | "inline_list" | "geosite" | "geoip" | "surge_internal";
   url?: string;
   payload?: string[];
   geosite_category?: string;
   geoip_country_code?: string;
+  surge_internal_name?: "SYSTEM" | "LAN";
   behavior: "domain" | "ipcidr" | "classical";
   format: "yaml" | "text" | "mrs";
   surge_flags?: {
@@ -66,6 +67,7 @@ export function RuleSetVisualForm({ data, update }: Props) {
               <SelectItem value="inline_list">inline_list</SelectItem>
               <SelectItem value="geosite">geosite</SelectItem>
               <SelectItem value="geoip">geoip</SelectItem>
+              <SelectItem value="surge_internal">surge_internal (SYSTEM/LAN)</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -147,6 +149,26 @@ export function RuleSetVisualForm({ data, update }: Props) {
             placeholder="CN / US / JP ..."
           />
         </Field>
+      )}
+
+      {data.type === "surge_internal" && (
+        <div className="space-y-2">
+          <Field label="Surge 内置 ruleset 名">
+            <Select
+              value={data.surge_internal_name ?? "SYSTEM"}
+              onValueChange={(v) => update({ surge_internal_name: v as "SYSTEM" | "LAN" })}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="SYSTEM">SYSTEM (macOS/iOS 系统服务直连)</SelectItem>
+                <SelectItem value="LAN">LAN (本地网络直连,会触发 DNS 查询)</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <p className="text-xs text-muted-foreground">
+            Clash 输出:LAN 自动展开为 DOMAIN-SUFFIX/IP-CIDR 内联规则;SYSTEM 含 USER-AGENT 等 Clash 不支持的规则,会被跳过 + warning。
+          </p>
+        </div>
       )}
 
       <div className="grid grid-cols-2 gap-3">

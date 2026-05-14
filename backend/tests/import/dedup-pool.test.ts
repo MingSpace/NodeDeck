@@ -99,6 +99,22 @@ describe("entity identities", () => {
     expect(rulesetIdentity(a)).not.toBe(rulesetIdentity(differentUrl));
   });
 
+  it("rulesetIdentity discriminates surge_internal name (SYSTEM vs LAN)", () => {
+    const sys: Partial<RuleSet> = {
+      id: "imported-rule-system-abc",
+      name: "SYSTEM",
+      type: "surge_internal",
+      surge_internal_name: "SYSTEM",
+      behavior: "classical",
+      format: "text",
+      policy: "DIRECT",
+    };
+    const lan: Partial<RuleSet> = { ...sys, name: "LAN", surge_internal_name: "LAN" };
+    const sysDup: Partial<RuleSet> = { ...sys, id: "imported-rule-system-xyz" };
+    expect(rulesetIdentity(sys)).not.toBe(rulesetIdentity(lan));
+    expect(rulesetIdentity(sys)).toBe(rulesetIdentity(sysDup));
+  });
+
   it("proxyGroupIdentity is order-independent across members and ignores test params", () => {
     const a: Partial<ProxyGroup> = {
       id: "imported-auto",

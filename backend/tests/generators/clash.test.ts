@@ -113,6 +113,59 @@ describe("generateClashConfig", () => {
     });
   });
 
+  it("handles Surge internal ruleset: LAN expanded inline, SYSTEM skipped with warning", () => {
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [
+        {
+          ref: "sys",
+          policy: "DIRECT",
+          ruleset: {
+            id: "imported-rule-system",
+            name: "SYSTEM",
+            type: "surge_internal",
+            surge_internal_name: "SYSTEM",
+            behavior: "classical",
+            format: "text",
+            clash_format: "rule_provider",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+        {
+          ref: "lan",
+          policy: "DIRECT",
+          ruleset: {
+            id: "imported-rule-lan",
+            name: "LAN",
+            type: "surge_internal",
+            surge_internal_name: "LAN",
+            behavior: "classical",
+            format: "text",
+            clash_format: "rule_provider",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+      ],
+      finalRule: { policy: "DIRECT" },
+      warnings,
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const rules = parsed.rules as string[];
+    // LAN 应被展开为内联规则
+    expect(rules).toContain("DOMAIN-SUFFIX,local,DIRECT");
+    expect(rules).toContain("IP-CIDR,192.168.0.0/16,DIRECT");
+    expect(rules).toContain("IP-CIDR6,fe80::/10,DIRECT");
+    // SYSTEM 不应出现在 rules 中
+    expect(rules.some((r) => r.includes("SYSTEM"))).toBe(false);
+    // warning 必须提示 SYSTEM 被跳过
+    expect(out).toMatch(/# WARN:.*SYSTEM/);
+  });
+
   it("translates chain_via to dialer-proxy", () => {
     const nodes: Node[] = [
       {

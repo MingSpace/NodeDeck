@@ -173,9 +173,44 @@ function parseRuleAndGroupSections(text: string): {
       const setMatch = line.match(/^(RULE-SET|DOMAIN-SET)\s*,\s*([^,]+)\s*,\s*([A-Za-z0-9-_+]+)/i);
       if (!setMatch) continue;
       const setKind = setMatch[1].toUpperCase() as "RULE-SET" | "DOMAIN-SET";
-      const url = setMatch[2].trim();
+      const urlOrName = setMatch[2].trim();
       const policy = setMatch[3].trim();
-      if (!url.startsWith("http")) continue; // skip SYSTEM/LAN internal sets
+      // Surge 内置 ruleset SYSTEM / LAN(`RULE-SET,SYSTEM,DIRECT` / `RULE-SET,LAN,DIRECT`):
+      // 两个平台共有,文档见 manual.nssurge.com/rule/ruleset.html#internal-ruleset。
+      // 解析成 type=surge_internal 的 ruleset,留给 Surge generator 原样输出、Clash generator
+      // 自行处理(LAN 展开/SYSTEM 跳过)。
+      if (
+        setKind === "RULE-SET"
+        && !urlOrName.startsWith("http")
+        && (urlOrName === "SYSTEM" || urlOrName === "LAN")
+      ) {
+        const id = generateImportedId(`rule-${urlOrName.toLowerCase()}`);
+        const flagsPart = line.slice(setMatch[0].length).split(",").map((s) => s.trim());
+        const flags: RuleSet["surge_flags"] = {};
+        for (const f of flagsPart) {
+          if (!f) continue;
+          if (f === "no-resolve") flags.no_resolve = true;
+          else if (f === "extended-matching") flags.extended_matching = true;
+          else if (f === "pre-matching") flags.pre_matching = true;
+          else if (f === "force-remote-dns") flags.force_remote_dns = true;
+        }
+        ruleSets.push({
+          id,
+          name: urlOrName,
+          type: "surge_internal",
+          surge_internal_name: urlOrName,
+          behavior: "classical",
+          format: "text",
+          policy,
+          surge_flags: Object.keys(flags).length > 0 ? flags : undefined,
+          clash_format: "rule_provider",
+          surge_format: "rule_set",
+          update_interval: 86400,
+        });
+        continue;
+      }
+      if (!urlOrName.startsWith("http")) continue; // 其它非 http 引用暂不支持
+      const url = urlOrName;
       // id 中保留 "rule" / "domainset" 前缀语义,文件名形如
       // imported-rule-cn-abc123.yaml / imported-domainset-cn-abc123.yaml,
       // 与旧版 imported-rule-N / imported-domainset-N 保持视觉相似但不再依赖计数器。

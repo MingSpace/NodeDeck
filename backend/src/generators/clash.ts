@@ -17,6 +17,19 @@ function downgradeClashPolicy(policy: string): string {
   return mapped ? mapped.clash : policy;
 }
 
+// Surge manual: https://manual.nssurge.com/rule/ruleset.html#lan
+// LAN 内置 ruleset 在 Clash 端展开为等价的内联规则。
+// 内容与 Surge 文档列出的一致(包含 LAN IP 范围 + .local 后缀)。
+const SURGE_INTERNAL_LAN_RULES: readonly string[] = [
+  "DOMAIN-SUFFIX,local",
+  "IP-CIDR,192.168.0.0/16",
+  "IP-CIDR,10.0.0.0/8",
+  "IP-CIDR,172.16.0.0/12",
+  "IP-CIDR,127.0.0.0/8",
+  "IP-CIDR,100.64.0.0/10",
+  "IP-CIDR6,fe80::/10",
+];
+
 export interface ClashGenerateInput {
   profile: Profile;
   nodes: Node[];
@@ -123,6 +136,21 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     } else if (rs.type === "geoip") {
       const country = rs.geoip_country_code ?? rs.id;
       rules.push(`GEOIP,${country},${policy}${noResolve}`);
+    } else if (rs.type === "surge_internal") {
+      // Surge 内置 ruleset 在 Clash 端没有等价语义:
+      // - LAN 全是 Clash 也支持的 DOMAIN-SUFFIX/IP-CIDR → 内联展开,功能等价
+      // - SYSTEM 含 USER-AGENT 等 Clash 不支持的规则 → 跳过 + warning,避免半残转换
+      if (rs.surge_internal_name === "LAN") {
+        for (const item of SURGE_INTERNAL_LAN_RULES) {
+          rules.push(`${item},${policy}`);
+        }
+      } else if (rs.surge_internal_name === "SYSTEM") {
+        input.warnings.push(
+          `Surge 内置 ruleset SYSTEM("${rs.id}") 含 USER-AGENT/PROCESS-NAME 规则,Clash 无等价物,已跳过`,
+        );
+      } else {
+        input.warnings.push(`Ruleset "${rs.id}" type=surge_internal but surge_internal_name missing, skipped`);
+      }
     }
   }
   if (input.geoipFallback) {

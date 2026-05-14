@@ -178,6 +178,15 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
     } else if (rs.type === "geoip") {
       const country = rs.geoip_country_code ?? rs.id;
       lines.push(`GEOIP,${country},${policy}${flagSuffix}`);
+    } else if (rs.type === "surge_internal") {
+      // Surge 内置 ruleset(SYSTEM / LAN),共平台特性,直接当成普通 RULE-SET 名引用即可。
+      // 不带 url,name 必须是 SYSTEM/LAN 之一(schema 已校验)。
+      if (!rs.surge_internal_name) {
+        input.warnings.push(`Ruleset "${rs.id}" type=surge_internal but surge_internal_name missing, skipped`);
+        continue;
+      }
+      const parts = [`RULE-SET,${rs.surge_internal_name}`, policy, ...extraParams, ...flags];
+      lines.push(parts.join(","));
     }
   }
   // Module-level [Rule] additions (only DIRECT/REJECT allowed in modules)

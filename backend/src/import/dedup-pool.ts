@@ -94,6 +94,9 @@ export function rulesetIdentity(r: Partial<RuleSet>): string {
     r.policy ?? "",
     r.geosite_category ?? "",
     r.geoip_country_code ?? "",
+    // surge_internal 同名(SYSTEM/LAN)挂同 policy 视为同一条;
+    // 不同 policy 应被视为两条 ruleset,所以 policy 已经在上面参与了 identity。
+    r.surge_internal_name ?? "",
     (r.payload ?? []).slice().sort().join("\n"),
   ];
   return sha1(parts.join("|"));
