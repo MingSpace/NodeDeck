@@ -166,6 +166,55 @@ describe("generateClashConfig", () => {
     expect(out).toMatch(/# WARN:.*SYSTEM/);
   });
 
+  it("removes dangling node refs from group.proxies after node_filter and emits warning", () => {
+    const nodes: Node[] = [
+      { name: "🇭🇰 HK-01", type: "trojan", server: "g.com", port: 443, password: "x", sni: "x.com", tls: true, tags: [] },
+      { name: "🇯🇵 JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "y", tags: [] },
+      { name: "广告测试-1", type: "ss", server: "a.com", port: 8388, cipher: "aes-128-gcm", password: "z", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "Proxys",
+        name: "Proxys",
+        type: "select",
+        proxies: ["🇭🇰 HK-01", "🇯🇵 JP-01", "广告测试-1", "Manual", "DIRECT", "REJECT-DROP"],
+      },
+      {
+        id: "Manual",
+        name: "Manual",
+        type: "select",
+        proxies: ["Proxys", "DIRECT"],
+      },
+    ];
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile({
+        proxy_groups: ["Proxys", "Manual"],
+        // 把"广告测试"开头的节点过滤掉
+        node_filter: { rename_rules: [], exclude_types: [], exclude_regex: "^广告测试" },
+      }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Manual" },
+      warnings,
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const proxyGroups = parsed["proxy-groups"] as Array<Record<string, unknown>>;
+    const proxysGroup = proxyGroups.find((g) => g.name === "Proxys")!;
+    const proxysMembers = proxysGroup.proxies as string[];
+    // 被过滤掉的节点名应该不在 group.proxies 里
+    expect(proxysMembers).not.toContain("广告测试-1");
+    // 仍然存在的节点 / 组名 / 内置 policy 应保留
+    expect(proxysMembers).toContain("🇭🇰 HK-01");
+    expect(proxysMembers).toContain("🇯🇵 JP-01");
+    expect(proxysMembers).toContain("Manual");
+    expect(proxysMembers).toContain("DIRECT");
+    expect(proxysMembers).toContain("REJECT-DROP");
+    // 至少有一条 warning 提到 Proxys 组的悬空引用
+    expect(warnings.some((w) => w.includes("Proxys") && w.includes("广告测试-1"))).toBe(true);
+  });
+
   it("translates chain_via to dialer-proxy", () => {
     const nodes: Node[] = [
       {

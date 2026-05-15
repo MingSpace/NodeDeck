@@ -8,6 +8,7 @@ import type { Provider } from "../schemas/provider.js";
 import { applyNodeFilter } from "./node-filter.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames } from "./node-naming.js";
+import { validateGroupRefs } from "./group-refs.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { refreshIntervalToSeconds } from "../schemas/common.js";
@@ -54,6 +55,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
   const chained = applyChainRules(uniqued, profile);
   const groupNames = new Set(input.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
+  const sanitizedGroups = validateGroupRefs(input.groups, filteredNodes, { warnings: input.warnings });
 
   // Mihomo proxy-providers 模式:把启用了 clash_proxy_provider 的机场节点剥离出主订阅,
   // 让客户端自己去拉取 /sub/provider/:id/clash.yaml,主订阅中只保留手动节点 + 不属于
@@ -72,7 +74,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     : filteredNodes;
 
   const proxies = inlineNodes.map((n) => buildClashProxy(n, input.warnings)).filter((p): p is Record<string, unknown> => p !== null);
-  const proxyGroups = input.groups.map((g) => buildClashProxyGroup(g, filteredNodes, eligibleProviderIds));
+  const proxyGroups = sanitizedGroups.map((g) => buildClashProxyGroup(g, filteredNodes, eligibleProviderIds));
   const ruleProviders: Record<string, unknown> = {};
 
   const proxyProviders: Record<string, unknown> = {};

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
@@ -10,10 +11,17 @@ import {
   Upload,
   Power,
   ScrollText,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface NavItem {
   to: string;
@@ -33,64 +41,169 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/logs", label: "日志", icon: ScrollText },
 ];
 
+const STORAGE_KEY = "mconvert:sidebar-collapsed";
+
+function useSidebarCollapsed() {
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(STORAGE_KEY) === "1";
+  });
+  useEffect(() => {
+    window.localStorage.setItem(STORAGE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
+  return [collapsed, setCollapsed] as const;
+}
+
+function maybeWithTooltip(
+  collapsed: boolean,
+  label: string,
+  node: React.ReactElement,
+) {
+  if (!collapsed) return node;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{node}</TooltipTrigger>
+      <TooltipContent side="right">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SidebarNavLink({
+  item,
+  collapsed,
+}: {
+  item: NavItem;
+  collapsed: boolean;
+}) {
+  const link = (
+    <NavLink
+      to={item.to}
+      aria-label={collapsed ? item.label : undefined}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center rounded-md text-sm font-medium transition-colors shrink-0",
+          collapsed ? "justify-center h-9 w-9" : "gap-3 px-3 py-2 h-9",
+          isActive
+            ? "bg-secondary text-secondary-foreground"
+            : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+        )
+      }
+    >
+      <item.icon className="h-4 w-4 shrink-0" />
+      {!collapsed && <span className="truncate">{item.label}</span>}
+    </NavLink>
+  );
+  return maybeWithTooltip(collapsed, item.label, link);
+}
+
 export function AppLayout() {
   const { logout, mustChangePassword } = useAuth();
   const location = useLocation();
+  const [collapsed, setCollapsed] = useSidebarCollapsed();
+
+  const logoutBtn = (
+    <button
+      type="button"
+      onClick={() => logout()}
+      aria-label={collapsed ? "退出" : undefined}
+      className={cn(
+        "flex items-center rounded-md text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0",
+        collapsed ? "justify-center h-9 w-9" : "gap-3 w-full px-3 py-2 h-9",
+      )}
+    >
+      <Power className="h-4 w-4 shrink-0" />
+      {!collapsed && <span>退出</span>}
+    </button>
+  );
+
+  const settingsLink = (
+    <NavLink
+      to="/settings"
+      aria-label={collapsed ? "设置" : undefined}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center rounded-md text-sm font-medium transition-colors shrink-0",
+          collapsed ? "justify-center h-9 w-9" : "gap-3 px-3 py-2 h-9",
+          isActive
+            ? "bg-secondary text-secondary-foreground"
+            : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+        )
+      }
+    >
+      <SettingsIcon className="h-4 w-4 shrink-0" />
+      {!collapsed && <span>设置</span>}
+    </NavLink>
+  );
+
   return (
     <div className="flex min-h-screen">
       {mustChangePassword && <ChangePasswordDialog forced />}
-      <aside className="w-56 border-r bg-card flex flex-col">
-        <div className="px-5 py-4 border-b">
-          <Link to="/dashboard" className="block">
-            <h1 className="text-xl font-bold tracking-tight">MConvert</h1>
-            <p className="text-xs text-muted-foreground">订阅转换 + 配置中心</p>
-          </Link>
-        </div>
-        <nav className="flex-1 py-3 px-2 space-y-0.5">
-          {NAV_ITEMS.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                  isActive
-                    ? "bg-secondary text-secondary-foreground"
-                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-                )
-              }
+      <aside
+        className={cn(
+          "border-r bg-card flex flex-col transition-[width] duration-200 ease-out",
+          collapsed ? "w-14" : "w-48",
+        )}
+      >
+        <div
+          className={cn(
+            "border-b flex items-center h-14",
+            collapsed ? "justify-center" : "justify-between px-4 gap-2",
+          )}
+        >
+          {collapsed ? (
+            <button
+              type="button"
+              onClick={() => setCollapsed(false)}
+              aria-label="展开侧边栏"
+              className="h-9 w-9 flex items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
             >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </NavLink>
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          ) : (
+            <>
+              <Link to="/dashboard" className="min-w-0 block">
+                <h1 className="text-lg font-bold tracking-tight leading-tight truncate">
+                  MConvert
+                </h1>
+                <p className="text-[11px] text-muted-foreground truncate">
+                  订阅规则配置中心
+                </p>
+              </Link>
+              <button
+                type="button"
+                onClick={() => setCollapsed(true)}
+                aria-label="收起侧边栏"
+                className="h-7 w-7 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            </>
+          )}
+        </div>
+        <nav
+          className={cn(
+            "flex-1 py-3 overflow-y-auto flex flex-col",
+            collapsed ? "items-center gap-0.5" : "gap-0.5 px-2",
+          )}
+        >
+          {NAV_ITEMS.map((item) => (
+            <SidebarNavLink key={item.to} item={item} collapsed={collapsed} />
           ))}
         </nav>
-        <div className="border-t p-3 space-y-2">
-          <NavLink
-            to="/settings"
-            className={({ isActive }) =>
-              cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium",
-                isActive
-                  ? "bg-secondary text-secondary-foreground"
-                  : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-              )
-            }
-          >
-            <SettingsIcon className="h-4 w-4" />
-            设置
-          </NavLink>
-          <button
-            type="button"
-            onClick={() => logout()}
-            className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-          >
-            <Power className="h-4 w-4" />
-            退出
-          </button>
+        <div
+          className={cn(
+            "border-t flex flex-col",
+            collapsed ? "items-center gap-1 py-3" : "gap-1 p-3",
+          )}
+        >
+          {maybeWithTooltip(collapsed, "设置", settingsLink)}
+          {maybeWithTooltip(collapsed, "退出", logoutBtn)}
         </div>
       </aside>
-      <main className="flex-1 overflow-auto bg-background" key={location.pathname}>
+      <main
+        className="flex-1 overflow-auto bg-background"
+        key={location.pathname}
+      >
         <Outlet />
       </main>
     </div>

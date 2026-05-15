@@ -18,7 +18,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Plus, Trash2, Filter, Flag, Globe } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useEntityList } from "@/api/entities";
 import {
@@ -163,13 +162,13 @@ function SortableRow({ id, idx, rule, rulesetOptions, policyOptions, onUpdate, o
     <div
       ref={setNodeRef}
       style={style}
-      className="border rounded-md bg-card flex items-center gap-2 p-2"
+      className="border rounded-md bg-card flex items-center gap-1.5 px-1.5 py-1.5"
     >
       <button
         type="button"
         {...attributes}
         {...listeners}
-        className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground touch-none"
+        className="cursor-grab active:cursor-grabbing text-muted-foreground/70 hover:text-foreground touch-none shrink-0"
         title="拖拽排序"
       >
         <GripVertical className="h-4 w-4" />
@@ -177,32 +176,35 @@ function SortableRow({ id, idx, rule, rulesetOptions, policyOptions, onUpdate, o
 
       {isFinalRule(rule) && (
         <>
-          <Badge variant="warning" className="text-[10px] uppercase">FINAL</Badge>
+          <RowTypeTag tone="final" label="FINAL" title="兜底规则" />
           <PolicySelect value={rule.final} options={policyOptions} onChange={(v) => onUpdate(idx, { ...rule, final: v })} />
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground whitespace-nowrap">
+          <label
+            className="flex items-center gap-1 text-[11px] text-muted-foreground whitespace-nowrap shrink-0"
+            title="dns-failed"
+          >
             <input
               type="checkbox"
               checked={rule.dns_failed ?? false}
               onChange={(e) => onUpdate(idx, { ...rule, dns_failed: e.target.checked })}
               className="h-3 w-3"
             />
-            dns-failed
+            dns
           </label>
         </>
       )}
 
       {isGeoipRule(rule) && (
         <>
-          <Badge variant="secondary" className="text-[10px]">GEOIP CN</Badge>
+          <RowTypeTag tone="geoip" label="GEOIP" title="GeoIP CN" />
           <PolicySelect value={rule.policy} options={policyOptions} onChange={(v) => onUpdate(idx, { ...rule, policy: v })} />
         </>
       )}
 
       {isRuleSetRef(rule) && (
         <>
-          <Badge variant="outline" className="text-[10px]">规则集</Badge>
+          <RowTypeTag tone="ruleset" title="规则集" />
           <Select value={rule.ref} onValueChange={(v) => onUpdate(idx, { ...rule, ref: v })}>
-            <SelectTrigger className="h-7 text-xs flex-1 min-w-0">
+            <SelectTrigger className="h-7 text-xs flex-1 min-w-0 px-2">
               <SelectValue placeholder="选择规则集" />
             </SelectTrigger>
             <SelectContent>
@@ -216,17 +218,16 @@ function SortableRow({ id, idx, rule, rulesetOptions, policyOptions, onUpdate, o
               )}
             </SelectContent>
           </Select>
-          <span className="text-[11px] text-muted-foreground">→</span>
+          <span className="text-muted-foreground/50 text-[11px] shrink-0">→</span>
           <PolicySelect value={rule.policy} options={policyOptions} onChange={(v) => onUpdate(idx, { ...rule, policy: v })} />
-          <label className="flex items-center gap-1 text-[11px] text-muted-foreground whitespace-nowrap">
-            <input
-              type="checkbox"
-              checked={rule.enabled !== false}
-              onChange={(e) => onUpdate(idx, { ...rule, enabled: e.target.checked })}
-              className="h-3 w-3"
-            />
-            启用
-          </label>
+          <input
+            type="checkbox"
+            checked={rule.enabled !== false}
+            onChange={(e) => onUpdate(idx, { ...rule, enabled: e.target.checked })}
+            className="h-3.5 w-3.5 shrink-0"
+            title={rule.enabled !== false ? "已启用,点击禁用" : "已禁用,点击启用"}
+            aria-label="启用"
+          />
         </>
       )}
 
@@ -234,6 +235,33 @@ function SortableRow({ id, idx, rule, rulesetOptions, policyOptions, onUpdate, o
         <Trash2 className="h-3.5 w-3.5 text-destructive" />
       </Button>
     </div>
+  );
+}
+
+function RowTypeTag({
+  tone,
+  label,
+  title,
+}: {
+  tone: "ruleset" | "final" | "geoip";
+  label?: string;
+  title: string;
+}) {
+  const Icon = tone === "ruleset" ? Filter : tone === "final" ? Flag : Globe;
+  const cls =
+    tone === "ruleset"
+      ? "bg-muted text-muted-foreground"
+      : tone === "final"
+        ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+        : "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300";
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded px-1.5 h-6 text-[10px] font-medium shrink-0 ${cls}`}
+      title={title}
+    >
+      <Icon className="h-3 w-3" />
+      {label}
+    </span>
   );
 }
 
@@ -248,7 +276,7 @@ function PolicySelect({
 }) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className="h-7 text-xs w-[140px] shrink-0">
+      <SelectTrigger className="h-7 text-xs flex-1 min-w-0 px-2" title={value}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -15,6 +15,33 @@ interface Props {
 }
 
 const DIFF_BADGE_VISIBLE_MS = 1800;
+const HEIGHT_STORAGE_KEY = "mconvert.preview-pane.height";
+const MIN_HEIGHT = 200;
+const TOP_RESERVED = 200;
+
+function getDefaultHeight(): number {
+  if (typeof window === "undefined") return MIN_HEIGHT;
+  return Math.max(MIN_HEIGHT, Math.round(window.innerHeight * 0.3));
+}
+
+function clampHeight(h: number): number {
+  if (typeof window === "undefined") return Math.max(MIN_HEIGHT, h);
+  const max = Math.max(MIN_HEIGHT, window.innerHeight - TOP_RESERVED);
+  return Math.min(max, Math.max(MIN_HEIGHT, h));
+}
+
+function readStoredHeight(): number {
+  if (typeof window === "undefined") return getDefaultHeight();
+  try {
+    const raw = window.localStorage.getItem(HEIGHT_STORAGE_KEY);
+    if (!raw) return getDefaultHeight();
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n <= 0) return getDefaultHeight();
+    return clampHeight(n);
+  } catch {
+    return getDefaultHeight();
+  }
+}
 
 export function PreviewPane({ profileId, draft, enabled }: Props) {
   const [collapsed, setCollapsed] = useState(false);
@@ -22,6 +49,10 @@ export function PreviewPane({ profileId, draft, enabled }: Props) {
   const preview = useGeneratedPreview(profileId, target, draft, enabled && !collapsed);
   const [diffStats, setDiffStats] = useState<{ added: number; removed: number } | null>(null);
   const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [height, setHeight] = useState<number>(() => readStoredHeight());
+  const [dragging, setDragging] = useState(false);
+  const dragStateRef = useRef<{ startY: number; startHeight: number } | null>(null);
 
   const handleDiffStats = useCallback((stats: { added: number; removed: number }) => {
     if (stats.added === 0 && stats.removed === 0) {
@@ -39,8 +70,88 @@ export function PreviewPane({ profileId, draft, enabled }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      const st = dragStateRef.current;
+      if (!st) return;
+      const deltaY = e.clientY - st.startY;
+      setHeight(clampHeight(st.startHeight - deltaY));
+    };
+    const onUp = () => {
+      setDragging(false);
+      dragStateRef.current = null;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragging]);
+
+  useEffect(() => {
+    if (dragging) return;
+    try {
+      window.localStorage.setItem(HEIGHT_STORAGE_KEY, String(height));
+    } catch {
+      // ignore quota / privacy mode errors
+    }
+  }, [height, dragging]);
+
+  useEffect(() => {
+    const onResize = () => setHeight((h) => clampHeight(h));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const startDrag = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      dragStateRef.current = { startY: e.clientY, startHeight: height };
+      setDragging(true);
+    },
+    [height],
+  );
+
+  const resetHeight = useCallback(() => {
+    setHeight(getDefaultHeight());
+  }, []);
+
   return (
-    <div className="border-t bg-card flex flex-col shrink-0" style={{ height: collapsed ? "auto" : "30vh", minHeight: collapsed ? 0 : 200 }}>
+    <div
+      className="relative border-t bg-card flex flex-col shrink-0"
+      style={{ height: collapsed ? "auto" : height, minHeight: collapsed ? 0 : MIN_HEIGHT }}
+    >
+      {!collapsed && (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="拖拽调整预览区高度"
+          title="拖拽调整高度,双击重置"
+          onMouseDown={startDrag}
+          onDoubleClick={resetHeight}
+          className={
+            "absolute -top-1 left-0 right-0 h-2 z-10 cursor-row-resize group flex items-center justify-center " +
+            (dragging ? "select-none" : "")
+          }
+        >
+          <span
+            className={
+              "block h-0.5 w-12 rounded-full transition-colors " +
+              (dragging
+                ? "bg-primary"
+                : "bg-border group-hover:bg-muted-foreground/60")
+            }
+          />
+        </div>
+      )}
+      {dragging && (
+        <div
+          className="fixed inset-0 z-50 cursor-row-resize select-none"
+          style={{ background: "transparent" }}
+        />
+      )}
       <div className="px-4 py-2 border-b flex items-center gap-3 shrink-0">
         <button
           type="button"

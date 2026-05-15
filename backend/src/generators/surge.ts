@@ -7,6 +7,7 @@ import type { SurgeModule } from "../schemas/surge-module.js";
 import { applyNodeFilter } from "./node-filter.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, escapeSurgeNames } from "./node-naming.js";
+import { validateGroupRefs } from "./group-refs.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 
 export interface SurgeGenerateInput {
@@ -31,7 +32,8 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   const chained = applyChainRules(escaped.nodes, profile);
   const groupNames = new Set(escaped.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
-  const sanitizedGroups = escaped.groups;
+  // 清理 group.proxies 中悬空的节点名(被 node_filter 过滤掉但 group 仍显式引用的)
+  const sanitizedGroups = validateGroupRefs(escaped.groups, filteredNodes, { warnings: input.warnings });
   const lines: string[] = [];
 
   // managed-config header

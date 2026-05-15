@@ -48,12 +48,12 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="px-4 py-2.5 border-b bg-muted/30 flex items-center gap-2 shrink-0">
+      <div className="px-3 py-2.5 border-b bg-muted/30 flex items-center gap-2 shrink-0">
         <Network className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">节点来源</span>
       </div>
 
-      <div className="px-4 py-3 space-y-3 border-b shrink-0">
+      <div className="px-3 py-3 space-y-3 border-b shrink-0">
         <div>
           <div className="text-xs font-medium mb-1.5 flex items-center justify-between">
             <span>启用的节点源</span>
@@ -61,7 +61,7 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
               {draft.providers.length} / {providers.data?.items.length ?? 0}
             </span>
           </div>
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex flex-wrap gap-2">
             {providers.data?.items.map((p) => {
               const active = selectedSet.has(p.id);
               return (
@@ -70,9 +70,10 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
                   type="button"
                   onClick={() => toggleProvider(p.id)}
                   className={
-                    active
-                      ? "px-2 py-1 rounded-md text-xs font-medium border bg-primary text-primary-foreground border-primary"
-                      : "px-2 py-1 rounded-md text-xs font-medium border bg-background text-foreground hover:bg-accent border-input"
+                    "px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors disabled:opacity-50 disabled:cursor-not-allowed " +
+                    (active
+                      ? "bg-primary text-primary-foreground border-primary shadow-sm hover:bg-primary/90"
+                      : "bg-background text-foreground border-input hover:bg-accent hover:border-accent-foreground/20")
                   }
                   disabled={!p.enabled}
                   title={p.enabled ? p.id : `${p.id} (已禁用)`}
@@ -118,7 +119,7 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
         </div>
       </div>
 
-      <div className="px-4 py-2 border-b flex items-center gap-2 shrink-0">
+      <div className="px-3 py-2 border-b flex items-center gap-2 shrink-0">
         <Search className="h-3.5 w-3.5 text-muted-foreground" />
         <Input
           value={search}
@@ -145,8 +146,12 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
         )}
         <div className="divide-y">
           {filteredNodes.map((n, i) => (
-            <div key={`${n.name}-${i}`} className="px-4 py-2 flex items-center gap-2 hover:bg-muted/30 text-xs">
-              <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0">
+            <div
+              key={`${n.name}-${i}`}
+              className="px-3 py-1.5 flex items-center gap-2 hover:bg-muted/30 text-xs"
+              title={`${n.name}\n${n.server}:${n.port}${n.region ? ` · ${n.region}` : ""}${n.line ? ` · ${n.line}` : ""}`}
+            >
+              <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0 shrink-0">
                 {n.type}
               </Badge>
               <div className="flex-1 min-w-0">

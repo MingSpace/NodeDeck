@@ -116,7 +116,7 @@ export function ProfileEditorPage() {
 
       {mode === "visual" ? (
         <div className="flex-1 flex flex-col min-h-0">
-          <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(0, 1.75fr) minmax(0, 1.25fr)" }}>
+          <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 2.1fr) minmax(0, 1.3fr)" }}>
             <div className="border-r min-h-0">
               <NodeSelector
                 profileId={id}

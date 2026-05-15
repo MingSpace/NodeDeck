@@ -170,6 +170,51 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("ca-p12 = BASE64==");
   });
 
+  it("removes dangling node refs from group.proxies after node_filter and emits warning", () => {
+    const nodes: Node[] = [
+      { name: "HK-01", type: "trojan", server: "g.com", port: 443, password: "x", sni: "x.com", tls: true, tags: [] },
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "y", tags: [] },
+      { name: "AD-01", type: "ss", server: "a.com", port: 8388, cipher: "aes-128-gcm", password: "z", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "Proxys",
+        name: "Proxys",
+        type: "select",
+        proxies: ["HK-01", "JP-01", "AD-01", "Manual", "DIRECT", "REJECT-DROP"],
+      },
+      {
+        id: "Manual",
+        name: "Manual",
+        type: "select",
+        proxies: ["Proxys", "DIRECT"],
+      },
+    ];
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile({
+        proxy_groups: ["Proxys", "Manual"],
+        node_filter: { rename_rules: [], exclude_types: [], exclude_regex: "^AD-" },
+      }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Manual" },
+      surgeModules: [],
+      warnings,
+    });
+    // 行格式: <name> = select,m1,m2,...
+    const proxysLine = out.split(/\r?\n/).find((l) => l.startsWith("Proxys = "))!;
+    expect(proxysLine).toBeDefined();
+    expect(proxysLine).not.toContain("AD-01");
+    expect(proxysLine).toContain("HK-01");
+    expect(proxysLine).toContain("JP-01");
+    expect(proxysLine).toContain("Manual");
+    expect(proxysLine).toContain("DIRECT");
+    expect(proxysLine).toContain("REJECT-DROP");
+    expect(warnings.some((w) => w.includes("Proxys") && w.includes("AD-01"))).toBe(true);
+  });
+
   it("translates chain_via to underlying-proxy", () => {
     const nodes: Node[] = [
       { name: "WARP", type: "wireguard", server: "wg.com", port: 2408, private_key: "PK", public_key: "PUB", ip: "10.0.0.2/32", tags: [] },
