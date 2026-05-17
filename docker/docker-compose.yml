@@ -1,10 +1,10 @@
 services:
-  mconvert:
-    image: mconvert:latest
+  nodedeck:
+    image: nodedeck:latest
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: mconvert
+    container_name: nodedeck
     ports:
       - "8080:8080"
     volumes:

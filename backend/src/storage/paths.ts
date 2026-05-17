@@ -29,10 +29,6 @@ export function configPath(): string {
   return dataPath("config.yaml");
 }
 
-export function manualNodesPath(): string {
-  return dataPath("manual-nodes.yaml");
-}
-
 export function entityDir(sub: SubDir): string {
   return dataPath(sub);
 }

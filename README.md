@@ -1,4 +1,4 @@
-# MConvert
+# NodeDeck
 
 > 个人自用的 Clash + Surge 订阅转换器,带 Web 配置中心。
 
@@ -14,7 +14,7 @@
 - **链式代理**: 任意节点可配置前置代理(Clash `dialer-proxy` / Surge `underlying-proxy`),应用前自动做环检测 + 悬空引用降级
 - **Surge 高级特性**: Module / MITM / URL Rewrite / Header Rewrite / Script / inline ruleset / REJECT-DROP 子类型 + 通知参数 / `Profile-Update-Interval` / 节点名非法字符自动净化
 - **Clash 高级特性**: proxy-providers (按机场切片,独立健康检查) / rule-providers / DNS / TUN / sniffer / 全协议(VLESS+Reality / Hysteria2 / TUIC v5 / WireGuard 等) / Surge 专属 REJECT 子类型自动降级
-- **多机场流量聚合**: 标准 `Subscription-UserInfo` 聚合 (sum / primary 两种模式) + Web 仪表板每机场详情 + 自定义 `X-MConvert-Userinfo-<id>` header
+- **多机场流量聚合**: 标准 `Subscription-UserInfo` 聚合 (sum / primary 两种模式) + Web 仪表板每机场详情 + 自定义 `X-NodeDeck-Userinfo-<id>` header
 - **URL token 鉴权**: 12 字符 nanoid,Profile 级独立,可一键重生
 - **改完不重启**: 文件即真相,chokidar 自动失效缓存,所有配置变化即时生效
 
@@ -25,9 +25,9 @@
 ### Docker(推荐生产部署)
 
 ```bash
-git clone <this-repo> MConvert && cd MConvert
+git clone <this-repo> NodeDeck && cd NodeDeck
 cp .env.example .env       # 编辑 INITIAL_PASSWORD / SESSION_SECRET / PUBLIC_BASE_URL
-docker build -f docker/Dockerfile -t mconvert:latest .
+docker build -f docker/Dockerfile -t nodedeck:latest .
 docker compose -f docker/docker-compose.yml up -d
 ```
 

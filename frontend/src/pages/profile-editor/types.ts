@@ -28,7 +28,6 @@ export interface Profile {
   description?: string;
   token: string;
   providers: string[];
-  include_manual_nodes: boolean;
   node_filter: NodeFilter;
   chain_rules: ChainRule[];
   proxy_groups: string[];

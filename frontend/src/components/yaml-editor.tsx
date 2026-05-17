@@ -1,6 +1,16 @@
-import { Editor, type OnMount } from "@monaco-editor/react";
-import { useCallback, useEffect, useRef } from "react";
+import { Loader2 } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useRef } from "react";
+import type { OnMount } from "@monaco-editor/react";
 import { computeLineDiff } from "@/lib/line-diff";
+
+// Monaco 体积大(几 MB),拆出独立 chunk 按需加载。这一层 lazy 确保:
+// - 即使路由级 lazy 已经把 ProvidersPage 等页面切出去了,页面挂载时也不会立刻加载 Monaco
+// - 用户点开 yaml 编辑对话框 / 切到 profile-editor 的 YAML 模式时才真正下载
+// - dialog 关闭后 chunk 仍在内存,后续打开零延迟
+const Editor = lazy(async () => {
+  const m = await import("@monaco-editor/react");
+  return { default: m.Editor };
+});
 
 type MonacoEditor = Parameters<OnMount>[0];
 type MonacoNs = Parameters<OnMount>[1];
@@ -39,7 +49,7 @@ export function YamlEditor({
   const handleMount: OnMount = useCallback((editor, monaco) => {
     editorRef.current = editor;
     monacoRef.current = monaco;
-    monaco.editor.defineTheme("mconvert-light", {
+    monaco.editor.defineTheme("nodedeck-light", {
       base: "vs",
       inherit: true,
       rules: [],
@@ -111,23 +121,32 @@ export function YamlEditor({
 
   return (
     <div className="border rounded-md overflow-hidden" style={{ height }}>
-      <Editor
-        value={value}
-        onChange={(v) => onChange(v ?? "")}
-        height="100%"
-        language={language}
-        theme="vs"
-        onMount={handleMount}
-        options={{
-          minimap: { enabled: false },
-          fontSize: 12,
-          tabSize: 2,
-          scrollBeyondLastLine: false,
-          renderWhitespace: "boundary",
-          wordWrap: "on",
-          readOnly,
-        }}
-      />
+      <Suspense
+        fallback={
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+            编辑器加载中…
+          </div>
+        }
+      >
+        <Editor
+          value={value}
+          onChange={(v) => onChange(v ?? "")}
+          height="100%"
+          language={language}
+          theme="vs"
+          onMount={handleMount}
+          options={{
+            minimap: { enabled: false },
+            fontSize: 12,
+            tabSize: 2,
+            scrollBeyondLastLine: false,
+            renderWhitespace: "boundary",
+            wordWrap: "on",
+            readOnly,
+          }}
+        />
+      </Suspense>
     </div>
   );
 }

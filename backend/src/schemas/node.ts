@@ -144,9 +144,3 @@ export const nodeSchema = z.object({
 });
 
 export type Node = z.infer<typeof nodeSchema>;
-
-export const manualNodesSchema = z.object({
-  nodes: z.array(nodeSchema).default([]),
-});
-
-export type ManualNodes = z.infer<typeof manualNodesSchema>;

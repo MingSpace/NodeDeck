@@ -9,7 +9,6 @@ export const profile: Profile = {
   name: "Example",
   token: "fixturetoken",
   providers: [],
-  include_manual_nodes: true,
   node_filter: { rename_rules: [], exclude_types: [] },
   chain_rules: [],
   proxy_groups: ["Proxys", "Manual"],

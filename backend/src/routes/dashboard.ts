@@ -38,7 +38,7 @@ dashboardRouter.get("/summary", async (c) => {
 });
 
 dashboardRouter.get("/node-pool", async (c) => {
-  const pool = await buildNodePool({ includeManual: true });
+  const pool = await buildNodePool();
   const byProvider: Record<string, Node[]> = {};
   for (const [provId, nodes] of pool.byProvider) {
     byProvider[provId] = nodes;

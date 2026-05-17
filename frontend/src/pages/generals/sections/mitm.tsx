@@ -68,7 +68,7 @@ export function MitmSection({ data, update }: Props) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      const presetId = data.id || "mconvert";
+      const presetId = data.id || "nodedeck";
       a.download = `${presetId}-mitm-ca.p12`;
       document.body.appendChild(a);
       a.click();
@@ -191,7 +191,7 @@ export function MitmSection({ data, update }: Props) {
       <GenerateCaDialog
         open={showGenerate}
         onOpenChange={setShowGenerate}
-        defaultCn={`${data.name || data.id || "MConvert"} MITM CA`}
+        defaultCn={`${data.name || data.id || "NodeDeck"} MITM CA`}
         onGenerated={(p12Base64, passphrase) => {
           setMitm({ ca_p12: p12Base64, ca_passphrase: passphrase });
         }}
@@ -213,7 +213,7 @@ function GenerateCaDialog({
 }) {
   const [commonName, setCommonName] = useState(defaultCn);
   const [years, setYears] = useState(10);
-  const [passphrase, setPassphrase] = useState("mconvert");
+  const [passphrase, setPassphrase] = useState("nodedeck");
   const [showPwd, setShowPwd] = useState(true);
   const [generating, setGenerating] = useState(false);
 
@@ -267,7 +267,7 @@ function GenerateCaDialog({
             <Input
               value={commonName}
               onChange={(e) => setCommonName(e.target.value)}
-              placeholder="MConvert MITM CA"
+              placeholder="NodeDeck MITM CA"
               className="mt-1"
               disabled={generating}
             />
@@ -341,7 +341,7 @@ async function generateCaP12(cn: string, years: number, passphrase: string): Pro
   cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + years);
   const attrs = [
     { name: "commonName", value: cn },
-    { name: "organizationName", value: "MConvert" },
+    { name: "organizationName", value: "NodeDeck" },
   ];
   cert.setSubject(attrs);
   cert.setIssuer(attrs);

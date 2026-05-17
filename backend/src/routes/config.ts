@@ -25,7 +25,6 @@ const resetSchema = z.object({
       modules: z.boolean().optional(),
       general: z.boolean().optional(),
       profiles: z.boolean().optional(),
-      manual_nodes: z.boolean().optional(),
       cache: z.boolean().optional(),
       service_settings: z.boolean().optional(),
     })

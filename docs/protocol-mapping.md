@@ -71,34 +71,54 @@
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
 | `password` | `password:` | `password=` | [CS] |
-| `up` | `up: "100 Mbps"` | `upload-bandwidth=100`(数字) | [CS] |
-| `down` | `down: "200 Mbps"` | `download-bandwidth=200` | [CS] |
+| `up` | `up: "100 Mbps"` | — | [C],Surge 5 hysteria2 不支持 upload-bandwidth |
+| `down` | `down: "200 Mbps"` | `download-bandwidth=200` | [CS],Surge 端去掉 `Mbps` 后缀只留数字 |
 | `obfs` | `obfs: salamander` | `obfs=salamander` | [CS] |
 | `obfs_password` | `obfs-password:` | `obfs-password=` | [CS] |
 | `port_hopping` | `ports: 443-8443` | `port-hopping=443-8443` | [CS],键名不同 |
 | `hop_interval` | `hop-interval: 30` | `port-hopping-interval=30` | [CS],键名不同 |
 
+> Surge 5 hysteria2 字段参考 [manual.nssurge.com](https://manual.nssurge.com/policy/proxy.html)(iOS 5.8.0+ / Mac 5.4.0+)。
+
 ## 7. TUIC v5
 
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
-| `uuid` | `uuid:` | `uuid=` | [CS] |
-| `password` | `password:` | `password=` | [CS] |
-| `tuic_version` | `version: 5` | — | [C],Surge 自动识别 v5 |
+| `uuid` | `uuid:` | `uuid=` | [CS],Surge 5 TUIC v5 |
+| `password` | `password:` | `password=` | [CS],Surge 5 TUIC v5 |
+| `tuic_version` | `version: 5` | `version=5` | [CS],显式标明否则 Surge 退回 v4 (token-only) |
 | `congestion_controller` | `congestion-controller: bbr` | — | [C] |
+
+> mihomo wiki 与 Surge 实测均要求 v5 必须给 `uuid + password`,v4 仅给 `token`(本项目当前 schema 仅支持 v5)。
 
 ## 8. WireGuard
 
-| 内部抽象 | Clash | Surge | 备注 |
+WireGuard 在两端的**表达结构**完全不同:
+
+- **Clash (mihomo)**: 全部字段在 `proxies:` 单条 yaml 节点里
+- **Surge 5**: `[Proxy]` 行只声明 `<name> = wireguard, section-name=<id>`,密钥/self-ip/peer 在独立的 `[WireGuard <id>]` 段里
+
+字段键名映射:
+
+| 内部抽象 | Clash | Surge ([WireGuard X] 段内) | 备注 |
 |---|---|---|---|
-| `private_key` | `private-key:` | `private-key=` | [CS] |
-| `public_key` | `public-key:` | `public-key=` | [CS] |
-| `preshared_key` | `preshared-key:` | `preshared-key=` | [CS] |
-| `ip` | `ip:` | `self-ip=` | [CS] |
-| `ipv6` | `ipv6:` | `self-ip-v6=` | [CS] |
-| `reserved` | `reserved:` | — | [C] |
-| `mtu` | `mtu:` | `mtu=` | [CS] |
-| `peers` (multi-peer) | `peers:` | — | [C] |
+| `private_key` | `private-key:` | `private-key = ...` | [CS] |
+| `public_key` | `public-key:` | 单 peer 内 `peer = (public-key=..., ...)` | [CS],嵌在 peer 括号里 |
+| `preshared_key` | `preshared-key:` | 单 peer 内 `peer = (preshared-key=..., ...)` | [CS] |
+| `ip` | `ip:` | `self-ip = ...` | [CS] |
+| `ipv6` | `ipv6:` | `self-ip-v6 = ...` | [CS] |
+| `reserved` | `reserved: AAAA`(base64) | `peer = (..., client-id=83/12/235)`(三字节十进制) | [CS],NodeDeck 不做自动转换 + warning |
+| `mtu` | `mtu:` | `mtu = ...` | [CS] |
+| `peers` (multi-peer) | `peers: [{...}, {...}]` | 多行 `peer = (public-key=..., endpoint=..., allowed-ips="...")` | [CS] |
+
+参考 [Surge manual: WireGuard](https://manual.nssurge.com/policy/wireguard.html)。
+
+**NodeDeck 实现注意**:
+
+1. `[WireGuard <id>]` 的 `<id>` 要求 ASCII 字母数字 + `-_`,generator 把节点名 emoji/中文/空格剥成 `-`,空了用 `wg-N` 兜底
+2. 节点没有 `peers[]` 时,从节点根字段(`server/port/public_key/preshared_key`)合成单 peer,`allowed-ips` 默认 `0.0.0.0/0, ::/0`
+3. wireguard 节点不接受 `chain_via` (Surge L3 隧道无法叠 underlying-proxy),命中时发 warning
+4. Surge parser 当前只解析 inline 写法的 wireguard,section-name 模式输入会丢密钥(整包导入路径未来可扩展)
 
 ## 9. Snell
 
@@ -108,7 +128,7 @@
 | `snell_version` | — | `version=` | [S] |
 | `obfs`, `obfs_host` | — | `obfs=`, `obfs-host=` | [S] |
 
-> Clash 内核不原生支持 Snell;MConvert 在 Clash 输出中跳过 Snell 节点并发出警告。
+> Clash 内核不原生支持 Snell;NodeDeck 在 Clash 输出中跳过 Snell 节点并发出警告。
 
 ---
 
@@ -196,7 +216,7 @@
 | 主订阅(profile) | proxy-provider 拉取目标 |
 |---|---|
 | `proxy-providers:` 段列出 N 个机场 | `GET /sub/provider/<id>/clash.yaml?profile=<pid>&t=<token>` |
-| `proxies:` 仅含手动节点 + 不属于这些机场的节点 | 仅 `proxies:` 段(经过该 profile 的 `node_filter`) |
+| `proxies:` 仅含 inline Provider 节点 + 不属于这些机场的节点 | 仅 `proxies:` 段(经过该 profile 的 `node_filter`) |
 | `proxy-groups[i].use: [<provider_id>]` | — |
 
 **好处**:主订阅文件更小;客户端可对每机场独立健康检查;一键切换/禁用某机场只动 provider 即可。

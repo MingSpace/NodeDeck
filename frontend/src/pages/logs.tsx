@@ -66,7 +66,7 @@ export function LogsPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen p-6 max-w-[1600px]">
+    <div className="flex flex-col h-screen p-6 max-w-[1800px] mx-auto w-full">
       <header className="mb-4 shrink-0">
         <h1 className="text-2xl font-bold tracking-tight">日志</h1>
         <p className="text-sm text-muted-foreground mt-1">

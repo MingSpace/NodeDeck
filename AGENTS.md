@@ -1,4 +1,4 @@
-# AGENTS.md - MConvert
+# AGENTS.md - NodeDeck
 
 ## Agent Role
 
@@ -11,7 +11,7 @@
 
 ## Project Overview
 
-MConvert = 个人自用的 Clash + Surge 订阅转换器 + Web 配置中心。完整设计文档见 `[docs/design.md](docs/design.md)`。
+NodeDeck = 个人自用的 Clash + Surge 订阅转换器 + Web 配置中心。完整设计文档见 `[docs/design.md](docs/design.md)`。
 
 ## Tech Stack
 
@@ -67,10 +67,50 @@ pnpm docker:logs             # 看日志
 pnpm docker:down             # 停
 ```
 
+## Local Dev Environment (优先复用,不要瞎起)
+
+用户长期在本地保持 `pnpm dev` 运行(frontend:5173 / backend:8080)。**在执行 `pnpm dev` / `pnpm -F frontend dev` / `pnpm -F backend dev` 之前,必须先按下面顺序确认本地是否已经在跑,跑着就直接复用,不要再起新进程**(双开 vite 会端口冲突,双开 tsx watch 会触发重复编译 + 文件系统竞争)。
+
+探测顺序:
+
+1. **终端文件**: `head -n 10 /home/mings/.cursor/projects/home-mings-Code-MConvert/terminals/*.txt`,找 `command:` 含 `pnpm.*dev` / `vite` / `tsx watch` 且 `running_for_ms` 不为空的条目
+2. **端口监听**: `ss -tlnp | grep -E ':(5173|8080)'`(或 `netstat -tlnp`),只要看到有进程 LISTEN 就当作已起
+3. **HTTP 探活**: `curl -sS -o /dev/null -w "%{http_code}\n" --max-time 5 http://localhost:5173/` 与 `http://localhost:8080/api/health`,200 即可用
+
+**重要**: 沙盒里 `ls /workspace` 看不到用户的项目目录不代表没跑 —— 用户在宿主机 `/home/mings/Code/MConvert` 里跑 dev server,沙盒和宿主共享 network namespace,localhost 直接通。**不要因为"找不到代码"就推断"没启动"然后自作主张 `pnpm install && pnpm dev`**。
+
+只有上面三步全失败,才需要起新进程;起之前先和用户确认一句"本地没探测到 dev server,要我帮你起吗?"
+
+### 前端 UI 验证(`cursor-ide-browser` 用法,务必看完)
+
+按"需要看到什么"分两路:
+
+- **只要 HTTP 状态码 / API JSON / SSR 后 HTML 骨架** → `curl http://localhost:5173/<route>` 或 `curl http://localhost:8080/api/<path>`,agent 自己就能跑,无需用户参与
+- **要看渲染后的 DOM / 截图 / 控制台错误 / 网络请求** → 必须用 `cursor-ide-browser` MCP 的 `browser_navigate` / `browser_snapshot` / `browser_take_screenshot` / `browser_console_messages` 等工具
+
+**`cursor-ide-browser` 的关键机制(很反直觉,踩过坑)**:
+
+1. **首次激活必须由用户在聊天里发 `@Browser` mention**(任意 prompt,例如 `@Browser 看下 /providers 渲染对不对`)。Mention 解析只发生在用户输入阶段,**parent agent 没法在自己的回复里"自我触发"** —— 即便你输出字符串 `@Browser` 也不会触发工具注入
+2. **一旦在某个 conversation 里触发过 mention,工具注入是粘性的** —— 后续 turn 里 agent 可以直接 `CallMcpTool` 调用 `browser_*` 系列,不需要用户每轮都打 `@Browser`
+3. **新会话(/new chat)开始时,粘性失效**,需要用户重新发一次 mention 才能再次激活
+
+**如何判断当前会话有没有激活**:试调用一次 `browser_tabs` action="list",成功返回(可能为空 tabs 列表)就是激活了;返回 `Tool not found, available tools:` 空 list 就是没激活,**这时去请求用户用 `@Browser` 触发,不要尝试任何"绕过"方案**(下面这些都是死路,不要再走):
+
+- ❌ 看 `mcps/cursor-ide-browser/tools/` 目录是不是空的 —— **它本来就是空的**,工具是按 mention 动态注入的,不落盘到 `tools/*.json`
+- ❌ 看 `~/.cursor-server/data/logs/*/exthost*/anysphere.cursor-agent-exec/Mcp FileSystem Writer.log` 里有没有 `lease returned 0 tools across 1 clients` —— **常态就是 0**,这是上游故意设计,不是 bug
+- ❌ 推断"Remote-WSL 模式不支持 / Cursor 版本有 bug / Browser 面板没开" —— 都不是,跟 WSL 远程模式、Cursor 客户端版本、Browser 面板状态都无关
+- ❌ 用 `Task` 工具 spawn `generalPurpose` 等 subagent 让它代调 —— subagent 上下文也拿不到,工具集只 lease 给"用户主动 mention 过 `@Browser`"的 parent 上下文
+
+**调用注意事项**(完整指南见 `mcps/cursor-ide-browser/INSTRUCTIONS.md`):
+
+- 任何会改变页面结构的动作(`browser_navigate` / `browser_click` / `browser_fill` 等)之后,下一步交互前要先 `browser_snapshot` 拿 fresh ref
+- 多步连续交互前先 `browser_lock` action="lock",收尾时 `browser_lock` action="unlock";单次"打开 + 截图"这种只读操作可以不 lock
+- 优先 `browser_snapshot` 拿 ARIA refs 再点击,**避免** `browser_mouse_click_xy` 这种坐标点击(除非 DOM 交互失败)
+
 ## Project Structure
 
 ```
-MConvert/
+NodeDeck/
 ├── backend/
 │   ├── src/
 │   │   ├── index.ts                # Hono app entry

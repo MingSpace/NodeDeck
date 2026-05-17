@@ -151,7 +151,7 @@ export function EntityListPage<T extends { id: string; name?: string }>({
   };
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-[1800px] mx-auto">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>

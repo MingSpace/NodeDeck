@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import { importSurgeConf } from "../../src/import/surge.js";
-import { manualNodesSchema } from "../../src/schemas/node.js";
+import { nodeSchema } from "../../src/schemas/node.js";
+
+// 这个 test 历史上用 manualNodesSchema(已删) 校验 importer 输出。
+// 现在直接校验 nodes 数组本身 — 验"importer 出来的节点全都能过 nodeSchema"这个语义。
+const nodeArraySchema = z.array(nodeSchema);
 
 const SAMPLE_SURGE = `
 [General]
@@ -125,6 +130,50 @@ describe("importSurgeConf", () => {
     expect(r.modules).toEqual([]);
   });
 
+  // http-api / ipv6-vif / wifi 系列 / always-real-ip 历史上没解析过,
+  // 用户拿原配置一键导入会丢字段。这里固化解析行为,防止以后回归。
+  // http-api 兼容 Surge 官方 `^` 与 NodeDeck generator 当前的 `:` 两种分隔。
+  it("parses http-api / ipv6-vif / wifi-assist / allow-hotspot-access / always-real-ip", () => {
+    const text = `
+[General]
+http-api = M1ing^secret@0.0.0.0:8890
+http-api-web-dashboard = true
+http-api-tls = flase
+ipv6-vif = off
+wifi-assist = true
+allow-hotspot-access = true
+allow-wifi-access = false
+always-real-ip = msftconnecttest.com, *.srv.nintendo.net
+proxy-test-udp = www.apple.com@64.6.64.6
+geoip-maxmind-url = https://example.com/cn.mmdb
+show-error-page-for-reject = true
+`;
+    const r = importSurgeConf(text);
+    expect(r.general?.http_api).toEqual({
+      user: "M1ing",
+      password: "secret",
+      listen: "0.0.0.0:8890",
+      web_dashboard: true,
+      tls: false,
+    });
+    expect(r.general?.ipv6_vif).toBe("off");
+    expect(r.general?.wifi_assist).toBe(true);
+    expect(r.general?.allow_hotspot_access).toBe(true);
+    expect(r.general?.allow_wifi_access).toBe(false);
+    expect(r.general?.always_real_ip).toEqual(["msftconnecttest.com", "*.srv.nintendo.net"]);
+    expect(r.general?.proxy_test_udp).toBe("www.apple.com@64.6.64.6");
+    expect(r.general?.geoip_maxmind_url).toBe("https://example.com/cn.mmdb");
+    expect(r.general?.show_error_page_for_reject).toBe(true);
+  });
+
+  it("parses http-api with `:` separator (NodeDeck generator style) and without user", () => {
+    const r1 = importSurgeConf(`[General]\nhttp-api = user:pw@127.0.0.1:8080\n`);
+    expect(r1.general?.http_api).toMatchObject({ user: "user", password: "pw", listen: "127.0.0.1:8080" });
+
+    const r2 = importSurgeConf(`[General]\nhttp-api = onlypassword@127.0.0.1:8080\n`);
+    expect(r2.general?.http_api).toMatchObject({ user: "M1ing", password: "onlypassword", listen: "127.0.0.1:8080" });
+  });
+
   // Surge 内置 ruleset SYSTEM/LAN (manual.nssurge.com/rule/ruleset.html#internal-ruleset)
   // 平台共有,导入时识别成 type=surge_internal,留给 generator 各自处理:
   // - Surge generator: 直接 `RULE-SET,<SYSTEM|LAN>,POLICY`
@@ -162,10 +211,40 @@ RULE-SET,UNKNOWN-NAME,DIRECT
     expect(r.ruleSets.find((rs) => rs.url === "https://example.com/test.conf")).toBeDefined();
   });
 
+  // 回归: `[SSID Setting]` 段历史上 importer 主流程没解析,导致
+  // "导入 .conf → 建 profile → 生成 .conf"链路上 SSID 段被静默丢弃,
+  // 用户需要再手动到 generals 编辑器补一次。补这一刀闭合回环。
+  // 同时覆盖几个边界:
+  // - SSID 名含 `.` (常见,如 `Forever.`)
+  // - 大小写不敏感的前缀 `ssid:`
+  // - 多条 SSID 行
+  // - 非 SSID 行 (`cellular=...`) 不进 general.ssid_rules (那是 SSID Proxy Group 的语法)
+  it("parses [SSID Setting] into general.ssid_rules and ignores non-SSID lines", () => {
+    // 与 parseHostSection / parseMitmSection 同款语义: SSID 必须挂在已有 general 上,
+    // 因此 fixture 至少要带一个最小 [General] 段。
+    const text = `
+[General]
+loglevel = notify
+
+[SSID Setting]
+SSID:Forever. suspend=true
+SSID:Office policy=DIRECT
+ssid:Home suspend=false policy=Proxys
+cellular=Auto
+default=DIRECT
+`;
+    const r = importSurgeConf(text);
+    expect(r.general?.ssid_rules).toEqual([
+      { ssid: "Forever.", suspend: true },
+      { ssid: "Office", policy: "DIRECT" },
+      { ssid: "Home", suspend: false, policy: "Proxys" },
+    ]);
+  });
+
   // 回归: Surge 配置里常见 `DIRECT = direct` 伪节点会被解析成 port=0,
-  // 让 manualNodesSchema 校验失败,导致 /api/import/commit 整个 500。
+  // 让 nodeSchema 校验失败,导致 /api/import/commit 整个 500。
   // 现在直接跳过这种伪节点,并通过 warning 告知用户。
-  it("skips pseudo `direct` proxy lines and emits a warning, manualNodesSchema accepts the rest", () => {
+  it("skips pseudo `direct` proxy lines and emits a warning, nodeSchema accepts the rest", () => {
     const text = `
 [Proxy]
 DIRECT = direct
@@ -176,7 +255,7 @@ DIRECT-en0 = direct, interface=en0
     expect(r.manualNodes).toHaveLength(1);
     expect(r.manualNodes[0].name).toBe("🇭🇰 HK");
     expect(r.warnings.some((w) => w.includes("direct"))).toBe(true);
-    const parsed = manualNodesSchema.safeParse({ nodes: r.manualNodes });
+    const parsed = nodeArraySchema.safeParse(r.manualNodes);
     expect(parsed.success).toBe(true);
   });
 

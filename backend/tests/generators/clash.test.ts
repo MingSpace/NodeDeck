@@ -12,7 +12,6 @@ function baseProfile(overrides: Partial<Profile> = {}): Profile {
     name: "Home",
     token: "abcdefghij12",
     providers: [],
-    include_manual_nodes: true,
     node_filter: { rename_rules: [], exclude_types: [] },
     chain_rules: [],
     proxy_groups: [],

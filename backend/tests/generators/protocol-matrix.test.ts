@@ -120,4 +120,144 @@ describe("protocol matrix snapshot", () => {
     expect(out).not.toMatch(/dialer-proxy:/);
     expect(warnings.some((w) => w.includes("Chain dangling") && w.includes("GhostNode"))).toBe(true);
   });
+
+  // Surge 5 wireguard 必须用 section-name 模式(参见 manual.nssurge.com/policy/wireguard.html)。
+  // 这里直接断言关键结构字段,避免完全依赖 snapshot 的脆弱性 — 即使 snapshot 丢失也能锁住格式契约。
+  it("Surge wireguard 输出 section-name + [WireGuard <id>] 段 + peer = (...)", () => {
+    const node: Node = {
+      name: "WG-Test",
+      type: "wireguard",
+      server: "wg.example.com",
+      port: 51820,
+      private_key: "PRIV-KEY",
+      public_key: "PUB-KEY",
+      preshared_key: "PSK",
+      ip: "10.0.0.2/32",
+      mtu: 1280,
+      tags: [],
+    };
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    // [Proxy] 行只引用 section name,不再 inline private-key 等敏感字段
+    expect(surge).toMatch(/^WG-Test = wireguard, section-name=WG-Test$/m);
+    expect(surge).not.toMatch(/^WG-Test = wireguard, wg\.example\.com,/m);
+    // [WireGuard WG-Test] 段必含 private-key / self-ip / peer = (...)
+    expect(surge).toContain("[WireGuard WG-Test]");
+    expect(surge).toContain("private-key = PRIV-KEY");
+    expect(surge).toContain("self-ip = 10.0.0.2/32");
+    expect(surge).toContain("mtu = 1280");
+    expect(surge).toMatch(
+      /peer = \(public-key = PUB-KEY, preshared-key = PSK, allowed-ips = "0\.0\.0\.0\/0, ::\/0", endpoint = wg\.example\.com:51820\)/,
+    );
+  });
+
+  it("Surge wireguard 节点名含 emoji/空格 → section id 自动 sanitize 成 ASCII", () => {
+    const node: Node = {
+      name: "🛡 我的 WARP 节点",
+      type: "wireguard",
+      server: "wg.example.com",
+      port: 2408,
+      private_key: "PK",
+      public_key: "PUB",
+      ip: "172.16.0.2/32",
+      tags: [],
+    };
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    // section-name 必须是 ASCII 安全 token,但 [Proxy] 行的节点名(=左侧)保持原样
+    expect(surge).toMatch(/^🛡 我的 WARP 节点 = wireguard, section-name=[A-Za-z0-9_-]+$/m);
+    // 段头与 [Proxy] 行的 section id 必须一致
+    const m = surge.match(/section-name=([A-Za-z0-9_-]+)/);
+    expect(m).not.toBeNull();
+    const sid = m![1];
+    expect(surge).toContain(`[WireGuard ${sid}]`);
+  });
+
+  it("Surge hysteria2 不输出 upload-bandwidth(Surge 5 不支持)", () => {
+    const node: Node = {
+      name: "HY2",
+      type: "hysteria2",
+      server: "hy2.example.com",
+      port: 443,
+      password: "pw",
+      up: "100 Mbps",
+      down: "500 Mbps",
+      tls: true,
+      tags: [],
+    };
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(surge).toContain("download-bandwidth=500");
+    expect(surge).not.toContain("upload-bandwidth");
+  });
+
+  it("Surge tuic v5 必须显式输出 version=5 字段", () => {
+    const node: Node = {
+      name: "TUIC",
+      type: "tuic",
+      server: "tuic.example.com",
+      port: 443,
+      uuid: "11111111-2222-3333-4444-555555555555",
+      password: "pw",
+      tuic_version: 5,
+      tls: true,
+      tags: [],
+    };
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(surge).toContain("version=5");
+    expect(surge).toContain("uuid=11111111-2222-3333-4444-555555555555");
+    expect(surge).toContain("password=pw");
+  });
+
+  it("Surge wireguard 节点带 chain_via 时发 warning(Surge 不支持 wg 叠 underlying-proxy)", () => {
+    const node: Node = {
+      name: "WG-Chained",
+      type: "wireguard",
+      server: "wg.example.com",
+      port: 51820,
+      private_key: "PK",
+      public_key: "PUB",
+      ip: "10.0.0.2/32",
+      chain_via: "Some-Front",
+      tags: [],
+    };
+    const warnings: string[] = [];
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings,
+    });
+    expect(warnings.some((w) => w.includes("WG-Chained") && w.includes("chain_via"))).toBe(true);
+    // 即使发了 warning,wireguard 节点本身仍然要正常输出
+    expect(surge).toContain("section-name=WG-Chained");
+    expect(surge).toContain("[WireGuard WG-Chained]");
+  });
 });

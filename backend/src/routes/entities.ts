@@ -15,8 +15,6 @@ import { proxyGroupSchema } from "../schemas/proxy-group.js";
 import { generalPresetSchema } from "../schemas/general-preset.js";
 import { surgeModuleSchema } from "../schemas/surge-module.js";
 import { profileSchema } from "../schemas/profile.js";
-import { readManualNodes, writeManualNodes } from "../storage/manual-nodes.js";
-import { manualNodesSchema } from "../schemas/node.js";
 import { refreshProvider } from "../providers/load.js";
 import { logger } from "../logger.js";
 
@@ -35,27 +33,6 @@ const KINDS: Record<string, EntityKindDef> = {
 };
 
 export const entitiesRouter = new Hono();
-
-// Manual nodes (singleton, not part of repo grid).
-// MUST be registered before the dynamic `/:kind` routes — Hono's SmartRouter
-// matches single-segment paths in registration order when a static path collides
-// with a parameter path, so a later `/manual-nodes` route would otherwise be
-// shadowed by the earlier `/:kind` handler.
-entitiesRouter.get("/manual-nodes", async (c) => {
-  const data = await readManualNodes();
-  return c.json(data);
-});
-
-entitiesRouter.put("/manual-nodes", async (c) => {
-  const body = await c.req.json().catch(() => null);
-  if (!body) return c.json({ error: "invalid json" }, 400);
-  const result = manualNodesSchema.safeParse(body);
-  if (!result.success) {
-    return c.json({ error: "validation failed", details: result.error.flatten() }, 400);
-  }
-  await writeManualNodes(result.data);
-  return c.json(result.data);
-});
 
 entitiesRouter.get("/:kind", async (c) => {
   const def = KINDS[c.req.param("kind")];

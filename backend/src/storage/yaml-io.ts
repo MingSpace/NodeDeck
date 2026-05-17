@@ -65,7 +65,10 @@ export async function readJson<T>(path: string): Promise<T | null> {
 
 export async function writeJson(path: string, data: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  const text = JSON.stringify(data, null, 2);
+  // cache 文件是程序自读自写的中间产物(不给人看),用 minified JSON:
+  // - 几百节点的机场 cache 文件能省 30% 左右体积
+  // - 写盘 IO 更快,chokidar 的 awaitWriteFinish 也更快稳定
+  const text = JSON.stringify(data);
   const tmp = `${path}.${process.pid}.tmp`;
   await writeFile(tmp, text, "utf8");
   await rename(tmp, path);

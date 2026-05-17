@@ -8,7 +8,7 @@ import yaml from "js-yaml";
 // reset 走真实 fs:vi.mock 是 hoisted 的,工厂里不能引用 top-level 变量,
 // 因此用 mkdtempSync 在工厂内部同步建好目录,再通过 env.DATA_DIR 暴露给测试体使用。
 vi.mock("../../src/env.js", () => {
-  const dataDir = mkdtempSync(join(tmpdir(), "mconvert-reset-"));
+  const dataDir = mkdtempSync(join(tmpdir(), "nodedeck-reset-"));
   return {
     env: {
       NODE_ENV: "test",
@@ -23,11 +23,11 @@ vi.mock("../../src/env.js", () => {
 });
 
 import { resetData } from "../../src/storage/reset.js";
-import { configPath, dataPath, manualNodesPath } from "../../src/storage/paths.js";
+import { configPath, dataPath } from "../../src/storage/paths.js";
 import { env } from "../../src/env.js";
 
 async function seed(): Promise<void> {
-  // 全套 data 目录:一个 yaml + 一个 cache json + manual-nodes + config
+  // 全套 data 目录:一个 yaml + 一个 cache json + config
   for (const sub of ["providers", "rules", "groups", "modules", "general", "profiles", "cache"]) {
     await mkdir(dataPath(sub), { recursive: true });
   }
@@ -39,7 +39,6 @@ async function seed(): Promise<void> {
   await writeFile(dataPath("general", "gen1.yaml"), "id: gen1\n");
   await writeFile(dataPath("profiles", "home.yaml"), "id: home\n");
   await writeFile(dataPath("cache", "p1.json"), "{}");
-  await writeFile(manualNodesPath(), "nodes: []\n");
   // config.yaml 包含完整 admin 段 — 这是最关键的不变量,reset 后必须仍然在。
   const cfg = {
     admin: {
@@ -72,13 +71,11 @@ afterEach(async () => {
       }
     }
   }
-  for (const f of [manualNodesPath(), configPath()]) {
-    if (existsSync(f)) {
-      try {
-        await unlink(f);
-      } catch {
-        // ignore
-      }
+  if (existsSync(configPath())) {
+    try {
+      await unlink(configPath());
+    } catch {
+      // ignore
     }
   }
 });
@@ -92,7 +89,6 @@ describe("resetData", () => {
       modules: true,
       general: true,
       profiles: true,
-      manual_nodes: true,
       cache: true,
       service_settings: true,
     });
@@ -123,7 +119,6 @@ describe("resetData", () => {
       modules: false,
       general: false,
       profiles: false,
-      manual_nodes: false,
       cache: false,
       service_settings: false,
     });
@@ -140,7 +135,6 @@ describe("resetData", () => {
     expect(await readdir(dataPath("modules"))).toEqual(["m1.yaml"]);
     expect(await readdir(dataPath("general"))).toEqual(["gen1.yaml"]);
     expect(await readdir(dataPath("profiles"))).toEqual(["home.yaml"]);
-    expect(existsSync(manualNodesPath())).toBe(true);
   });
 
   it("scope 全为 false 时不删任何文件", async () => {
@@ -152,23 +146,24 @@ describe("resetData", () => {
       modules: 0,
       general: 0,
       profiles: 0,
-      manual_nodes: 0,
       cache: 0,
       service_settings: false,
     });
     // 文件全部还在
     expect(await readdir(dataPath("providers"))).toHaveLength(2);
     expect(await readdir(dataPath("cache"))).toHaveLength(1);
-    expect(existsSync(manualNodesPath())).toBe(true);
   });
 
-  it("manual_nodes 单独勾选时只删 manual-nodes.yaml", async () => {
-    const result = await resetData({ manual_nodes: true });
-    expect(result.removed.manual_nodes).toBe(1);
-    expect(existsSync(manualNodesPath())).toBe(false);
-    // providers 和 cache 没动
+  it("cache=true 但 providers=false 单独勾选时,cache 仍会被清空(reset.ts L86 显式 || providers 联动)", async () => {
+    // 与 service_settings 并列,这是用户想"只清缓存让所有 provider 下次重拉"的场景。
+    const result = await resetData({ cache: true });
+
+    // cache 被清,但 provider 等其他实体目录原封不动
+    expect(await readdir(dataPath("cache"))).toEqual([]);
+    expect(result.removed.cache).toBe(1);
     expect(await readdir(dataPath("providers"))).toHaveLength(2);
-    expect(await readdir(dataPath("cache"))).toHaveLength(1);
+    expect(result.removed.providers).toBe(0);
+    expect(await readdir(dataPath("rules"))).toHaveLength(1);
   });
 
   it("service_settings 单独勾选时不动任何 yaml 实体,只重置 config.yaml 的服务字段", async () => {
@@ -176,10 +171,13 @@ describe("resetData", () => {
 
     expect(result.removed.service_settings).toBe(true);
     expect(result.removed.providers).toBe(0);
+    // service_settings 不联动 cache,cache 文件保留
+    expect(result.removed.cache).toBe(0);
 
     // 实体目录不动
     expect(await readdir(dataPath("providers"))).toHaveLength(2);
     expect(await readdir(dataPath("rules"))).toHaveLength(1);
+    expect(await readdir(dataPath("cache"))).toHaveLength(1);
 
     // config.yaml admin 保留 + 服务字段被重置
     const cfg = yaml.load(await readFile(configPath(), "utf8")) as {

@@ -7,7 +7,6 @@ export function emptyProfile(overrides: Partial<Profile> = {}): Profile {
     name: "Matrix",
     token: "matrixtoken",
     providers: [],
-    include_manual_nodes: true,
     node_filter: { rename_rules: [], exclude_types: [] },
     chain_rules: [],
     proxy_groups: [],

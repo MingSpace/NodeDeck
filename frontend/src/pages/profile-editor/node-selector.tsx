@@ -86,15 +86,6 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
               <span className="text-xs text-muted-foreground">暂无节点源,请先到「节点源」添加</span>
             )}
           </div>
-          <label className="flex items-center gap-2 mt-2 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={draft.include_manual_nodes}
-              onChange={(e) => onChange({ include_manual_nodes: e.target.checked })}
-              className="h-3.5 w-3.5"
-            />
-            包含手动节点
-          </label>
         </div>
 
         <div className="space-y-2">

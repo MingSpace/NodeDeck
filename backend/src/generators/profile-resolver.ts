@@ -33,31 +33,42 @@ export interface ResolvedProfile {
 
 export async function resolveProfile(profile: Profile): Promise<ResolvedProfile> {
   const warnings: string[] = [];
-  const pool = await buildNodePool({
-    providerIds: profile.providers,
-    includeManual: profile.include_manual_nodes,
-  });
+
+  // 把所有 IO(节点池 / providers / groups / rulesets / general / surge modules / 全 group 列表)
+  // 全部并发起飞。warnings 仍然按 profile 中的原始顺序生成,与串行版输出一致。
+  const ruleRefs = profile.rule_modules.flatMap((m) =>
+    "final" in m || "geoip_cn" in m || m.enabled === false ? [] : [m.ref],
+  );
+
+  const [pool, providerEntries, groupEntries, ruleEntries, generalEntry, surgeModuleEntries, allGroupEntries] =
+    await Promise.all([
+      buildNodePool({ providerIds: profile.providers }),
+      Promise.all(profile.providers.map((id) => providerRepo.get(id))),
+      Promise.all(profile.proxy_groups.map((id) => proxyGroupRepo.get(id))),
+      Promise.all(ruleRefs.map((ref) => rulesetRepo.get(ref))),
+      profile.general_preset ? generalPresetRepo.get(profile.general_preset) : Promise.resolve(null),
+      Promise.all(profile.surge_modules.map((id) => surgeModuleRepo.get(id))),
+      proxyGroupRepo.list(),
+    ]);
 
   const providers: Provider[] = [];
-  for (const id of profile.providers) {
-    const entry = await providerRepo.get(id);
+  providerEntries.forEach((entry) => {
     if (entry && entry.data.enabled) providers.push(entry.data);
-  }
+  });
 
   const groups: ProxyGroup[] = [];
-  for (const id of profile.proxy_groups) {
-    const entry = await proxyGroupRepo.get(id);
+  profile.proxy_groups.forEach((id, i) => {
+    const entry = groupEntries[i];
     if (entry) groups.push(entry.data);
     else warnings.push(`proxy_group "${id}" not found`);
-  }
+  });
 
-  // 全局 group 名集合,只供诊断用(详见 ResolvedProfile.allKnownGroupNames 注释)
-  const allGroupEntries = await proxyGroupRepo.list();
   const allKnownGroupNames = new Set(allGroupEntries.map((e) => e.data.name));
 
   const rules: { ref: string; policy: string; ruleset: RuleSet }[] = [];
   let finalRule: ResolvedProfile["finalRule"];
   let geoipFallback: ResolvedProfile["geoipFallback"];
+  let ruleIdx = 0;
   for (const item of profile.rule_modules) {
     if ("final" in item) {
       finalRule = { policy: item.final, dns_failed: item.dns_failed };
@@ -68,24 +79,23 @@ export async function resolveProfile(profile: Profile): Promise<ResolvedProfile>
       continue;
     }
     if (item.enabled === false) continue;
-    const entry = await rulesetRepo.get(item.ref);
+    const entry = ruleEntries[ruleIdx++];
     if (entry) rules.push({ ref: item.ref, policy: item.policy, ruleset: entry.data });
     else warnings.push(`ruleset "${item.ref}" not found`);
   }
 
   let general: GeneralPreset | undefined;
   if (profile.general_preset) {
-    const entry = await generalPresetRepo.get(profile.general_preset);
-    if (entry) general = entry.data;
+    if (generalEntry) general = generalEntry.data;
     else warnings.push(`general_preset "${profile.general_preset}" not found`);
   }
 
   const surgeModules: SurgeModule[] = [];
-  for (const id of profile.surge_modules) {
-    const entry = await surgeModuleRepo.get(id);
+  profile.surge_modules.forEach((id, i) => {
+    const entry = surgeModuleEntries[i];
     if (entry) surgeModules.push(entry.data);
     else warnings.push(`surge_module "${id}" not found`);
-  }
+  });
 
   return {
     profile,

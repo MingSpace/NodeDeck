@@ -36,7 +36,7 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-2xl">MConvert</CardTitle>
+          <CardTitle className="text-2xl">NodeDeck</CardTitle>
           <CardDescription>订阅转换 + 配置中心</CardDescription>
         </CardHeader>
         <CardContent>

@@ -20,7 +20,7 @@ import { toast } from "@/components/ui/toast";
 interface PreviewResp {
   kind: "surge" | "clash";
   counts: {
-    manual_nodes: number;
+    nodes: number;
     rule_sets: number;
     proxy_groups: number;
     modules: number;
@@ -35,14 +35,19 @@ interface CommitResp {
   stats: {
     general: number;
     general_skipped: number;
-    manual_nodes: number;
-    manual_nodes_skipped: number;
+    /** 包入新 inline Provider 的节点数(单次导入 = 至多 1 个 Provider) */
+    nodes: number;
+    nodes_skipped: number;
     rules: number;
     rules_skipped: number;
     groups: number;
     groups_skipped: number;
     modules: number;
     modules_skipped: number;
+    /** 新创建的 inline Provider 数 (0 或 1) */
+    providers: number;
+    /** 新建 Provider 的 id 列表 */
+    provider_ids: string[];
   };
   warnings: string[];
 }
@@ -83,14 +88,14 @@ export function ImportPage() {
       }),
     onSuccess: (data) => {
       const totalSkipped =
-        data.stats.manual_nodes_skipped +
+        data.stats.nodes_skipped +
         data.stats.rules_skipped +
         data.stats.groups_skipped +
         data.stats.modules_skipped +
         data.stats.general_skipped;
       const total =
         data.stats.general +
-        data.stats.manual_nodes +
+        data.stats.nodes +
         data.stats.rules +
         data.stats.groups +
         data.stats.modules;
@@ -98,7 +103,7 @@ export function ImportPage() {
       const skippedHint = totalSkipped > 0 ? `, 跳过重复 ${totalSkipped} 项(已存在等价条目)` : "";
       toast({
         title: total === 0 && totalSkipped > 0 ? "无新增 (全部为已存在条目)" : "导入完成",
-        description: `共导入 ${total} 项: nodes=${data.stats.manual_nodes}, rules=${data.stats.rules}, groups=${data.stats.groups}, modules=${data.stats.modules}, general=${data.stats.general}${skippedHint}`,
+        description: `共导入 ${total} 项: nodes=${data.stats.nodes}(打包为 ${data.stats.providers} 个静态节点源), rules=${data.stats.rules}, groups=${data.stats.groups}, modules=${data.stats.modules}, general=${data.stats.general}${skippedHint}`,
         variant: "success",
       });
       setDetailsOpen(true);
@@ -118,7 +123,7 @@ export function ImportPage() {
   };
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-[1800px] mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">导入向导</h1>
         <p className="text-muted-foreground mt-1">
@@ -208,7 +213,7 @@ export function ImportPage() {
                     <span className="font-medium uppercase">{preview.kind}</span>
                   </div>
                   <Stat label="通用预设" count={preview.counts.has_general ? 1 : 0} />
-                  <Stat label="节点 (manual-nodes)" count={preview.counts.manual_nodes} />
+                  <Stat label="节点(将打包为静态节点源)" count={preview.counts.nodes} />
                   <Stat label="规则模块 (RuleSet URL)" count={preview.counts.rule_sets} />
                   <Stat label="策略组" count={preview.counts.proxy_groups} />
                   <Stat label="Surge 模块段" count={preview.counts.modules} />
@@ -232,7 +237,7 @@ export function ImportPage() {
                 <div className="space-y-2">
                   <Label className="text-xs text-muted-foreground">勾选要导入的部分</Label>
                   <ToggleRow label="通用预设" checked={opts.import_general} onChange={(v) => setOpts({ ...opts, import_general: v })} disabled={!preview.counts.has_general} />
-                  <ToggleRow label="节点(追加到 manual-nodes)" checked={opts.import_nodes} onChange={(v) => setOpts({ ...opts, import_nodes: v })} disabled={preview.counts.manual_nodes === 0} />
+                  <ToggleRow label="节点(创建为静态节点源)" checked={opts.import_nodes} onChange={(v) => setOpts({ ...opts, import_nodes: v })} disabled={preview.counts.nodes === 0} />
                   <ToggleRow label="规则模块" checked={opts.import_rules} onChange={(v) => setOpts({ ...opts, import_rules: v })} disabled={preview.counts.rule_sets === 0} />
                   <ToggleRow label="策略组" checked={opts.import_groups} onChange={(v) => setOpts({ ...opts, import_groups: v })} disabled={preview.counts.proxy_groups === 0} />
                   {preview.kind === "surge" && (
@@ -265,11 +270,12 @@ export function ImportPage() {
             <div className="space-y-3 max-h-[60vh] overflow-y-auto">
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <Stat label="通用预设" count={commitMutation.data.stats.general} />
-                <Stat label="节点 (manual-nodes)" count={commitMutation.data.stats.manual_nodes} />
+                <Stat label="节点(已打包)" count={commitMutation.data.stats.nodes} />
+                <Stat label="新建静态节点源" count={commitMutation.data.stats.providers} />
                 <Stat label="规则模块" count={commitMutation.data.stats.rules} />
                 <Stat label="策略组" count={commitMutation.data.stats.groups} />
                 <Stat label="Surge 模块段" count={commitMutation.data.stats.modules} />
-                <SkippedRow label="跳过节点" count={commitMutation.data.stats.manual_nodes_skipped} />
+                <SkippedRow label="跳过节点(已在池内)" count={commitMutation.data.stats.nodes_skipped} />
                 <SkippedRow label="跳过规则" count={commitMutation.data.stats.rules_skipped} />
                 <SkippedRow label="跳过策略组" count={commitMutation.data.stats.groups_skipped} />
                 <SkippedRow label="跳过模块" count={commitMutation.data.stats.modules_skipped} />

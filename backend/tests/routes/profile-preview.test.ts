@@ -39,7 +39,6 @@ function fakeProfile(overrides: Partial<Profile> = {}): Profile {
     name: "Home",
     token: "GOODtoken123",
     providers: [],
-    include_manual_nodes: false,
     node_filter: { rename_rules: [], exclude_types: [] },
     chain_rules: [],
     proxy_groups: [],
@@ -67,27 +66,32 @@ afterEach(() => {
 });
 
 describe("POST /api/profiles/:id/preview", () => {
-  it("合法 draft → 200,内容来自 draft 而非磁盘版", async () => {
-    // 磁盘版 name 是 "Old Disk Name",draft name 是 "Draft Name"
+  it("合法 draft → 200,内容来自 draft 而非磁盘版(端到端可观测字段验证)", async () => {
+    // 磁盘版 flag=mihomo,draft 显式改为 stash;generator 据此输出 `# !flag: stash` 注释,
+    // 这是 profile 字段直接进入 generator 输出的可观测点,比断言"没有警告"更精确。
     mockedProfileGet.mockResolvedValue({
       id: "home",
       path: "",
       mtimeMs: 0,
-      data: fakeProfile({ name: "Old Disk Name" }),
+      data: fakeProfile({
+        clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
+      }),
     });
     mockedBuildNodePool.mockResolvedValue({ nodes: [], byProvider: new Map() });
     mockedLoadConfig.mockResolvedValue({});
 
-    const draft = fakeProfile({ name: "Draft Name" });
+    const draft = fakeProfile({
+      clash_options: { use_proxy_providers: false, flag: "stash", group_style: "flow" },
+    });
     const res = await postPreview(buildApp(), "home", { profile: draft, target: "clash" });
     expect(res.status).toBe(200);
     const json = (await res.json()) as { target: string; text: string; warnings: string[]; node_count: number };
     expect(json.target).toBe("clash");
     expect(json.warnings).toEqual([]);
     expect(json.text).toContain("# Profile: home");
-    // 注释中暂不带 name,但配置文件文件名/profile.id 等已经体现 draft;
-    // 这里通过断言"没有走磁盘 fallback warnings"侧面保证用的是 draft 而非 saved
-    expect(json.warnings.some((w) => w.includes("已回退"))).toBe(false);
+    // 关键正向断言:输出里出现 draft 的 flag 而非磁盘版的
+    expect(json.text).toContain("# !flag: stash");
+    expect(json.text).not.toContain("# !flag: mihomo");
   });
 
   it("draft 缺必填字段 (name 空串) → best-effort 回退磁盘版,warnings 含字段名", async () => {

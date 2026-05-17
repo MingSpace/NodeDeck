@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyChainRules, matchesSelector, detectChainCycle } from "../../src/chain/apply.js";
+import { applyChainRules, matchesSelector, detectChainCycle, validateChain } from "../../src/chain/apply.js";
 import type { Node } from "../../src/schemas/node.js";
 import type { Profile } from "../../src/schemas/profile.js";
 
@@ -20,7 +20,6 @@ function profile(rules: Profile["chain_rules"]): Profile {
     name: "test",
     token: "abcdefgh",
     providers: [],
-    include_manual_nodes: true,
     node_filter: { rename_rules: [], exclude_types: [] },
     chain_rules: rules,
     proxy_groups: [],
@@ -121,8 +120,9 @@ describe("applyChainRules", () => {
     expect(out[0].chain_via).toBe("via-jp");
   });
 
-  it("does not preserve source chain_via if no rule matches (returns original)", () => {
-    // applyChainRules currently returns original node ref when no rule matches; chain_via from source preserved.
+  it("preserves source chain_via if no rule matches (returns original node ref)", () => {
+    // 节点本身带的 chain_via(机场原文里就有 dialer-proxy/underlying-proxy)在没有匹配规则时
+    // 不应该被清掉,这是"chain_rules 是叠加而非覆盖"的设计。
     const nodes = [node("X", { chain_via: "source-via" })];
     const out = applyChainRules(nodes, profile([{ selector: { include_regex: "Y" }, via: "via" }]));
     expect(out[0].chain_via).toBe("source-via");
@@ -170,5 +170,96 @@ describe("detectChainCycle", () => {
   it("throws on self-loop A -> A", () => {
     const map = new Map<string, string>([["A", "A"]]);
     expect(() => detectChainCycle(map, new Set())).toThrow(/cycle/i);
+  });
+});
+
+describe("validateChain", () => {
+  // 这是 generator 实际入口,detectChainCycle 是它内部的依赖。
+  // 之所以单独再测,是因为 validateChain 还有"悬空降级"和"环修复"两层副作用,
+  // 单纯依赖 protocol-matrix 的间接覆盖会漏掉环修复路径。
+  it("不动 chain_via 指向真实节点的情况", () => {
+    const nodes: Node[] = [node("A", { chain_via: "B" }), node("B")];
+    const warnings: string[] = [];
+    const out = validateChain(nodes, { groupNames: new Set(), warnings });
+    expect(out[0].chain_via).toBe("B");
+    expect(warnings).toEqual([]);
+  });
+
+  it("chain_via 指向 group 名也算合法终点", () => {
+    const nodes: Node[] = [node("A", { chain_via: "MyGroup" })];
+    const warnings: string[] = [];
+    const out = validateChain(nodes, { groupNames: new Set(["MyGroup"]), warnings });
+    expect(out[0].chain_via).toBe("MyGroup");
+    expect(warnings).toEqual([]);
+  });
+
+  it("chain_via 指向 DIRECT/REJECT 内置策略也算合法终点", () => {
+    const nodes: Node[] = [
+      node("A", { chain_via: "DIRECT" }),
+      node("B", { chain_via: "REJECT" }),
+    ];
+    const warnings: string[] = [];
+    const out = validateChain(nodes, { groupNames: new Set(), warnings });
+    expect(out[0].chain_via).toBe("DIRECT");
+    expect(out[1].chain_via).toBe("REJECT");
+    expect(warnings).toEqual([]);
+  });
+
+  it("chain_via 指向不存在的节点 → 清空 + warning(降级为直连)", () => {
+    const nodes: Node[] = [node("A", { chain_via: "Ghost" })];
+    const warnings: string[] = [];
+    const out = validateChain(nodes, { groupNames: new Set(), warnings });
+    expect(out[0].chain_via).toBeUndefined();
+    expect(warnings.some((w) => w.includes("Chain dangling") && w.includes("Ghost"))).toBe(true);
+  });
+
+  it("形成环时 → 环上所有节点 chain_via 被清空 + warning", () => {
+    // A → B → A
+    const nodes: Node[] = [node("A", { chain_via: "B" }), node("B", { chain_via: "A" })];
+    const warnings: string[] = [];
+    const out = validateChain(nodes, { groupNames: new Set(), warnings });
+    expect(out[0].chain_via).toBeUndefined();
+    expect(out[1].chain_via).toBeUndefined();
+    expect(warnings.some((w) => w.includes("Chain cycle"))).toBe(true);
+  });
+
+  it("自环 A → A 也按环处理,清空 + warning", () => {
+    const nodes: Node[] = [node("A", { chain_via: "A" })];
+    const warnings: string[] = [];
+    const out = validateChain(nodes, { groupNames: new Set(), warnings });
+    expect(out[0].chain_via).toBeUndefined();
+    expect(warnings.some((w) => w.includes("Chain cycle"))).toBe(true);
+  });
+
+  it("多条独立环都能修复(迭代直到无环)", () => {
+    // 第一组 A↔B,第二组 C↔D,两组互不相干,validateChain 应循环修完两组
+    const nodes: Node[] = [
+      node("A", { chain_via: "B" }),
+      node("B", { chain_via: "A" }),
+      node("C", { chain_via: "D" }),
+      node("D", { chain_via: "C" }),
+      node("E"), // 无关节点不动
+    ];
+    const warnings: string[] = [];
+    const out = validateChain(nodes, { groupNames: new Set(), warnings });
+    expect(out.find((n) => n.name === "A")?.chain_via).toBeUndefined();
+    expect(out.find((n) => n.name === "B")?.chain_via).toBeUndefined();
+    expect(out.find((n) => n.name === "C")?.chain_via).toBeUndefined();
+    expect(out.find((n) => n.name === "D")?.chain_via).toBeUndefined();
+    expect(out.find((n) => n.name === "E")?.chain_via).toBeUndefined();
+    expect(warnings.filter((w) => w.includes("Chain cycle")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("链 A → B → C(线性)不被误判为环", () => {
+    const nodes: Node[] = [
+      node("A", { chain_via: "B" }),
+      node("B", { chain_via: "C" }),
+      node("C"),
+    ];
+    const warnings: string[] = [];
+    const out = validateChain(nodes, { groupNames: new Set(), warnings });
+    expect(out[0].chain_via).toBe("B");
+    expect(out[1].chain_via).toBe("C");
+    expect(warnings).toEqual([]);
   });
 });

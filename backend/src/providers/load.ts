@@ -111,18 +111,25 @@ export interface RefreshAllResult {
 
 export async function refreshAllProviders(opts: RefreshOptions = {}): Promise<RefreshAllResult> {
   const all = await providerRepo.list();
-  const refreshed: ProviderCache[] = [];
-  const skippedLocked: string[] = [];
-  for (const entry of all) {
-    if (!entry.data.enabled) continue;
-    if (entry.data.refresh.interval === "never") {
+  const enabled = all.filter((e) => e.data.enabled);
+
+  // 先并发判定 never 模式是否锁定(读 cache 即可,无网络),把要真正拉取的筛出来。
+  const lockedFlags = await Promise.all(
+    enabled.map(async (entry) => {
+      if (entry.data.refresh.interval !== "never") return false;
       const existing = await readProviderCache(entry.id);
-      if (existing?.status === "ok" && existing.nodes.length > 0) {
-        skippedLocked.push(entry.id);
-        continue;
-      }
-    }
-    refreshed.push(await refreshProvider(entry.data, opts));
-  }
+      return Boolean(existing?.status === "ok" && existing.nodes.length > 0);
+    }),
+  );
+  const skippedLocked = enabled.filter((_, i) => lockedFlags[i]).map((e) => e.id);
+  const toRefresh = enabled.filter((_, i) => !lockedFlags[i]);
+
+  // 真正拉取并发跑,单机场失败不影响其它(refreshProvider 内部已经把 fetch 异常落到 stale cache)。
+  const results = await Promise.allSettled(toRefresh.map((entry) => refreshProvider(entry.data, opts)));
+  const refreshed: ProviderCache[] = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") refreshed.push(r.value);
+    else logger.warn({ err: r.reason, providerId: toRefresh[i].id }, "Refresh failed (unexpected)");
+  });
   return { refreshed, skippedLocked };
 }

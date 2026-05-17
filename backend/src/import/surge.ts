@@ -30,6 +30,11 @@ export function importSurgeConf(text: string, fileName?: string): SurgeImportRes
     general.mitm = mitmFromText;
   }
 
+  const ssidFromText = parseSsidSection(text);
+  if (general && ssidFromText.length > 0) {
+    general.ssid_rules = [...(general.ssid_rules ?? []), ...ssidFromText];
+  }
+
   const manualNodes = annotateNodes(parseSurgeConf(text));
 
   const directSkipped = countDirectPseudoNodes(text);
@@ -83,6 +88,7 @@ function parseGeneralSection(text: string, fileName?: string): GeneralPreset | u
     kv[k] = v;
   }
   const trimmedFile = fileName?.trim();
+  const ipv6Vif = kv["ipv6-vif"];
   return {
     id: generateImportedId(trimmedFile && trimmedFile.length > 0 ? trimmedFile : "surge"),
     name: `Imported from ${trimmedFile && trimmedFile.length > 0 ? trimmedFile : "Surge"}`,
@@ -103,16 +109,52 @@ function parseGeneralSection(text: string, fileName?: string): GeneralPreset | u
     udp_policy_not_supported_behaviour:
       kv["udp-policy-not-supported-behaviour"] === "REJECT" ? "REJECT" : kv["udp-policy-not-supported-behaviour"] === "DIRECT" ? "DIRECT" : undefined,
     geoip_maxmind_url: kv["geoip-maxmind-url"],
+    ipv6_vif: ipv6Vif === "off" || ipv6Vif === "auto" ? ipv6Vif : undefined,
     skip_proxy: kv["skip-proxy"]?.split(",").map((s) => s.trim()),
     exclude_simple_hostnames: kv["exclude-simple-hostnames"] === "true",
     always_real_ip: kv["always-real-ip"]?.split(",").map((s) => s.trim()),
     show_error_page_for_reject: kv["show-error-page-for-reject"] === "true",
+    http_api: parseHttpApi(kv),
     dns: {
       enable: true,
       server: kv["dns-server"]?.split(",").map((s) => s.trim()),
       encrypted_server: kv["encrypted-dns-server"]?.split(",").map((s) => s.trim()),
       hijack: kv["hijack-dns"]?.split(",").map((s) => s.trim()),
     },
+  };
+}
+
+/**
+ * 解析 `http-api = user^password@host:port`(Surge manual 写法)。
+ * 兼容 `user:password@host:port`(NodeDeck generator 当前用 `:`)与无 user 形式
+ * `password@host:port`。listen 用 `lastIndexOf('@')` 切,避免 password 里含 `@` 时崩。
+ *
+ * `http-api-tls` 用户在 conf 里写错成 `flase` 是常见现象;这里只把字面 "true" 当 true,
+ * 其它一律 false,与 Surge 客户端宽松行为对齐。
+ */
+function parseHttpApi(kv: Record<string, string>): GeneralPreset["http_api"] | undefined {
+  const raw = kv["http-api"];
+  if (!raw) return undefined;
+  const atIdx = raw.lastIndexOf("@");
+  if (atIdx <= 0) return undefined;
+  const cred = raw.slice(0, atIdx);
+  const listen = raw.slice(atIdx + 1).trim();
+  if (!listen) return undefined;
+  const caretIdx = cred.indexOf("^");
+  const colonIdx = cred.indexOf(":");
+  const sepIdx = caretIdx >= 0 ? caretIdx : colonIdx;
+  let user: string | undefined;
+  let password = cred;
+  if (sepIdx > 0) {
+    user = cred.slice(0, sepIdx);
+    password = cred.slice(sepIdx + 1);
+  }
+  return {
+    user: user ?? "M1ing",
+    password,
+    listen,
+    web_dashboard: kv["http-api-web-dashboard"] === "true",
+    tls: kv["http-api-tls"] === "true",
   };
 }
 
@@ -151,6 +193,49 @@ function parseMitmSection(text: string): GeneralPreset["mitm"] | undefined {
     ca_p12: kv["ca-p12"],
     ca_passphrase: kv["ca-passphrase"],
   };
+}
+
+/**
+ * 解析 Surge `[SSID Setting]` 段。语法(manual.nssurge.com/general/ssid-policy.html):
+ *
+ *   SSID:<name> [suspend=<bool>] [policy=<policy_name>]
+ *
+ * 与 generator 端 (`generators/surge.ts` 73–82) 严格对称,确保
+ * "导入 → 生成"路径不丢字段。
+ *
+ * 跳过(不丢,但当前 schema 不建模):
+ * - `cellular=...` / `default=...` / `untrusted=...` 这类非 SSID 行 —— 它们属于
+ *   "SSID 类型 proxy group"的内部参数,在 NodeDeck 中由 proxyGroupSchema.ssid_params
+ *   表达,不归 general.ssid_rules 管。这里静默忽略,后续若用户用到 SSID Group 再补
+ *   `parseRuleAndGroupSections` 一侧。
+ */
+function parseSsidSection(text: string): NonNullable<GeneralPreset["ssid_rules"]> {
+  const body = extractSection(text, "SSID Setting");
+  if (!body) return [];
+  const rules: NonNullable<GeneralPreset["ssid_rules"]> = [];
+  for (const raw of body.split(/\r?\n/)) {
+    const line = stripComment(raw).trim();
+    if (!line) continue;
+    // 大小写不敏感匹配 `SSID:` 前缀(Surge 客户端解析时是大小写敏感的,
+    // 但用户手敲常见 `ssid:` 小写,容错放宽。)
+    const m = line.match(/^SSID:(\S+)\s*(.*)$/i);
+    if (!m) continue;
+    const ssid = m[1];
+    const paramsPart = m[2].trim();
+    const rule: { ssid: string; suspend?: boolean; policy?: string } = { ssid };
+    if (paramsPart) {
+      for (const tok of paramsPart.split(/\s+/)) {
+        const eq = tok.indexOf("=");
+        if (eq <= 0) continue;
+        const k = tok.slice(0, eq).trim();
+        const v = tok.slice(eq + 1).trim();
+        if (k === "suspend") rule.suspend = v === "true";
+        else if (k === "policy") rule.policy = v;
+      }
+    }
+    rules.push(rule);
+  }
+  return rules;
 }
 
 function parseRuleAndGroupSections(text: string): {

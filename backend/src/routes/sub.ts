@@ -71,7 +71,7 @@ async function handleSubInner(
     if (profile.userinfo.expose_per_provider_headers) {
       for (const item of userinfoResult.perProvider) {
         if (item.raw_header) {
-          c.header(`X-MConvert-Userinfo-${item.provider_id}`, item.raw_header);
+          c.header(`X-NodeDeck-Userinfo-${item.provider_id}`, item.raw_header);
         }
       }
     }

@@ -19,15 +19,15 @@
 
 ---
 
-## MConvert 抽象
+## NodeDeck 抽象
 
-MConvert 用统一字段 `chain_via` 抽象,在生成 Clash / Surge 时翻译为正确的字段名。
+NodeDeck 用统一字段 `chain_via` 抽象,在生成 Clash / Surge 时翻译为正确的字段名。
 
 `chain_via` 的值可以是:
 
-1. **手动节点的 name** — 例如指向 `manual-nodes.yaml` 中的一个 WARP 节点
+1. **任意 Provider 中的节点 name** — 例如指向某个 inline (静态节点)Provider 中的 WARP 节点
 2. **策略组的 name** — 适合"前置候选池",用 url-test 自动选最快的前置
-3. **节点池中任意节点的 name** — 也可以指向其他机场的节点
+3. **机场节点的 name** — 也可以指向其他机场的某条节点
 
 ---
 
@@ -61,7 +61,7 @@ chain_rules:
 
 ## 输出示例
 
-假设 Profile 中有一个 WARP 手动节点 `name: WARP-Cloudflare` 和一个 HK 节点 `name: HK-01` 命中了上面规则 1:
+假设 Profile 中有一个来自 inline Provider 的 WARP 节点 `name: WARP-Cloudflare` 和一个 HK 节点 `name: HK-01` 命中了上面规则 1:
 
 ### Clash 输出
 
@@ -95,7 +95,7 @@ HK-01 = trojan, gz.example.com, 443, password=secret, sni=m.ctrip.com, underlyin
 
 ## 环检测
 
-MConvert 在生成前会构建链式拓扑图。如果存在环(例如 `A → B → A`),会:
+NodeDeck 在生成前会构建链式拓扑图。如果存在环(例如 `A → B → A`),会:
 
 1. 拒绝生成订阅
 2. Web UI 中高亮报错
@@ -132,5 +132,5 @@ chain_rules:
 |---|---|
 | Surge 报"underlying-proxy not found" | 确认 `via` 指向的节点/组名拼写一致(注意空格) |
 | Clash 报"dialer-proxy: not found" | 同上 |
-| MConvert 报"chain proxy cycle detected" | 检查 chain_rules 是否有 A→B 又 B→A |
+| NodeDeck 报"chain proxy cycle detected" | 检查 chain_rules 是否有 A→B 又 B→A |
 | 链式生效但延迟很高 | WARP/前置节点本身慢;考虑用 url-test pool |

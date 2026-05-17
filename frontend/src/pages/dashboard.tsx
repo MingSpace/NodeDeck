@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { RefreshedAt } from "@/components/refreshed-at";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -74,7 +75,6 @@ export function DashboardPage() {
         surge_modules: [],
       };
       const extras = {
-        include_manual_nodes: true,
         node_filter: { rename_rules: [], exclude_types: [] },
         userinfo: { mode: "sum", expose_per_provider_headers: true },
         managed_config_url: "auto",
@@ -90,7 +90,7 @@ export function DashboardPage() {
   };
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-[1800px] mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">仪表板</h1>
         <p className="text-muted-foreground mt-1">订阅与机场状态</p>
@@ -132,11 +132,18 @@ export function DashboardPage() {
         </div>
 
         {airports.data && airports.data.items.length === 0 && (
-          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-            暂无机场,前往「节点源」页面添加
+          <div className="rounded-lg border border-dashed p-12 flex flex-col items-center gap-3 text-muted-foreground">
+            <span>暂无机场,前往「节点源」页面添加</span>
+            {/* @user_flow: 直接给跳转按钮,?new=http 让落地页自动弹出「新建订阅」对话框 */}
+            <Button asChild size="sm" variant="outline">
+              <Link to="/providers?new=http">
+                <Plus className="h-4 w-4" />
+                新建订阅
+              </Link>
+            </Button>
           </div>
         )}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
           {airports.data?.items.map((a) => (
             <AirportCard key={a.id} airport={a} />
           ))}
@@ -308,7 +315,24 @@ function AirportCard({ airport }: { airport: AirportItem }) {
         </div>
       )}
       {airport.error && (
-        <div className="mt-2 text-xs text-destructive bg-destructive/10 rounded p-2 line-clamp-2">{airport.error}</div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              to={`/providers?focus=${encodeURIComponent(airport.id)}`}
+              className="mt-2 block text-xs text-destructive bg-destructive/10 hover:bg-destructive/20 rounded p-2 line-clamp-2 cursor-pointer transition-colors"
+            >
+              {airport.error}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent
+            side="bottom"
+            align="start"
+            className="max-w-md whitespace-pre-wrap break-words text-xs leading-relaxed"
+          >
+            <div>{airport.error}</div>
+            <div className="mt-1 text-muted-foreground">点击跳转到节点源详情</div>
+          </TooltipContent>
+        </Tooltip>
       )}
     </Card>
   );

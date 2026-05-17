@@ -52,7 +52,7 @@ export function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>关于</CardTitle>
-          <CardDescription>MConvert v0.1.0</CardDescription>
+          <CardDescription>NodeDeck v0.1.0</CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
           <p>所有配置存储在 <code>data/</code> 目录,改完即生效,无需重启 docker 容器。</p>
@@ -214,7 +214,6 @@ interface ResetScope {
   modules: boolean;
   general: boolean;
   profiles: boolean;
-  manual_nodes: boolean;
   cache: boolean;
   service_settings: boolean;
 }
@@ -226,9 +225,8 @@ interface ResetOption {
 }
 
 const RESET_OPTIONS: ResetOption[] = [
-  { key: "providers", label: "节点源 (Providers)", description: "所有机场订阅配置" },
+  { key: "providers", label: "节点源 (Providers)", description: "所有机场订阅 / 静态节点" },
   { key: "cache", label: "Provider 缓存", description: "已拉取的节点 + 流量信息(随节点源一并清除)" },
-  { key: "manual_nodes", label: "手动节点", description: "手动录入或导入的单节点" },
   { key: "rules", label: "规则模块 (Rules)", description: "所有 ruleset 配置" },
   { key: "groups", label: "策略组 (Groups)", description: "所有 proxy-group 配置" },
   { key: "modules", label: "Surge 模块", description: "所有 Surge module 配置" },
@@ -245,7 +243,6 @@ function defaultScope(checked = true): ResetScope {
     modules: checked,
     general: checked,
     profiles: checked,
-    manual_nodes: checked,
     cache: checked,
     service_settings: checked,
   };
@@ -263,7 +260,7 @@ function DangerZoneCard() {
             危险区域
           </CardTitle>
           <CardDescription>
-            还原所有数据配置 — 删除节点源 / 规则 / 策略组 / Surge 模块 / 通用预设 / 订阅配置 / 手动节点 / 服务设置等。
+            还原所有数据配置 — 删除节点源 / 规则 / 策略组 / Surge 模块 / 通用预设 / 订阅配置 / 服务设置等。
             <span className="block mt-1 text-foreground font-medium">管理员账号和密码不会被影响。</span>
           </CardDescription>
         </CardHeader>

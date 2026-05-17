@@ -56,8 +56,9 @@ export const VLESS_FIELDS: FieldMap[] = [
 /** Hysteria2-specific. */
 export const HYSTERIA2_FIELDS: FieldMap[] = [
   { internal: "password", clash: "password", surge: "password" },
-  { internal: "up", clash: "up", surge: "upload-bandwidth" },
-  { internal: "down", clash: "down", surge: "download-bandwidth" },
+  // Surge 5 hysteria2 仅支持下行带宽,不支持 upload-bandwidth(参见 manual.nssurge.com 第 17 节)
+  { internal: "up", clash: "up", surge: null, notes: "Surge has no upload-bandwidth knob; mihomo-only" },
+  { internal: "down", clash: "down", surge: "download-bandwidth", notes: "Surge expects plain Mbps integer (no 'Mbps' unit)" },
   { internal: "obfs", clash: "obfs", surge: "obfs" },
   { internal: "obfs_password", clash: "obfs-password", surge: "obfs-password" },
   { internal: "port_hopping", clash: "ports", surge: "port-hopping" },
@@ -68,20 +69,38 @@ export const HYSTERIA2_FIELDS: FieldMap[] = [
 export const TUIC_FIELDS: FieldMap[] = [
   { internal: "uuid", clash: "uuid", surge: "uuid" },
   { internal: "password", clash: "password", surge: "password" },
-  { internal: "tuic_version", clash: "version", surge: null, notes: "Surge auto-detects v5" },
+  // Surge 5 TUIC v5 必须显式 version=5(无该字段时 Surge 假定 v4 并改读 token);
+  // mihomo `version: 5` ↔ Surge `version=5`
+  { internal: "tuic_version", clash: "version", surge: "version" },
   { internal: "congestion_controller", clash: "congestion-controller", surge: null },
 ];
 
-/** WireGuard. */
+/**
+ * WireGuard.
+ *
+ * 重要:Surge 5 wireguard 用"section-name"模式 — [Proxy] 行只写
+ * `<name> = wireguard, section-name=<id>`,密钥/self-ip/peer 全部在单独的
+ * `[WireGuard <id>]` 段里(参见 manual.nssurge.com/policy/wireguard.html)。
+ * 字段键名与 Clash 一致,但表达位置不同:
+ *
+ *   Clash (mihomo)              Surge 5
+ *   ───────────────             ─────────────────────────────
+ *   proxy.private-key:          [WireGuard X] private-key
+ *   proxy.public-key:           [WireGuard X] peer = (public-key=...)
+ *   proxy.ip:                   [WireGuard X] self-ip
+ *   proxy.peers[].endpoint:     [WireGuard X] peer = (endpoint=server:port)
+ *
+ * `peers` 字段在 mihomo 是数组,在 Surge 是同段内多行 `peer = (...)` 列出。
+ */
 export const WIREGUARD_FIELDS: FieldMap[] = [
-  { internal: "private_key", clash: "private-key", surge: "private-key" },
-  { internal: "public_key", clash: "public-key", surge: "public-key" },
-  { internal: "preshared_key", clash: "preshared-key", surge: "preshared-key" },
+  { internal: "private_key", clash: "private-key", surge: "private-key", notes: "Surge: in [WireGuard <id>] section" },
+  { internal: "public_key", clash: "public-key", surge: "public-key", notes: "Surge: inside `peer = (public-key=...)`" },
+  { internal: "preshared_key", clash: "preshared-key", surge: "preshared-key", notes: "Surge: optional inside peer parens" },
   { internal: "ip", clash: "ip", surge: "self-ip" },
   { internal: "ipv6", clash: "ipv6", surge: "self-ip-v6" },
-  { internal: "reserved", clash: "reserved", surge: null, notes: "Surge does not expose reserved field" },
+  { internal: "reserved", clash: "reserved", surge: "client-id", notes: "Surge expects 'a/b/c' decimal triplet; auto-conversion not implemented" },
   { internal: "mtu", clash: "mtu", surge: "mtu" },
-  { internal: "peers", clash: "peers", surge: null, notes: "Multi-peer is clash-only" },
+  { internal: "peers", clash: "peers", surge: "peer", notes: "Multi-peer = repeated `peer = (...)` lines in [WireGuard <id>]" },
 ];
 
 /** Snell (Surge-only). */

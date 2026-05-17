@@ -15,7 +15,7 @@ interface Props {
 }
 
 const DIFF_BADGE_VISIBLE_MS = 1800;
-const HEIGHT_STORAGE_KEY = "mconvert.preview-pane.height";
+const HEIGHT_STORAGE_KEY = "nodedeck.preview-pane.height";
 const MIN_HEIGHT = 200;
 const TOP_RESERVED = 200;
 

@@ -5,7 +5,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { existsSync, statSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { env } from "./env.js";
-import { logger } from "./logger.js";
+import { logger, accessLogger } from "./logger.js";
 import { ensureDataDirs } from "./storage/paths.js";
 import { startWatcher } from "./storage/watcher.js";
 import { startProviderScheduler } from "./providers/scheduler.js";
@@ -18,7 +18,8 @@ async function bootstrap() {
 
   const app = new Hono();
 
-  app.use("*", honoLogger((message: string) => logger.info(message)));
+  // Access log 走独立 logger:只到终端,不进 ring buffer,避免淹没 Web UI 的业务日志。
+  app.use("*", honoLogger((message: string) => accessLogger.info(message)));
 
   app.get("/health", (c) => c.json({ ok: true, time: new Date().toISOString() }));
 
@@ -49,7 +50,7 @@ async function bootstrap() {
   startProviderScheduler();
 
   serve({ fetch: app.fetch, port: env.PORT, hostname: "0.0.0.0" }, (info) => {
-    logger.info({ port: info.port }, `MConvert listening on http://0.0.0.0:${info.port}`);
+    logger.info({ port: info.port }, `NodeDeck listening on http://0.0.0.0:${info.port}`);
   });
 }
 

@@ -1,4 +1,4 @@
-# MConvert 使用手册 (Cookbook)
+# NodeDeck 使用手册 (Cookbook)
 
 > 一份"看完就能跑"的最小示例集合。所有 yaml 文件都放在 `data/` 对应子目录,改完即生效。
 
@@ -60,29 +60,26 @@ tags: [backup]
 
 > **首次保存自动拉取**:Web UI 新建一个 `enabled: true` 的 provider 时,后端会立即在后台异步拉取一次,无需手动点刷新。在节点拉到之前,列表会显示黄色「拉取中...」徽标,几秒后自动变为绿色「N 个节点」(成功)或红色「失败」。`enabled: false` 的草稿态以及编辑保存已存在的 provider 都不会触发自动拉取(沿用老的 cron / on_request / 手动刷新行为)。
 
-自建节点写 `data/manual-nodes.yaml`:
+自建节点 / 手动添加节点请在 Web UI「节点源」页**新建一个 `type: inline` 的「静态节点」类型 Provider**(详见下一节 1.1),写法示例:
 
 ```yaml
-nodes:
-  - name: 🏠 Home VPS
-    type: trojan
-    server: my.home.vps
-    port: 443
-    password: secret
-    sni: my.home.vps
-    tls: true
-    udp: true
-    tags: [self-host]
-  - name: 🌐 WARP
-    type: wireguard
-    server: engage.cloudflareclient.com
-    port: 2408
-    private_key: PRIV
-    public_key: PUB
-    ip: 172.16.0.2/32
+# data/providers/self-host.yaml
+id: self-host
+name: 自建节点
+type: inline
+parser_hint: clash
+refresh:
+  interval: never
+enabled: true
+content: |
+  proxies:
+    - { name: 🏠 Home VPS, type: trojan, server: my.home.vps, port: 443, password: secret, sni: my.home.vps, tls: true, udp: true }
+    - { name: 🌐 WARP, type: wireguard, server: engage.cloudflareclient.com, port: 2408, private-key: PRIV, public-key: PUB, ip: 172.16.0.2/32 }
 ```
 
-**节点名同名怎么办?** 两家机场都叫 "🇭🇰 香港 01" 时,MConvert 自动给后出现的加 ` #2`/` #3` 后缀,生成的 yaml/conf 不会因 key 重复加载报错。重命名信息会作为 `# WARN:` 注释附在订阅文件头部。
+> 旧版本曾用 `data/manual-nodes.yaml` 维护手输节点,现已下线 — 改用 inline Provider 后,手动 / 导入节点与机场订阅一样具备启用/禁用/删除等一等公民操作。
+
+**节点名同名怎么办?** 两家机场都叫 "🇭🇰 香港 01" 时,NodeDeck 自动给后出现的加 ` #2`/` #3` 后缀,生成的 yaml/conf 不会因 key 重复加载报错。重命名信息会作为 `# WARN:` 注释附在订阅文件头部。
 
 ### 1.1 inline provider — 单节点 / local node list
 
@@ -142,7 +139,7 @@ content: |
 - 会和真节点共享去重身份(`type|server|port|secret`),被 `dedupeNodes` 的 `keep-first` 策略**把真节点挤掉**,客户端只剩不可用的伪节点
 - 节点池数字虚高 1~5 条(对应 Subscription-UserInfo 的字段数);"全部节点"与"按 Provider 分组"两个 Tab 数字对不上
 
-MConvert 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers/info-node-filter.ts`),所有下游消费(主订阅生成 / Profile 预览 / 策略组节点选择 / proxy-providers 子路由 / 节点池 dashboard)**自动拿到干净的节点池,用户无需配置**。
+NodeDeck 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers/info-node-filter.ts`),所有下游消费(主订阅生成 / Profile 预览 / 策略组节点选择 / proxy-providers 子路由 / 节点池 dashboard)**自动拿到干净的节点池,用户无需配置**。
 
 识别算法:`<LEAD> <KEYWORD> <SEPARATOR>`
 
@@ -158,7 +155,7 @@ MConvert 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers
 **不会丢的事**:
 
 - userinfo(流量 / 到期)从 HTTP `Subscription-UserInfo` header 读取,**与节点池无关**,过滤不影响 Dashboard / 订阅响应头
-- 手动节点(`data/manual-nodes.yaml`)由 zod schema 校验,**不走 parser**,不会被这条规则过滤(也不应该,自加的节点不该长这样)
+- 自建 inline Provider 的节点同样走 parser,但只要 name 不带 `流量/到期` 这种典型关键字就不会被命中(本来也不应该长这样)
 
 **遇到新形态没被识别怎么办**:把节点 name 加到 `backend/tests/parsers/info-node-filter.test.ts` 的 `POSITIVE_NAMES` 列表(或 `NEGATIVE_NAMES` 反向测试),跑 `pnpm test`,根据 fail case 在 `KEYWORDS` 或 `STRONG_SEP/WEAK_SEP` 里加一条即可。
 
@@ -270,7 +267,7 @@ surge_flags:
 
 ### 3.1 准备节点
 
-`data/manual-nodes.yaml` 里有一个 `WARP` 节点(见第 1 节)。
+在「节点源」新建一个 `type: inline` 的「静态节点」Provider,内容里写一个 `WARP` 节点(见第 1 节示例)。
 
 ### 3.2 写 chain_rules
 
@@ -392,8 +389,7 @@ content_sections:
 id: home
 name: Home
 token: V1StGXR8_Z5j   # 12 字符 nanoid;请用 Web UI 生成,不要复用此示例
-providers: [airport-a, airport-b]
-include_manual_nodes: true
+providers: [airport-a, airport-b, self-host]   # 含订阅源 + 静态节点源(自建/导入)
 node_filter:
   exclude_regex: "(?i)(测试|trial|试用)"  # 个性化排除;机场"信息节点"(Traffic/Expire/官网...)已由 parser 默认过滤,见 1.2
   exclude_types: [direct]
@@ -444,7 +440,7 @@ http://your-vps:8080/sub?profile=home&target=surge&t=V1StGXR8_Z5j
 | Header | 说明 |
 |---|---|
 | `Subscription-UserInfo` | 聚合后的流量信息(upload/download/total/expire),**仅当 `userinfo.enabled: true` 时输出** |
-| `X-MConvert-Userinfo-<provider_id>` | 每机场原始 header 的透传,**仅当 `userinfo.enabled: true` 且 `expose_per_provider_headers: true`** |
+| `X-NodeDeck-Userinfo-<provider_id>` | 每机场原始 header 的透传,**仅当 `userinfo.enabled: true` 且 `expose_per_provider_headers: true`** |
 | `Profile-Update-Interval` | 客户端建议的轮询间隔(小时) |
 | `Content-Disposition` | `attachment; filename="<profile>.yaml/.conf"` |
 

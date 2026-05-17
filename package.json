@@ -1,8 +1,8 @@
 {
-  "name": "mconvert",
+  "name": "nodedeck",
   "version": "0.1.0",
   "private": true,
-  "description": "Personal Clash + Surge subscription converter with Web UI",
+  "description": "NodeDeck — personal Clash + Surge subscription converter with Web UI",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -16,7 +16,7 @@
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -F backend test",
     "test:watch": "pnpm -F backend test:watch",
-    "docker:build": "docker build -f docker/Dockerfile -t mconvert:latest .",
+    "docker:build": "docker build -f docker/Dockerfile -t nodedeck:latest .",
     "docker:up": "docker compose -f docker/docker-compose.yml up -d",
     "docker:down": "docker compose -f docker/docker-compose.yml down",
     "docker:logs": "docker compose -f docker/docker-compose.yml logs -f"

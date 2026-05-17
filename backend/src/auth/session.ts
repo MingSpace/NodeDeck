@@ -1,7 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { env } from "../env.js";
 
-const COOKIE_NAME = "mconvert_session";
+const COOKIE_NAME = "nodedeck_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 interface SessionPayload {

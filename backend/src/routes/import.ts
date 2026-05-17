@@ -12,16 +12,18 @@ import {
 import { generateImportedId } from "../import/id.js";
 import { buildNodePool } from "../providers/pool.js";
 import {
+  providerRepo,
   rulesetRepo,
   proxyGroupRepo,
   generalPresetRepo,
   surgeModuleRepo,
 } from "../storage/repos.js";
 import type { Repo } from "../storage/repo.js";
-import { readManualNodes, writeManualNodes } from "../storage/manual-nodes.js";
 import type { RuleSet } from "../schemas/ruleset.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { SurgeModule } from "../schemas/surge-module.js";
+import type { Provider } from "../schemas/provider.js";
+import { nodesToInlineContent } from "../import/serialize-nodes.js";
 
 export const importRouter = new Hono();
 
@@ -47,15 +49,20 @@ importRouter.post("/preview", async (c) => {
 interface CommitStats {
   general: number;
   general_skipped: number;
-  manual_nodes: number;
-  manual_nodes_skipped: number;
+  /** 写入新 inline Provider 的去重后节点数(单次导入 = 1 个 Provider) */
+  nodes: number;
+  /** 已在现有节点池中存在,被丢弃的节点数 */
+  nodes_skipped: number;
   rules: number;
   rules_skipped: number;
   groups: number;
   groups_skipped: number;
   modules: number;
   modules_skipped: number;
+  /** 创建的新 Provider 数(目前一次导入最多 1 个,kept=0 时为 0) */
   providers: number;
+  /** 新创建的 Provider id 列表(便于前端跳到节点源页) */
+  provider_ids: string[];
 }
 
 importRouter.post("/commit", async (c) => {
@@ -80,8 +87,8 @@ importRouter.post("/commit", async (c) => {
   const stats: CommitStats = {
     general: 0,
     general_skipped: 0,
-    manual_nodes: 0,
-    manual_nodes_skipped: 0,
+    nodes: 0,
+    nodes_skipped: 0,
     rules: 0,
     rules_skipped: 0,
     groups: 0,
@@ -89,6 +96,7 @@ importRouter.post("/commit", async (c) => {
     modules: 0,
     modules_skipped: 0,
     providers: 0,
+    provider_ids: [],
   };
 
   // 通用预设:作为单条实体走"按内容去重 → 无等价物则分配新 id"流程,
@@ -111,16 +119,53 @@ importRouter.post("/commit", async (c) => {
   }
 
   if (opts.import_nodes && result.manualNodes.length > 0) {
-    const { nodes: poolNodes } = await buildNodePool({ includeManual: true });
+    // 新流程: 不再写入 manual-nodes.yaml,而是把"经过 dedup 还存活的节点"包成一个
+    // 全新的 inline 类型 Provider 落库。这样导入产物在 UI 上成为一等公民,可单独
+    // 启用/禁用/删除/编辑,行为与手动新建 inline Provider 完全一致。
+    //
+    // dedup 仍然跨"全部启用 Provider 的节点池"做一次,保证再次导入同一份文件不会
+    // 产生重复节点(用户问"也要记得做重复校验"对应这里)。
+    const { nodes: poolNodes } = await buildNodePool();
     const { kept, duplicates } = dedupAgainstPool(result.manualNodes, poolNodes);
 
     if (kept.length > 0) {
-      const existing = await readManualNodes();
-      const merged = [...existing.nodes, ...kept];
-      await writeManualNodes({ nodes: merged });
+      const { content, warnings: serializeWarnings } = nodesToInlineContent(
+        kept,
+        kind as "clash" | "surge",
+      );
+      for (const w of serializeWarnings) result.warnings.push(w);
+
+      const taken = new Set((await providerRepo.list()).map((e) => e.data.id));
+      const desiredSlug = trimmedFileSlug(fileName) ?? kind;
+      const id = ensureUniqueId(generateImportedId(desiredSlug), taken);
+      const niceLabel = trimmedFileSlug(fileName)
+        ? fileName!.trim()
+        : kind === "surge"
+        ? "Surge import"
+        : "Clash import";
+      const provider: Provider = {
+        id,
+        name: `Imported from ${niceLabel}`,
+        type: "inline",
+        content,
+        parser_hint: kind === "surge" ? "surge" : "clash",
+        user_agent: "Surge/2400",
+        // inline 类型在 UI / 调度器都不会"上游刷新",标记 never 让 cron 跳过、UI 隐藏刷新按钮
+        refresh: { interval: "never" },
+        enabled: true,
+        tags: ["imported"],
+        clash_proxy_provider: {
+          enabled: false,
+          health_check_url: "http://www.gstatic.com/generate_204",
+          health_check_interval: 300,
+        },
+      };
+      await providerRepo.save(provider);
+      stats.providers = 1;
+      stats.provider_ids.push(id);
     }
-    stats.manual_nodes = kept.length;
-    stats.manual_nodes_skipped = duplicates.length;
+    stats.nodes = kept.length;
+    stats.nodes_skipped = duplicates.length;
 
     if (duplicates.length > 0) {
       const sample = duplicates
@@ -129,7 +174,7 @@ importRouter.post("/commit", async (c) => {
         .join(", ");
       const tail = duplicates.length > 5 ? `, …+${duplicates.length - 5}` : "";
       result.warnings.push(
-        `Skipped ${duplicates.length} duplicate node(s) already in pool (manual or provider): ${sample}${tail}`,
+        `Skipped ${duplicates.length} duplicate node(s) already in pool: ${sample}${tail}`,
       );
     }
   }
@@ -180,10 +225,18 @@ function autoDetectKind(text: string): string | null {
   return null;
 }
 
+/** 把文件名(可能含路径/扩展名)收成 slug 用于 Provider id;无内容时返回 null */
+function trimmedFileSlug(fileName: string | undefined): string | null {
+  const trimmed = fileName?.trim();
+  if (!trimmed) return null;
+  return trimmed;
+}
+
 function redact(result: { manualNodes: unknown[]; ruleSets: unknown[]; proxyGroups: unknown[]; warnings?: string[]; general?: unknown; modules?: unknown[] }) {
   return {
     counts: {
-      manual_nodes: result.manualNodes.length,
+      // 字段名 `nodes` 反映"导入产物的原始节点数",前端会展示为"X 个节点 → 新建为静态节点源"
+      nodes: result.manualNodes.length,
       rule_sets: result.ruleSets.length,
       proxy_groups: result.proxyGroups.length,
       modules: result.modules?.length ?? 0,

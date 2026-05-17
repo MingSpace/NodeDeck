@@ -26,13 +26,14 @@ export class Repo<S extends ZodTypeAny, T extends { id: string } = z.infer<S> & 
 
   async list(): Promise<FileEntry<T>[]> {
     const files = await listYamlFiles(entityDir(this.opts.sub));
-    const result: FileEntry<T>[] = [];
-    for (const path of files) {
-      const id = fileIdFromPath(path);
-      const entry = await this.readById(id, path);
-      if (entry) result.push(entry);
-    }
-    return result.sort((a, b) => a.id.localeCompare(b.id));
+    // 并发读全部 yaml + 走 cache 路径,N 个文件从 O(N×IO) 降到 O(IO)。
+    // cache 命中时几乎无 IO,只比 stat 多一次内存查找;miss 时收益很大。
+    const entries = await Promise.all(
+      files.map((path) => this.readById(fileIdFromPath(path), path)),
+    );
+    return entries
+      .filter((e): e is FileEntry<T> => e !== null)
+      .sort((a, b) => a.id.localeCompare(b.id));
   }
 
   async get(id: string): Promise<FileEntry<T> | null> {

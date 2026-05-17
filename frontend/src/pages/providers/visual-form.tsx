@@ -77,6 +77,24 @@ export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
   },
 };
 
+// 静态节点(inline)默认模板:供 ?new=inline 等深度链接预填表单。
+// 与 DEFAULT_PROVIDER_TEMPLATE 区别仅在 type / 没有 url / 给一个空 content。
+export const INLINE_PROVIDER_TEMPLATE: Partial<ProviderData> = {
+  name: "static nodes",
+  type: "inline",
+  content: "",
+  user_agent: "Surge/2400",
+  refresh: { interval: "12h" },
+  parser_hint: "auto",
+  enabled: true,
+  tags: [],
+  clash_proxy_provider: {
+    enabled: false,
+    health_check_url: "http://www.gstatic.com/generate_204",
+    health_check_interval: 300,
+  },
+};
+
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
 interface Props {
@@ -97,6 +115,11 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
   const tabValue =
     data.type === "http" ? "http" : data.type === "inline" ? "inline" : "";
 
+  // @business_rule: tab 切换只改 type,另一边字段(url / content)保留为"草稿"。
+  // 之前主动把对侧字段置 undefined 会让用户在 URL 订阅 / 静态节点之间来回切换时丢内容,
+  // 例如在静态节点粘了大段 content → 切到 URL 订阅 → 切回静态节点,content 就空了。
+  // 后端 providerSchema.superRefine 只校验当前 type 所需字段,另一侧冗余字段不会让保存失败。
+  // file 类型独占的 path 仍然清掉:tabs 里没有 file 入口,切走视为"自动迁移"(顶部 warning 已说明)。
   const switchTo = (next: ProviderType) => {
     if (next === "http") {
       update({
@@ -104,13 +127,11 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
         url: data.url ?? "",
         user_agent: data.user_agent || "Surge/2400",
         path: undefined,
-        content: undefined,
       });
     } else {
       update({
         type: "inline",
         content: data.content ?? "",
-        url: undefined,
         path: undefined,
       });
     }
@@ -181,14 +202,14 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
           此节点源使用「服务器本地路径」
           <code className="px-1 font-mono">{data.path ?? ""}</code>
           。可视化模式不直接编辑 path,如需保留请切到「YAML 高级」;
-          或在下方选择 URL / 内嵌方式将自动迁移。
+          或在下方选择 URL / 静态方式将自动迁移。
         </div>
       )}
 
       <Tabs value={tabValue} onValueChange={(v) => switchTo(v as ProviderType)}>
         <TabsList>
           <TabsTrigger value="http">URL 订阅</TabsTrigger>
-          <TabsTrigger value="inline">内嵌节点文本</TabsTrigger>
+          <TabsTrigger value="inline">静态节点</TabsTrigger>
         </TabsList>
         <TabsContent value="http" className="space-y-3 pt-3">
           <Field label="URL">

@@ -84,7 +84,6 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
   const debouncedKey = useDebounced(
     {
       providers: draft?.providers ?? [],
-      include_manual_nodes: draft?.include_manual_nodes ?? true,
       include_regex: draft?.node_filter.include_regex ?? "",
       exclude_regex: draft?.node_filter.exclude_regex ?? "",
       exclude_types: draft?.node_filter.exclude_types ?? [],
@@ -96,7 +95,6 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
     queryFn: () =>
       api.post<NodePoolPreviewResp>(`/api/profiles/${id}/node-pool-preview`, {
         providers: debouncedKey.providers,
-        include_manual_nodes: debouncedKey.include_manual_nodes,
         node_filter: {
           include_regex: debouncedKey.include_regex || undefined,
           exclude_regex: debouncedKey.exclude_regex || undefined,

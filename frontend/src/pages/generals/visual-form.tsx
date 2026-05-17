@@ -2,7 +2,7 @@ import type { GeneralPresetData } from "./types";
 import { BasicSection } from "./sections/basic";
 import { DnsSection } from "./sections/dns";
 import { MitmSection } from "./sections/mitm";
-import { HostsSection, SsidSection, SurgeOnlySection } from "./sections/misc";
+import { HostsSection, HttpApiSection, SsidSection, SurgeOnlySection } from "./sections/misc";
 
 interface Props {
   data: GeneralPresetData;
@@ -26,6 +26,9 @@ export function GeneralPresetVisualForm({ data, update }: Props) {
           <SubCollapsible title="MITM" defaultOpen>
             <MitmSection data={data} update={update} />
           </SubCollapsible>
+          <SubCollapsible title="HTTP API (控制台)" defaultOpen>
+            <HttpApiSection data={data} update={update} />
+          </SubCollapsible>
           <SubCollapsible title="SSID 规则" defaultOpen>
             <SsidSection data={data} update={update} />
           </SubCollapsible>
@@ -35,7 +38,7 @@ export function GeneralPresetVisualForm({ data, update }: Props) {
         </div>
       </CollapsibleSection>
       <div className="text-xs text-muted-foreground border-t pt-2">
-        TUN / Sniffer / HTTP API / 其它 Clash 字段请切到「YAML 高级」编辑
+        TUN / Sniffer / 其它 Clash 高阶字段请切到「YAML 高级」编辑
       </div>
     </div>
   );

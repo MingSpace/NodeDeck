@@ -98,7 +98,7 @@ export function RightPanel({ draft, onChange }: Props) {
           />
         }
         collapsed={!draft.userinfo.enabled}
-        collapsedHint="未启用 — 不会输出 Subscription-UserInfo / X-MConvert-Userinfo-* 响应头"
+        collapsedHint="未启用 — 不会输出 Subscription-UserInfo / X-NodeDeck-Userinfo-* 响应头"
       >
         <div className="space-y-2">
           <Select
@@ -143,7 +143,7 @@ export function RightPanel({ draft, onChange }: Props) {
               }
               className="h-3.5 w-3.5"
             />
-            暴露每机场 X-MConvert-Userinfo-* 响应头
+            暴露每机场 X-NodeDeck-Userinfo-* 响应头
           </label>
         </div>
       </Section>

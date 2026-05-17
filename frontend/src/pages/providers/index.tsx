@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Plus,
@@ -29,7 +30,9 @@ import { toast } from "@/components/ui/toast";
 import {
   ProviderVisualForm,
   DEFAULT_PROVIDER_TEMPLATE,
+  INLINE_PROVIDER_TEMPLATE,
   type ProviderData,
+  type ProviderType,
   type RefreshInterval,
 } from "./visual-form";
 
@@ -126,8 +129,19 @@ export function ProvidersPage() {
 
   const [editing, setEditing] = useState<ProviderData | null>(null);
   const [open, setOpen] = useState(false);
+  // @user_flow: 节点池空态 / dashboard 等位置带 ?new=inline|http 跳进来时,
+  // 直接打开新建对话框 + 把模板的 type 切到对应类型,省去用户再点「新建」+ 切 tab。
+  // 关闭对话框后 reset,这样手动点「新建」永远是默认 http 模板。
+  const [pendingNewType, setPendingNewType] = useState<ProviderType | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // dashboard 错误卡片点击会带 ?focus=<provider_id> 进来,自动展开 + 滚动定位 + 短暂高亮
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusId = searchParams.get("focus");
+  const newType = searchParams.get("new");
+  const lastHandledFocus = useRef<string | null>(null);
+  const lastHandledNew = useRef<string | null>(null);
 
   const statusMap = new Map(
     status.data?.items.map((i) => [i.provider.id, i]) ?? [],
@@ -147,6 +161,63 @@ export function ProvidersPage() {
   const allSelected = items.length > 0 && validSelected.size === items.length;
   const partialSelected = validSelected.size > 0 && !allSelected;
   const hasSelection = validSelected.size > 0;
+
+  // 收到 ?focus=<id> 时:展开该卡片 → 滚到视图中 → 高亮 2.5s → 清掉 query param。
+  // ref 去重防止 strict mode 双跑;当 focusId 变 null 时复位 ref,允许同一 id 再次跳转。
+  useEffect(() => {
+    if (!focusId) {
+      lastHandledFocus.current = null;
+      return;
+    }
+    if (lastHandledFocus.current === focusId) return;
+    if (!items.some((p) => p.id === focusId)) return;
+    lastHandledFocus.current = focusId;
+    setExpandedIds((prev) => {
+      if (prev.has(focusId)) return prev;
+      const next = new Set(prev);
+      next.add(focusId);
+      return next;
+    });
+    setHighlightId(focusId);
+    requestAnimationFrame(() => {
+      document
+        .getElementById(`provider-card-${focusId}`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    const next = new URLSearchParams(searchParams);
+    next.delete("focus");
+    setSearchParams(next, { replace: true });
+    const t = setTimeout(() => setHighlightId(null), 2500);
+    return () => clearTimeout(t);
+  }, [focusId, items, searchParams, setSearchParams]);
+
+  // 收到 ?new=inline|http 时:打开新建对话框并把模板预选为对应类型,然后清掉 query param。
+  // ref 去重避免 strict mode 双跑 + 同一参数被多次 effect 重复打开。
+  useEffect(() => {
+    if (!newType) {
+      lastHandledNew.current = null;
+      return;
+    }
+    if (lastHandledNew.current === newType) return;
+    if (newType !== "inline" && newType !== "http") return;
+    lastHandledNew.current = newType;
+    setEditing(null);
+    setPendingNewType(newType);
+    setOpen(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete("new");
+    setSearchParams(next, { replace: true });
+  }, [newType, searchParams, setSearchParams]);
+
+  const newTemplate = useMemo<Partial<ProviderData>>(
+    () => (pendingNewType === "inline" ? INLINE_PROVIDER_TEMPLATE : DEFAULT_PROVIDER_TEMPLATE),
+    [pendingNewType],
+  );
+
+  const handleDialogOpenChange = (v: boolean) => {
+    setOpen(v);
+    if (!v) setPendingNewType(null);
+  };
 
   const toggleExpand = (id: string) => {
     setExpandedIds((prev) => {
@@ -201,14 +272,14 @@ export function ProvidersPage() {
   };
 
   return (
-    <div className="p-8 max-w-6xl">
+    <div className="p-8 max-w-[1800px] mx-auto">
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
             节点源 (Providers)
           </h1>
           <p className="text-muted-foreground mt-1">
-            订阅 URL / 内嵌节点文本; 多源去重合并
+            订阅 URL / 静态节点; 多源去重合并
           </p>
         </div>
         <div className="flex gap-2">
@@ -303,11 +374,13 @@ export function ProvidersPage() {
           return (
             <Card
               key={p.id}
+              id={`provider-card-${p.id}`}
               className={cn(
-                "p-4 transition-colors",
+                "p-4 transition-all",
                 canExpand && "cursor-pointer hover:bg-muted/30",
                 !p.enabled && "opacity-60 bg-muted/20 hover:opacity-100",
                 checked && "bg-primary/5 hover:bg-primary/10 ring-1 ring-primary/20",
+                highlightId === p.id && "ring-2 ring-primary ring-offset-2",
               )}
               onClick={canExpand ? () => toggleExpand(p.id) : undefined}
             >
@@ -325,11 +398,14 @@ export function ProvidersPage() {
                 <div className="flex-1 min-w-0">
                   <span
                     className={cn(
-                      "font-medium",
+                      "font-medium inline-flex items-baseline gap-2 min-w-0 flex-wrap",
                       !p.enabled && "line-through decoration-1",
                     )}
                   >
-                    {p.name}
+                    <span className="truncate">{p.name}</span>
+                    <span className="text-xs font-normal font-mono text-muted-foreground shrink-0">
+                      {p.id}
+                    </span>
                   </span>
                   {(p.url ?? p.path) && (
                     <div
@@ -376,7 +452,7 @@ export function ProvidersPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="flex items-center gap-1.5 flex-wrap justify-end">
                     <Badge variant="outline" className="text-xs">
-                      {p.type}
+                      {isInline ? "本地" : p.type}
                     </Badge>
                     {!p.enabled && (
                       <Badge
@@ -532,9 +608,9 @@ export function ProvidersPage() {
         kind="providers"
         entity={editing}
         open={open}
-        onOpenChange={setOpen}
+        onOpenChange={handleDialogOpenChange}
         defaultId={editing?.id ?? `provider-${Date.now().toString(36)}`}
-        templateValue={DEFAULT_PROVIDER_TEMPLATE}
+        templateValue={newTemplate}
         description="可视化编辑节点源;复杂场景可切换 YAML 模式"
         renderForm={(data, update) => (
           <ProviderVisualForm

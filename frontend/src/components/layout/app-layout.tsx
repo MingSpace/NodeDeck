@@ -41,7 +41,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/logs", label: "日志", icon: ScrollText },
 ];
 
-const STORAGE_KEY = "mconvert:sidebar-collapsed";
+const STORAGE_KEY = "nodedeck:sidebar-collapsed";
 
 function useSidebarCollapsed() {
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -163,7 +163,7 @@ export function AppLayout() {
             <>
               <Link to="/dashboard" className="min-w-0 block">
                 <h1 className="text-lg font-bold tracking-tight leading-tight truncate">
-                  MConvert
+                  NodeDeck
                 </h1>
                 <p className="text-[11px] text-muted-foreground truncate">
                   订阅规则配置中心
@@ -202,6 +202,7 @@ export function AppLayout() {
       </aside>
       <main
         className="flex-1 overflow-auto bg-background"
+        style={{ scrollbarGutter: "stable" }}
         key={location.pathname}
       >
         <Outlet />

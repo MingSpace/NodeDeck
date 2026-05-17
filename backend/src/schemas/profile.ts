@@ -42,7 +42,6 @@ export const profileSchema = z.object({
 
   // node sources
   providers: z.array(idSchema).default([]),
-  include_manual_nodes: z.boolean().default(true),
 
   // node filtering / renaming
   node_filter: nodeFilterSchema.default({}),
@@ -63,7 +62,7 @@ export const profileSchema = z.object({
   general_preset: idSchema.optional(),
 
   // userinfo aggregation
-  // enabled=false 时 /sub 完全跳过 aggregateUserInfo,不写 Subscription-UserInfo / X-MConvert-Userinfo-*
+  // enabled=false 时 /sub 完全跳过 aggregateUserInfo,不写 Subscription-UserInfo / X-NodeDeck-Userinfo-*
   userinfo: z
     .object({
       enabled: z.boolean().default(false),

@@ -20,6 +20,17 @@ const prettyOrStdout = isDev
   ? pinoPretty({ colorize: true, translateTime: "SYS:HH:MM:ss" })
   : process.stdout;
 
+const REDACT_PATHS = [
+  "*.password",
+  "*.uuid",
+  "*.psk",
+  "*.private_key",
+  "*.privateKey",
+  "*.token",
+  "req.headers.cookie",
+  "req.headers.authorization",
+];
+
 const streams: pino.StreamEntry[] = [
   { level: env.LOG_LEVEL, stream: prettyOrStdout },
   { level: env.LOG_LEVEL, stream: ringStream },
@@ -28,19 +39,23 @@ const streams: pino.StreamEntry[] = [
 export const logger = pino(
   {
     level: env.LOG_LEVEL,
-    redact: {
-      paths: [
-        "*.password",
-        "*.uuid",
-        "*.psk",
-        "*.private_key",
-        "*.privateKey",
-        "*.token",
-        "req.headers.cookie",
-        "req.headers.authorization",
-      ],
-      censor: "[REDACTED]",
-    },
+    redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },
   },
   pino.multistream(streams),
+);
+
+/**
+ * Access log 专用 logger:只写终端,不进 ring buffer。
+ *
+ * 原因:每个 HTTP 请求都会通过 hono/logger 写一行,在 /sub 被频繁拉取或 dev 时
+ * 高频刷 Web UI 的场景下,2000 条容量的 ring buffer 很快会被这些 access 日志占满,
+ * 把真正有用的 warn/error 顶掉。这里把 access log 单独导出到 stdout,业务 logger
+ * 仍然双写终端 + ring buffer,Web UI 上看到的就是干净的业务流水。
+ */
+export const accessLogger = pino(
+  {
+    level: env.LOG_LEVEL,
+    redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },
+  },
+  prettyOrStdout,
 );

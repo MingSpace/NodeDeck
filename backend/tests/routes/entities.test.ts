@@ -13,10 +13,6 @@ vi.mock("../../src/storage/repos.js", () => ({
 vi.mock("../../src/providers/load.js", () => ({
   refreshProvider: vi.fn(),
 }));
-vi.mock("../../src/storage/manual-nodes.js", () => ({
-  readManualNodes: vi.fn(),
-  writeManualNodes: vi.fn(),
-}));
 
 import { providerRepo, rulesetRepo } from "../../src/storage/repos.js";
 import { refreshProvider } from "../../src/providers/load.js";

@@ -1,6 +1,6 @@
-# MConvert 设计概览
+# NodeDeck 设计概览
 
-> 本文档是设计的简明速览,完整版本请见 `.cursor/plans/mconvert_设计方案_*.plan.md`。
+> 本文档是设计的简明速览,完整版本请见 `.cursor/plans/nodedeck_设计方案_*.plan.md`。
 
 ---
 
@@ -23,8 +23,7 @@
 ```
 data/
   config.yaml              # 全局配置(admin 密码哈希、IP 白名单等)
-  providers/*.yaml         # 节点源(订阅 URL / 本地文件 / 内联节点)
-  manual-nodes.yaml        # 手输节点(自建 VPS / WARP 等)
+  providers/*.yaml         # 节点源:订阅 URL / 服务器本地文件 / 静态节点(inline 类型,含手输 / 导入节点)
   rules/*.yaml             # 规则模块
   groups/*.yaml            # 策略组模板
   modules/*.yaml           # Surge 模块([MITM]/[URL Rewrite]/...)
@@ -32,6 +31,10 @@ data/
   profiles/*.yaml          # Profile 拼装单元
   cache/<provider>.json    # 订阅源 fetch 缓存(节点 + Subscription-UserInfo)
 ```
+
+> 注: 手动添加节点 / 从其它客户端导入的节点 一律走 `type: inline` Provider —
+> 没有独立的 `manual-nodes.yaml`。每次 `/api/import/commit` 会把去重后存活的节点
+> 打包成一个新的 inline Provider 落到 `providers/imported-*.yaml`。
 
 每个实体都有 zod schema(见 `backend/src/schemas/`),YAML 写入前必须通过校验。
 
@@ -72,7 +75,7 @@ generator 入口会做两层校验:
 
 - **总开关 `userinfo.enabled`**: **默认关闭**;关闭时 `/sub` 完全跳过聚合分支,不读 cache 也不写任何相关响应头
 - **标准 header `Subscription-UserInfo`**: 按 `userinfo.mode` 聚合(`primary` / `sum`)
-- **自定义 header `X-MConvert-Userinfo-{provider_id}`**: 每机场一条,完整原文(`expose_per_provider_headers` 控制)
+- **自定义 header `X-NodeDeck-Userinfo-{provider_id}`**: 每机场一条,完整原文(`expose_per_provider_headers` 控制)
 - **Web UI 仪表板**: 卡片网格,单机场流量进度条 + 到期倒计时 + 阈值告警
 
 ## 8. URL + 鉴权

@@ -5,7 +5,6 @@ import { logger } from "../logger.js";
 import {
   dataPath,
   entityDir,
-  manualNodesPath,
   type SubDir,
 } from "./paths.js";
 import { invalidateAll } from "./cache.js";
@@ -25,7 +24,6 @@ export interface ResetScope {
   modules?: boolean;
   general?: boolean;
   profiles?: boolean;
-  manual_nodes?: boolean;
   cache?: boolean;
   service_settings?: boolean;
 }
@@ -38,7 +36,6 @@ export interface ResetResult {
     modules: number;
     general: number;
     profiles: number;
-    manual_nodes: number;
     cache: number;
     service_settings: boolean;
   };
@@ -73,7 +70,6 @@ export async function resetData(scope: ResetScope): Promise<ResetResult> {
     modules: 0,
     general: 0,
     profiles: 0,
-    manual_nodes: 0,
     cache: 0,
     service_settings: false,
   };
@@ -90,18 +86,6 @@ export async function resetData(scope: ResetScope): Promise<ResetResult> {
   const shouldClearCache = scope.cache || scope.providers;
   if (shouldClearCache) {
     removed.cache = await clearDir(dataPath("cache"), (name) => name.endsWith(".json"));
-  }
-
-  if (scope.manual_nodes) {
-    const path = manualNodesPath();
-    if (existsSync(path)) {
-      try {
-        await unlink(path);
-        removed.manual_nodes = 1;
-      } catch (err) {
-        logger.warn({ err, path }, "Failed to delete manual-nodes.yaml");
-      }
-    }
   }
 
   if (scope.service_settings) {

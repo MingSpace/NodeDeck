@@ -15,8 +15,8 @@ sudo usermod -aG docker $USER
 ### 2. 克隆仓库 + 构建镜像
 
 ```bash
-git clone <this-repo> mconvert && cd mconvert
-docker build -f docker/Dockerfile -t mconvert:latest .
+git clone <this-repo> nodedeck && cd nodedeck
+docker build -f docker/Dockerfile -t nodedeck:latest .
 ```
 
 ### 3. 配置环境变量
@@ -46,12 +46,12 @@ docker compose -f docker/docker-compose.yml logs -f
 
 ## 反向代理 + HTTPS (推荐)
 
-MConvert 本身不处理 TLS;请在前置使用 nginx / Caddy 终止 HTTPS。
+NodeDeck 本身不处理 TLS;请在前置使用 nginx / Caddy 终止 HTTPS。
 
 ### nginx 示例
 
 ```nginx
-# /etc/nginx/conf.d/mconvert.conf
+# /etc/nginx/conf.d/nodedeck.conf
 server {
     listen 443 ssl http2;
     server_name sub.your-domain.com;
@@ -101,7 +101,7 @@ Caddy 会自动申请 Let's Encrypt 证书。
 
 ## 在 Clash / Surge 客户端导入
 
-1. 在 MConvert Web UI 创建 Profile,得到订阅 URL
+1. 在 NodeDeck Web UI 创建 Profile,得到订阅 URL
 2. 把 URL 填入客户端订阅:
    - **Surge**: 设置 → 通用 → 配置 → 「Sync」→ 「Managed Config」→ 粘贴 surge URL
    - **Clash Verge / Mihomo Party**: 配置 → 新建 → URL 模式 → 粘贴 clash URL
@@ -128,7 +128,7 @@ git commit -m "config snapshot"
 
 ```bash
 git pull
-docker build -f docker/Dockerfile -t mconvert:latest .
+docker build -f docker/Dockerfile -t nodedeck:latest .
 docker compose -f docker/docker-compose.yml down
 docker compose -f docker/docker-compose.yml up -d
 ```
@@ -141,7 +141,7 @@ docker compose -f docker/docker-compose.yml up -d
 
 | 现象 | 排查 |
 |---|---|
-| 容器启动后无法访问 | 看 `docker logs mconvert`,确认监听端口与 docker-compose ports 映射一致 |
+| 容器启动后无法访问 | 看 `docker logs nodedeck`,确认监听端口与 docker-compose ports 映射一致 |
 | 首次登录密码不对 | 删除 `data/config.yaml`,重启容器,会用新的 `INITIAL_PASSWORD` 重建 |
 | 改了 Web UI 配置后客户端订阅没更新 | 确认你修改的是正确的 Profile;客户端可能有自己的缓存 |
 | 节点源 fetch 失败 | Web UI 仪表板会显示错误信息;常见原因: VPS 出口 IP 被机场封禁、订阅链接失效 |

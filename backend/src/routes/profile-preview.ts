@@ -14,7 +14,6 @@ export const profilePreviewRouter = new Hono();
 
 const nodePoolPreviewSchema = z.object({
   providers: z.array(z.string()).default([]),
-  include_manual_nodes: z.boolean().default(true),
   node_filter: nodeFilterSchema.optional(),
 });
 
@@ -172,7 +171,6 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
   void id;
   const pool = await buildNodePool({
     providerIds: parsed.data.providers,
-    includeManual: parsed.data.include_manual_nodes,
   });
   const filter = parsed.data.node_filter ?? {
     rename_rules: [],

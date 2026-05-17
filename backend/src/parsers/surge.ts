@@ -195,6 +195,12 @@ export function parseSurgeProxyLine(line: string): Node | null {
         tls: true,
       };
     case "wireguard":
+      // 两种 Surge 写法都尽量兼容:
+      //   1) inline:  WG = wireguard, server, port, private-key=..., public-key=..., self-ip=..., mtu=...
+      //   2) section-name: WG = wireguard, section-name=HomeServer  (密钥在 [WireGuard HomeServer] 段)
+      // 当前 parser 不解析 INI 段,section-name 模式下只能拿到 server/port/section_id,密钥字段为空。
+      // 实战中用户多半粘单行做"测试节点",此时 section-name 模式不常见;走 inline 路径即可。
+      // section-name 完整解析留给整包导入(import/surge.ts)按需扩展。
       return {
         ...base,
         type: "wireguard",

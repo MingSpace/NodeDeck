@@ -12,7 +12,6 @@ function baseProfile(overrides: Partial<Profile> = {}): Profile {
     name: "Home",
     token: "abcdefghij12",
     providers: [],
-    include_manual_nodes: true,
     node_filter: { rename_rules: [], exclude_types: [] },
     chain_rules: [],
     proxy_groups: [],
@@ -113,7 +112,7 @@ describe("generateSurgeConfig", () => {
           format: "yaml",
           surge_reject_options: {
             type: "REJECT-DROP",
-            notification_text: "blocked by mconvert",
+            notification_text: "blocked by nodedeck",
             notification_interval: 60,
           },
           surge_flags: { extended_matching: true, pre_matching: true, no_resolve: true },
@@ -158,7 +157,7 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("[Rule]");
     expect(out).toContain("RULE-SET,https://example.com/cn.list,DIRECT,no-resolve");
     expect(out).toContain(
-      `RULE-SET,https://example.com/ad.list,REJECT-DROP,'notification-text="blocked by mconvert"','notification-interval=60',no-resolve,extended-matching,pre-matching`,
+      `RULE-SET,https://example.com/ad.list,REJECT-DROP,'notification-text="blocked by nodedeck"','notification-interval=60',no-resolve,extended-matching,pre-matching`,
     );
     expect(out).toContain("GEOIP,CN,DIRECT,no-resolve");
     expect(out).toContain("FINAL,Proxys,dns-failed");

@@ -196,7 +196,7 @@ function Picker({
             <EmptyHint>
               {hasAnyProvider
                 ? "from_providers 未匹配到任何节点 — 可能所选机场未启用 / 尚未拉到节点 / from_providers 选错。可点右上角 ⟳ 刷新节点池"
-                : "暂无节点源 — 请先到「节点源」页面添加机场,或在「节点池 → 手动节点」里加几个节点"}
+                : "暂无节点源 — 请先到「节点源」页面新建一个机场订阅或「静态节点」类型的源"}
             </EmptyHint>
           ) : filteredNodes.length === 0 ? (
             <EmptyHint>无匹配节点</EmptyHint>
