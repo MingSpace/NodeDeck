@@ -50,8 +50,14 @@ export const REFRESH_INTERVAL_MINUTES: Record<RefreshInterval, number | null> = 
 
 /**
  * 给客户端 / 下游(Profile-Update-Interval, mihomo proxy-provider interval)用的秒数。
- * never(手动刷新):客户端轮询无意义,给最大值(1 周)。
- * on_request:客户端可以频繁轮询,服务端会在 /sub 路径上即时拉机场,这里给 1h 让客户端别太懒。
+ *
+ * 注意:这控制的是「客户端 → NodeDeck」轮询频率,不是「NodeDeck → 机场」(后者由
+ * scheduler.ts 按 refresh.interval enum 决定)。客户端拉 NodeDeck 不耗机场配额,
+ * 拿到的是 cache(never 模式不穿透到机场)。
+ *
+ * never(手动刷新):机场层面手动,但 NodeDeck 自己的 profile/group/rules 改动仍要让
+ *   客户端能同步到,所以给 1 周让客户端偶尔来拉一次 cache。
+ * on_request:服务端会在 /sub 路径上即时拉机场,客户端可以频繁轮询,这里给 1h 让客户端别太懒。
  */
 export function refreshIntervalToSeconds(interval: RefreshInterval): number {
   switch (interval) {
