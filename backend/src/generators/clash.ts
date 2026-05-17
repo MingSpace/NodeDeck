@@ -46,6 +46,9 @@ export interface ClashGenerateInput {
   providers?: Provider[];
   baseUrl?: string;
   profileToken?: string;
+  // 系统中所有 group 的 name 集合,仅供 validateGroupRefs 做"组未引入"诊断;
+  // 不传则退化为旧行为(所有未知引用都归入 nodeDangling)。
+  allKnownGroupNames?: Set<string>;
 }
 
 export function generateClashConfig(input: ClashGenerateInput): string {
@@ -55,7 +58,10 @@ export function generateClashConfig(input: ClashGenerateInput): string {
   const chained = applyChainRules(uniqued, profile);
   const groupNames = new Set(input.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
-  const sanitizedGroups = validateGroupRefs(input.groups, filteredNodes, { warnings: input.warnings });
+  const sanitizedGroups = validateGroupRefs(input.groups, filteredNodes, {
+    warnings: input.warnings,
+    allKnownGroupNames: input.allKnownGroupNames,
+  });
 
   // Mihomo proxy-providers 模式:把启用了 clash_proxy_provider 的机场节点剥离出主订阅,
   // 让客户端自己去拉取 /sub/provider/:id/clash.yaml,主订阅中只保留手动节点 + 不属于

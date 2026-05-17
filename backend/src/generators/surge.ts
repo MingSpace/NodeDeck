@@ -21,6 +21,9 @@ export interface SurgeGenerateInput {
   surgeModules: SurgeModule[];
   managed_config_url?: string;
   warnings: string[];
+  // 系统中所有 group 的 name 集合,仅供 validateGroupRefs 做"组未引入"诊断;
+  // 不传则退化为旧行为(所有未知引用都归入 nodeDangling)。
+  allKnownGroupNames?: Set<string>;
 }
 
 export function generateSurgeConfig(input: SurgeGenerateInput): string {
@@ -33,7 +36,10 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   const groupNames = new Set(escaped.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
   // 清理 group.proxies 中悬空的节点名(被 node_filter 过滤掉但 group 仍显式引用的)
-  const sanitizedGroups = validateGroupRefs(escaped.groups, filteredNodes, { warnings: input.warnings });
+  const sanitizedGroups = validateGroupRefs(escaped.groups, filteredNodes, {
+    warnings: input.warnings,
+    allKnownGroupNames: input.allKnownGroupNames,
+  });
   const lines: string[] = [];
 
   // managed-config header

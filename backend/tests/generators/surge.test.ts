@@ -212,7 +212,7 @@ describe("generateSurgeConfig", () => {
     expect(proxysLine).toContain("Manual");
     expect(proxysLine).toContain("DIRECT");
     expect(proxysLine).toContain("REJECT-DROP");
-    expect(warnings.some((w) => w.includes("Proxys") && w.includes("AD-01"))).toBe(true);
+    expect(warnings.some((w) => w.includes("Proxys") && w.includes("AD-01") && w.includes("移除了 1 个"))).toBe(true);
   });
 
   it("translates chain_via to underlying-proxy", () => {

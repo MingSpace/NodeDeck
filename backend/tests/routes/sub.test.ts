@@ -8,7 +8,8 @@ import type { Node } from "../../src/schemas/node.js";
 vi.mock("../../src/storage/repos.js", () => ({
   profileRepo: { get: vi.fn() },
   providerRepo: { get: vi.fn() },
-  proxyGroupRepo: { get: vi.fn() },
+  // resolveProfile 用 list() 拿系统中所有 group 名给 validateGroupRefs 做"组未引入"诊断
+  proxyGroupRepo: { get: vi.fn(), list: vi.fn().mockResolvedValue([]) },
   rulesetRepo: { get: vi.fn() },
   generalPresetRepo: { get: vi.fn() },
   surgeModuleRepo: { get: vi.fn() },

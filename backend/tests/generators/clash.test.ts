@@ -211,8 +211,8 @@ describe("generateClashConfig", () => {
     expect(proxysMembers).toContain("Manual");
     expect(proxysMembers).toContain("DIRECT");
     expect(proxysMembers).toContain("REJECT-DROP");
-    // 至少有一条 warning 提到 Proxys 组的悬空引用
-    expect(warnings.some((w) => w.includes("Proxys") && w.includes("广告测试-1"))).toBe(true);
+    // 至少有一条 warning 提到 Proxys 组的悬空引用(per-group 截断格式)
+    expect(warnings.some((w) => w.includes("Proxys") && w.includes("广告测试-1") && w.includes("移除了 1 个"))).toBe(true);
   });
 
   it("translates chain_via to dialer-proxy", () => {

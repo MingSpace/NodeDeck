@@ -172,7 +172,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
   3. `escapeSurgeNames` — **仅 Surge** 净化 `=` `,` `"`
   4. `applyChainRules` — 写 `chain_via`
   5. `validateChain` — node.chain_via 悬空引用降级 + 环检测
-  6. `validateGroupRefs` — group.proxies 显式列表的悬空节点剔除(过滤后不存在的节点名);组名 / DIRECT / REJECT 等内置 policy 一律保留
+  6. `validateGroupRefs` — group.proxies 显式列表的悬空节点剔除;区分两类诊断 — `nodeDangling`(被 node_filter 过滤的节点,节点池全空时聚合为 1 条总览,否则 per-group 截断为"前 5 个 + 和另外 X 个")与 `notImported`(系统中存在该 group yaml 但当前 profile.proxy_groups 没引入,文案明确指引到 Profile 编辑器加进来);组名 / DIRECT / REJECT 等内置 policy 一律保留
   7. 协议 builder 转字典/INI 行
 - ruleset 分发 **先按 `rs.type` 分大类**(remote_url / inline_list / geosite / geoip),再按 `clash_format` / `surge_format` 决定细节;不要再回到"先看 format 再看 type"的旧顺序
 
@@ -258,7 +258,8 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 | Surge 节点行被截断 | 密码含 `,` `"` 未引号包裹 | `buildSurgeProxyLine` 内部用 `escapeValue` 包密码;节点名含 `=` `,` `"` 由 `escapeSurgeNames` 自动净化 |
 | 多机场节点同名,Clash 加载 `duplicate key` | 老路径(uniquify 没接入) | 已由 `uniquifyNodeNames` 自动加 ` #2` 后缀;新增 generator 时务必走入口 pipeline,不要直接消费原始 nodes |
 | 链式代理报环 / chain_via 指向不存在节点 | A→B→A 或 chain_via 写错 | 已由 `validateChain` 自动断环 + 悬空降级 + warning;响应文件头 `# WARN:` 注释里能看到具体节点 |
-| 客户端报 `proxy not found in group "X"` | node_filter include/exclude 把节点过滤掉,但 group.proxies 显式还引用着该节点名 | 已由 `validateGroupRefs` 自动剔除 + warning;调整 node_filter 或在 group 编辑页删掉对应节点条目 |
+| 客户端报 `proxy not found in group "X"` (节点名) | node_filter include/exclude 把节点过滤掉,但 group.proxies 显式还引用着该节点名 | 已由 `validateGroupRefs` 自动剔除 + nodeDangling warning;调整 node_filter 或在 group 编辑页删掉对应节点条目 |
+| 客户端报 `proxy not found in group "X"` (其他组名,如 `Japan(DIP)`) | 该 group yaml 存在,但 profile.proxy_groups 没把它列出来 → 引用方剔除引用 | warning 会出 notImported 类型并明确指引;到 Profile 编辑器把该 group id 加入 proxy_groups 列表 |
 | `RULE-SET,<url>` 出现在 `GEOSITE` 行里(如 `GEOSITE,https://...`) | 误把 `rs.url` 当成 GEOSITE 分类 | 用 `geosite_category` 字段;同样 GEOIP 用 `geoip_country_code` |
 | Clash 报 `policy not found: REJECT-DROP` | Surge 专属 REJECT 子类型未降级 | 已由 `downgradeClashPolicy` + `REJECT_TYPE_MAP` 处理;新增 policy 类型时记得也加映射 |
 | Surge `RULE-SET,<id>,POLICY` 而 inline ruleset 段没出现 | `surge_format` 不是 `inline_ruleset` | inline list 想用引用形式必须显式 `surge_format: inline_ruleset`,否则就直接展开 |

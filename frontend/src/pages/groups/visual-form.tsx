@@ -1,8 +1,11 @@
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useEntityList } from "@/api/entities";
+import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ProxyListEditor } from "./proxy-list-editor";
+import { ProxyListEditor, type NodeCandidate } from "./proxy-list-editor";
 
 export interface ProxyGroupData {
   id: string;
@@ -42,6 +45,18 @@ interface NamedItem {
   name: string;
 }
 
+// @business_rule: 候选节点池来自 GET /api/dashboard/node-pool,该 API 已合并 enabled provider + manual 节点
+// 并做了去重(keep-first)。这里只取展示用到的几个字段。
+interface NodePoolResp {
+  nodes: Array<{
+    name: string;
+    type: string;
+    server: string;
+    port: number;
+    source_provider_id?: string;
+  }>;
+}
+
 interface Props {
   data: ProxyGroupData;
   update: (patch: Partial<ProxyGroupData>) => void;
@@ -52,6 +67,11 @@ const NEEDS_TEST = (t: ProxyGroupData["type"]) => t === "url-test" || t === "fal
 export function ProxyGroupVisualForm({ data, update }: Props) {
   const providers = useEntityList<NamedItem>("providers");
   const allGroups = useEntityList<NamedItem>("groups");
+  const nodePool = useQuery<NodePoolResp>({
+    queryKey: ["dashboard", "node-pool"],
+    queryFn: () => api.get<NodePoolResp>("/api/dashboard/node-pool"),
+    staleTime: 30_000,
+  });
 
   const sel = data.selector ?? {
     include_other_group: [],
@@ -60,6 +80,24 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
   };
 
   const ensureSelector = () => sel;
+
+  // @business_rule: from_providers 非空 → 只显示这些 provider 的节点;
+  // 为空 → 视为"所有 Provider"(对齐 selector 语义),包含 manual 节点。
+  // @user_flow: 用户切换 from_providers chip 时,候选立即跟随过滤,无需重新请求后端。
+  const candidateNodes = useMemo<NodeCandidate[]>(() => {
+    const all = nodePool.data?.nodes ?? [];
+    if (sel.from_providers.length === 0) {
+      return all.map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
+    }
+    const allow = new Set(sel.from_providers);
+    return all
+      .filter((n) => n.source_provider_id && allow.has(n.source_provider_id))
+      .map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
+  }, [nodePool.data?.nodes, sel.from_providers]);
+
+  const candidateGroups = useMemo(() => {
+    return (allGroups.data?.items ?? []).filter((g) => g.id !== data.id);
+  }, [allGroups.data?.items, data.id]);
 
   return (
     <div className="space-y-4">
@@ -184,7 +222,15 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
 
       <fieldset className="border rounded-md p-3">
         <legend className="text-xs font-medium px-1">显式 proxies 列表 (顺序敏感,可拖拽)</legend>
-        <ProxyListEditor proxies={data.proxies} onChange={(arr) => update({ proxies: arr })} />
+        <ProxyListEditor
+          proxies={data.proxies}
+          onChange={(arr) => update({ proxies: arr })}
+          candidateNodes={candidateNodes}
+          candidateGroups={candidateGroups}
+          onRefreshNodes={() => nodePool.refetch()}
+          isLoadingNodes={nodePool.isLoading}
+          hasAnyProvider={(providers.data?.items.length ?? 0) > 0}
+        />
       </fieldset>
     </div>
   );
