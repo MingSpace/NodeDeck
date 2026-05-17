@@ -11,7 +11,7 @@ import { REFRESH_INTERVAL_MINUTES } from "../schemas/common.js";
 import { logger } from "../logger.js";
 
 export interface RefreshOptions {
-  /** if true, ignore cache TTL and fetch immediately. never 模式下仍然短路。 */
+  /** if true, ignore cache TTL and fetch immediately. never(手动刷新)模式下 force=true 也会穿透。 */
   force?: boolean;
 }
 
@@ -19,20 +19,19 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
   const cached = await readProviderCache(provider.id);
   const interval = provider.refresh.interval;
 
-  // never:已有 ok cache 就锁死,即使 force 也忽略。无 cache 时仍然落到下面拉一次种子。
-  if (interval === "never" && cached?.status === "ok" && cached.nodes.length > 0) {
-    return cached;
-  }
-
   if (!opts.force && cached?.status === "ok") {
     const minutes = REFRESH_INTERVAL_MINUTES[interval];
-    // null = never(走到这里说明 cache 不 ok,需要拉种子);0 = on_request,总是穿透到 fetch。
-    if (minutes !== null && minutes > 0) {
+    // null = never(手动刷新):non-force 路径(scheduler / loadProviderNodes)一律使用 cache,不自动拉。
+    // 用户手动点刷新按钮时走 force=true 路径,会绕过这里穿透到 fetch。
+    if (minutes === null) {
+      if (cached.nodes.length > 0) return cached;
+    } else if (minutes > 0) {
       const ageMin = (Date.now() - cached.fetched_at) / 1000 / 60;
       if (ageMin < minutes) {
         return cached;
       }
     }
+    // minutes === 0 (on_request) 穿透到下面 fetch。
   }
   try {
     const result = await fetchProviderContent(provider);
@@ -105,7 +104,10 @@ export async function loadProviderNodes(provider: Provider): Promise<Node[]> {
 
 export interface RefreshAllResult {
   refreshed: ProviderCache[];
-  /** Provider IDs that were skipped because interval=never and ok cache exists (force 也无效)。 */
+  /**
+   * Provider IDs that were skipped because interval=never (手动刷新)且当前调用 non-force。
+   * force=true 时一定为空数组(用户手动触发"刷新全部"会一起拉)。
+   */
   skippedLocked: string[];
 }
 
@@ -113,16 +115,21 @@ export async function refreshAllProviders(opts: RefreshOptions = {}): Promise<Re
   const all = await providerRepo.list();
   const enabled = all.filter((e) => e.data.enabled);
 
-  // 先并发判定 never 模式是否锁定(读 cache 即可,无网络),把要真正拉取的筛出来。
-  const lockedFlags = await Promise.all(
-    enabled.map(async (entry) => {
-      if (entry.data.refresh.interval !== "never") return false;
-      const existing = await readProviderCache(entry.id);
-      return Boolean(existing?.status === "ok" && existing.nodes.length > 0);
-    }),
-  );
-  const skippedLocked = enabled.filter((_, i) => lockedFlags[i]).map((e) => e.id);
-  const toRefresh = enabled.filter((_, i) => !lockedFlags[i]);
+  // non-force 路径下,never(手动刷新)+ ok cache 不参与拉取。
+  // force=true(用户点"刷新全部")则一视同仁,全部送进 refreshProvider。
+  let toRefresh = enabled;
+  let skippedLocked: string[] = [];
+  if (!opts.force) {
+    const lockedFlags = await Promise.all(
+      enabled.map(async (entry) => {
+        if (entry.data.refresh.interval !== "never") return false;
+        const existing = await readProviderCache(entry.id);
+        return Boolean(existing?.status === "ok" && existing.nodes.length > 0);
+      }),
+    );
+    skippedLocked = enabled.filter((_, i) => lockedFlags[i]).map((e) => e.id);
+    toRefresh = enabled.filter((_, i) => !lockedFlags[i]);
+  }
 
   // 真正拉取并发跑,单机场失败不影响其它(refreshProvider 内部已经把 fetch 异常落到 stale cache)。
   const results = await Promise.allSettled(toRefresh.map((entry) => refreshProvider(entry.data, opts)));

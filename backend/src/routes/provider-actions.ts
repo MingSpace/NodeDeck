@@ -27,15 +27,6 @@ providerActionsRouter.post("/:id/refresh", async (c) => {
   const id = c.req.param("id");
   const entry = await providerRepo.get(id);
   if (!entry) return c.json({ error: "provider not found" }, 404);
-  if (entry.data.refresh.interval === "never") {
-    const existing = await readProviderCache(id);
-    if (existing?.status === "ok" && existing.nodes.length > 0) {
-      return c.json(
-        { error: "provider locked (interval=never)", locked: true },
-        403,
-      );
-    }
-  }
   const cache = await refreshProvider(entry.data, { force: true });
   return c.json({
     provider_id: cache.provider_id,

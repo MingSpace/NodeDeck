@@ -7,8 +7,9 @@ let started = false;
 let task: cron.ScheduledTask | null = null;
 
 /**
- * Run once per minute. Each provider is refreshed when its `refresh.interval_minutes` has elapsed
- * since last successful fetch.
+ * Run once per minute. Each provider is refreshed when its `refresh.interval` bucket
+ * (4h / 12h / 24h / 1week) has elapsed since last successful fetch.
+ * never(手动刷新)走 short-circuit 路径,on_request 由 /sub 触发。
  */
 export function startProviderScheduler(): void {
   if (started) return;
@@ -37,7 +38,7 @@ async function runOnce(): Promise<void> {
       e.data.enabled &&
       // on_request 由 /sub 触发,cron 不主动拉,避免无人访问也消耗机场配额。
       e.data.refresh.interval !== "on_request",
-    // never 模式仍允许进入 refreshProvider:无 cache 时拉一次种子,有 ok cache 时内部 short-circuit。
+    // never(手动刷新)仍进 refreshProvider:无 cache 时拉一次种子,有 ok cache 时内部 short-circuit(non-force 路径)。
   );
   // 并发拉取:个人用机场数量不多(<=10),全并发即可。单机场失败不影响其它,异常已就地降级到 stale。
   const results = await Promise.allSettled(

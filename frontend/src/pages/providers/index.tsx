@@ -57,7 +57,7 @@ function formatUrlDisplay(raw: string): { text: string; queryCount: number } {
 }
 
 const REFRESH_INTERVAL_LABEL: Record<RefreshInterval, string> = {
-  never: "永不刷新",
+  never: "手动刷新",
   "4h": "每 4 小时",
   "12h": "每 12 小时",
   "24h": "每 24 小时",
@@ -96,13 +96,9 @@ export function ProvidersPage() {
         "/api/providers/refresh-all",
       ),
     onSuccess: (data) => {
-      const skipped = data?.skipped_locked?.length ?? 0;
       toast({
         title: "已触发刷新",
-        description:
-          skipped > 0
-            ? `刷新 ${data?.count ?? 0} 个,跳过 ${skipped} 个永久缓存`
-            : `刷新 ${data?.count ?? 0} 个`,
+        description: `刷新 ${data?.count ?? 0} 个`,
         variant: "success",
       });
       queryClient.invalidateQueries({ queryKey: ["providers", "status"] });
@@ -114,16 +110,7 @@ export function ProvidersPage() {
       queryClient.invalidateQueries({ queryKey: ["providers", "status"] });
     },
     onError: (err: Error) => {
-      const msg = err.message ?? "";
-      if (msg.includes("locked")) {
-        toast({
-          title: "Provider 已锁定",
-          description: "interval=never,需在编辑器中临时改为其他选项才能刷新",
-          variant: "info",
-        });
-      } else {
-        toast({ title: "刷新失败", description: msg, variant: "error" });
-      }
+      toast({ title: "刷新失败", description: err.message ?? "", variant: "error" });
     },
   });
 
@@ -530,15 +517,10 @@ export function ProvidersPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => refreshOne.mutate(p.id)}
-                        disabled={
-                          refreshOne.isPending ||
-                          (p.refresh.interval === "never" &&
-                            s?.status === "ok" &&
-                            s.node_count > 0)
-                        }
+                        disabled={refreshOne.isPending}
                         title={
                           p.refresh.interval === "never"
-                            ? "永久缓存模式,需在编辑器中改为其他选项后才能刷新"
+                            ? "手动刷新模式:点这里立即拉取一次"
                             : "刷新此源"
                         }
                       >

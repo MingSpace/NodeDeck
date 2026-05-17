@@ -66,53 +66,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("refresh schema 迁移", () => {
-  it("老格式 { interval_minutes: 60, on_demand: true } → 4h", () => {
-    const p = providerSchema.parse({
-      id: "p",
-      name: "P",
-      type: "inline",
-      content: "x",
-      refresh: { interval_minutes: 60, on_demand: true },
-    });
-    expect(p.refresh.interval).toBe("4h");
-  });
-
-  it("老格式 { interval_minutes: 60, on_demand: false } → never", () => {
-    const p = providerSchema.parse({
-      id: "p",
-      name: "P",
-      type: "inline",
-      content: "x",
-      refresh: { interval_minutes: 60, on_demand: false },
-    });
-    expect(p.refresh.interval).toBe("never");
-  });
-
-  it("老格式 interval_minutes 桶映射", () => {
-    const cases: [number, string][] = [
-      [240, "4h"],
-      [241, "12h"],
-      [720, "12h"],
-      [721, "24h"],
-      [1440, "24h"],
-      [1441, "1week"],
-      [10080, "1week"],
-      [99999, "1week"],
-    ];
-    for (const [m, expected] of cases) {
-      const p = providerSchema.parse({
-        id: "p",
-        name: "P",
-        type: "inline",
-        content: "x",
-        refresh: { interval_minutes: m, on_demand: true },
-      });
-      expect(p.refresh.interval, `interval_minutes=${m}`).toBe(expected);
-    }
-  });
-
-  it("新格式直接通过", () => {
+describe("refresh schema", () => {
+  it("显式 interval 直接通过", () => {
     const p = providerSchema.parse({
       id: "p",
       name: "P",
@@ -134,20 +89,32 @@ describe("refresh schema 迁移", () => {
   });
 });
 
-describe("refreshProvider - never 模式", () => {
-  it("已有 ok cache 时 short-circuit,即使 force=true 也不重拉", async () => {
+describe("refreshProvider - never(手动刷新)模式", () => {
+  it("non-force 路径(scheduler / loadProviderNodes)下,有 ok cache 直接复用,不去 fetch", async () => {
     const provider = fakeProvider({ interval: "never" });
     const cached = okCache(99999);
     mockedReadCache.mockResolvedValue(cached);
 
-    const result = await refreshProvider(provider, { force: true });
+    const result = await refreshProvider(provider, { force: false });
 
     expect(result).toBe(cached);
     expect(mockedFetch).not.toHaveBeenCalled();
     expect(mockedWriteCache).not.toHaveBeenCalled();
   });
 
-  it("无 cache 时仍然拉一次种子并写入", async () => {
+  it("force=true(用户手动点刷新)穿透到 fetch 并写回新 cache", async () => {
+    const provider = fakeProvider({ interval: "never" });
+    const cached = okCache(99999);
+    mockedReadCache.mockResolvedValue(cached);
+
+    const result = await refreshProvider(provider, { force: true });
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    expect(mockedWriteCache).toHaveBeenCalledTimes(1);
+    expect(result.status).toBe("ok");
+  });
+
+  it("无 cache 时仍然拉一次种子并写入(non-force 也会拉,避免初始化时空跑)", async () => {
     const provider = fakeProvider({ interval: "never" });
     mockedReadCache.mockResolvedValue(null);
 
@@ -285,25 +252,47 @@ describe("refreshProvider - 解析出 0 节点时写 error 状态", () => {
   });
 });
 
-describe("refreshAllProviders - never 跳过统计", () => {
-  it("never+ok 的 provider 进 skippedLocked,其他正常 refresh", async () => {
-    const lockedProvider = fakeProvider({ interval: "never" });
-    Object.assign(lockedProvider, { id: "locked" });
+describe("refreshAllProviders - never(手动刷新)与 force 交互", () => {
+  it("force=true(手动「刷新全部」)时,never 也一起拉,skippedLocked 为空", async () => {
+    const manualProvider = fakeProvider({ interval: "never" });
+    Object.assign(manualProvider, { id: "manual" });
     const normalProvider = fakeProvider({ interval: "4h" });
     Object.assign(normalProvider, { id: "normal" });
 
     mockedRepoList.mockResolvedValue([
-      { id: "locked", data: lockedProvider },
+      { id: "manual", data: manualProvider },
       { id: "normal", data: normalProvider },
     ]);
     mockedReadCache.mockImplementation(async (id: string) => {
-      if (id === "locked") return okCache(99999);
+      if (id === "manual") return okCache(99999);
       return null;
     });
 
     const result = await refreshAllProviders({ force: true });
 
-    expect(result.skippedLocked).toEqual(["locked"]);
+    expect(result.skippedLocked).toEqual([]);
+    expect(result.refreshed).toHaveLength(2);
+    expect(mockedFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("force=false(理论上的兜底路径)时,never+ok 仍进 skippedLocked", async () => {
+    const manualProvider = fakeProvider({ interval: "never" });
+    Object.assign(manualProvider, { id: "manual" });
+    const normalProvider = fakeProvider({ interval: "4h" });
+    Object.assign(normalProvider, { id: "normal" });
+
+    mockedRepoList.mockResolvedValue([
+      { id: "manual", data: manualProvider },
+      { id: "normal", data: normalProvider },
+    ]);
+    mockedReadCache.mockImplementation(async (id: string) => {
+      if (id === "manual") return okCache(99999);
+      return null;
+    });
+
+    const result = await refreshAllProviders({ force: false });
+
+    expect(result.skippedLocked).toEqual(["manual"]);
     expect(result.refreshed).toHaveLength(1);
     expect(mockedFetch).toHaveBeenCalledTimes(1);
   });

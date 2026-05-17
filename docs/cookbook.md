@@ -41,7 +41,7 @@ clash_proxy_provider:
 | --- | --- |
 | `4h` / `12h` / `24h` / `1week` | 后端 cron 每分钟扫一次,过期才去机场拉 |
 | `on_request` | 每次客户端访问 `/sub` 时都同步去机场拉(实时,响应耗时取决于机场) |
-| `never` | 第一次拉到后**永久缓存**,即便点"强制刷新"也无效;需重新拉取请临时改成其他选项,等后台拉到再改回 |
+| `never` | **手动刷新**:后台 cron 不再自动调度;首次会拉一次种子,之后只有你点列表里的「刷新」/「刷新全部」按钮才会去机场拉(`/sub` 命中现有 cache,不穿透) |
 
 ```yaml
 # data/providers/airport-b.yaml
@@ -55,8 +55,6 @@ refresh:
 enabled: true
 tags: [backup]
 ```
-
-> 老格式 `{ interval_minutes, on_demand }` 启动时会自动迁移到新 enum(运行时转换,文件不主动重写;在 Web UI 编辑保存后才落新格式)。映射规则:`interval_minutes <= 240 → 4h`、`<= 720 → 12h`、`<= 1440 → 24h`、`> 1440 → 1week`;`on_demand: false` 一律视为 `never`。
 
 > **首次保存自动拉取**:Web UI 新建一个 `enabled: true` 的 provider 时,后端会立即在后台异步拉取一次,无需手动点刷新。在节点拉到之前,列表会显示黄色「拉取中...」徽标,几秒后自动变为绿色「N 个节点」(成功)或红色「失败」。`enabled: false` 的草稿态以及编辑保存已存在的 provider 都不会触发自动拉取(沿用老的 cron / on_request / 手动刷新行为)。
 

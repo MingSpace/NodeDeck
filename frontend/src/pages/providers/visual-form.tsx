@@ -316,13 +316,13 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
                   每次调用时(实时拉取)
                 </SelectItem>
                 <SelectItem value="never">
-                  不刷新(永久缓存,首次拉到后锁死)
+                  手动刷新(不自动调度,需要时点列表里的刷新按钮)
                 </SelectItem>
               </SelectContent>
             </Select>
             {refresh.interval === "never" && (
               <p className="text-xs text-muted-foreground mt-1">
-                首次拉到后将锁死,强制刷新也无效;若需重新拉取,请临时改为其他选项,等后台拉到后再改回。
+                后台不再按周期拉取;首次会自动拉一次种子,之后仅在你点列表里的刷新按钮 / 「刷新全部」时才会更新。
               </p>
             )}
             {refresh.interval === "on_request" && (

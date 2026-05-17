@@ -50,7 +50,7 @@ export const REFRESH_INTERVAL_MINUTES: Record<RefreshInterval, number | null> = 
 
 /**
  * 给客户端 / 下游(Profile-Update-Interval, mihomo proxy-provider interval)用的秒数。
- * never:轮询无意义,给最大值(1 周)。
+ * never(手动刷新):客户端轮询无意义,给最大值(1 周)。
  * on_request:客户端可以频繁轮询,服务端会在 /sub 路径上即时拉机场,这里给 1h 让客户端别太懒。
  */
 export function refreshIntervalToSeconds(interval: RefreshInterval): number {
@@ -73,7 +73,7 @@ export function refreshIntervalToSeconds(interval: RefreshInterval): number {
 export function refreshIntervalLabel(interval: RefreshInterval): string {
   switch (interval) {
     case "never":
-      return "永不刷新";
+      return "手动刷新";
     case "1week":
       return "每周";
     case "24h":
@@ -87,29 +87,9 @@ export function refreshIntervalLabel(interval: RefreshInterval): string {
   }
 }
 
-// 兼容老 yaml: { interval_minutes: number, on_demand: boolean } → { interval: enum }
-// on_demand: false 在老实现中其实未生效,但 UI 上有,用户原意是"不要按需刷新",
-// 在新语义下最贴近"never"(永久缓存)。on_demand: true / 缺失则按 interval_minutes 桶映射。
-export const refreshSchema = z.preprocess(
-  (raw) => {
-    if (typeof raw !== "object" || raw === null) return raw;
-    const r = raw as Record<string, unknown>;
-    if (typeof r.interval === "string") return { interval: r.interval };
-    if (typeof r.interval_minutes === "number") {
-      const m = r.interval_minutes;
-      const onDemand = r.on_demand !== false;
-      if (!onDemand) return { interval: "never" };
-      if (m <= 240) return { interval: "4h" };
-      if (m <= 720) return { interval: "12h" };
-      if (m <= 1440) return { interval: "24h" };
-      return { interval: "1week" };
-    }
-    return r;
-  },
-  z.object({
-    interval: refreshIntervalSchema.default("12h"),
-  }),
-);
+export const refreshSchema = z.object({
+  interval: refreshIntervalSchema.default("12h"),
+});
 
 export const targetSchema = z.enum(["clash", "surge"]);
 export type Target = z.infer<typeof targetSchema>;

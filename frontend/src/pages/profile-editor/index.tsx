@@ -96,6 +96,16 @@ export function ProfileEditorPage() {
               重新生成
             </button>
           </div>
+          {/* @business_rule: description 字段是可选的,Dashboard 卡片只在非空时显示;此处使用 inline 编辑风格,空状态弱化为占位符 */}
+          <input
+            type="text"
+            value={draft.description ?? ""}
+            onChange={(e) => update({ description: e.target.value || undefined })}
+            placeholder="添加描述 (可选,会显示在 Dashboard 卡片上)"
+            aria-label="Profile 描述"
+            spellCheck={false}
+            className="mt-1 w-full max-w-[640px] text-xs bg-transparent rounded px-1.5 py-0.5 -ml-1.5 outline-none border border-transparent hover:border-input focus:border-ring focus:bg-background transition-colors text-muted-foreground placeholder:text-muted-foreground/60"
+          />
         </div>
         <Tabs value={mode} onValueChange={(v) => setMode(v as Mode)}>
           <TabsList className="h-8">
