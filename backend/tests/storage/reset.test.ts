@@ -3,6 +3,7 @@ import { mkdir, writeFile, readFile, readdir, unlink } from "node:fs/promises";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+// @ts-ignore
 import yaml from "js-yaml";
 
 // reset 走真实 fs:vi.mock 是 hoisted 的,工厂里不能引用 top-level 变量,
