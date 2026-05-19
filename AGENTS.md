@@ -60,11 +60,9 @@ pnpm vitest run -t "fixture name" -- --filter backend  # 跑单个测试
 # 构建
 pnpm build                   # 前端 + 后端
 
-# Docker
-pnpm docker:build            # 构建镜像
-pnpm docker:up               # 起容器(挂 ../data)
-pnpm docker:logs             # 看日志
-pnpm docker:down             # 停
+# Docker(部署侧,本地开发请用 pnpm dev)
+# 镜像由 GitHub Actions 自动构建并推送 ghcr.io/mingspace/nodedeck
+# 服务器只 pull,不在仓库本地 build;详见 docs/deployment.md
 ```
 
 ## Local Dev Environment (优先复用,不要瞎起)

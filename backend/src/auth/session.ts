@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { env } from "../env.js";
+import { getSessionSecret } from "./secret.js";
 
 const COOKIE_NAME = "nodedeck_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -12,7 +12,7 @@ interface SessionPayload {
 }
 
 function sign(text: string): string {
-  return createHmac("sha256", env.SESSION_SECRET).update(text).digest("base64url");
+  return createHmac("sha256", getSessionSecret()).update(text).digest("base64url");
 }
 
 export function createSessionCookie(username: string): string {

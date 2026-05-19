@@ -11,10 +11,14 @@ import { startWatcher } from "./storage/watcher.js";
 import { startProviderScheduler } from "./providers/scheduler.js";
 import { mountApiRoutes } from "./routes/api.js";
 import { mountSubRoute } from "./routes/sub.js";
+import { ensureSessionSecret } from "./auth/secret.js";
 
 async function bootstrap() {
   await ensureDataDirs(env.DATA_DIR);
   logger.info({ dataDir: resolve(env.DATA_DIR) }, "Data directory ready");
+
+  // 注意要在 ensureDataDirs 之后调用,首次运行时需要写 data/secret.key
+  ensureSessionSecret();
 
   const app = new Hono();
 

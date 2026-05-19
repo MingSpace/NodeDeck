@@ -1,53 +1,40 @@
 #!/usr/bin/env bash
 # NodeDeck 服务器端更新脚本
 #
-# 用法(在服务器上,部署目录里):
-#   ./update.sh              # 拉 latest 并重启
+# 用法(在服务器部署目录里,跟 docker-compose.yml 同级):
+#   ./update.sh              # docker compose pull + up,沿用当前 image tag
+#   ./update.sh latest       # 切到 latest,然后 pull + up
 #   ./update.sh v0.2.0       # 切到指定版本 tag
 #   ./update.sh sha-abc1234  # 切到指定 commit
 #
-# 环境变量(可选):
-#   COMPOSE_FILE=docker-compose.prod.yml  # compose 文件名
-#   ENV_FILE=.env                          # 环境变量文件
-#
 # 这个脚本会:
-#   1. 把 .env 里的 IMAGE_TAG 写成你指定的值(不传就保留现有的)
+#   1. 如果传了 tag,把 docker-compose.yml 里 image 行的 :TAG 改成新值
 #   2. docker compose pull 拉新镜像
-#   3. docker compose up -d 滚动重启(配置/数据卷不会丢)
+#   3. docker compose up -d 滚动重启(./data 数据卷不会丢)
 #   4. docker image prune -f 清理旧镜像层
 
 set -euo pipefail
 
-COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.prod.yml}"
-ENV_FILE="${ENV_FILE:-.env}"
+COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 NEW_TAG="${1:-}"
 
 cd "$(dirname "$(readlink -f "$0" 2>/dev/null || echo "$0")")"
 
 if [[ ! -f "${COMPOSE_FILE}" ]]; then
   echo "ERROR: ${COMPOSE_FILE} not found in $(pwd)" >&2
-  echo "Hint: 把 docker-compose.prod.yml 和 .env 跟这个脚本放在同一个目录" >&2
-  exit 1
-fi
-
-if [[ ! -f "${ENV_FILE}" ]]; then
-  echo "ERROR: ${ENV_FILE} not found. Copy .env.prod.example to .env first." >&2
+  echo "Hint: 把 docker-compose.yml 跟这个脚本放在同一个目录" >&2
   exit 1
 fi
 
 if [[ -n "${NEW_TAG}" ]]; then
-  echo "==> Setting IMAGE_TAG=${NEW_TAG} in ${ENV_FILE}"
-  if grep -q '^IMAGE_TAG=' "${ENV_FILE}"; then
-    # macOS/Linux 通用的 sed in-place
-    sed -i.bak "s|^IMAGE_TAG=.*|IMAGE_TAG=${NEW_TAG}|" "${ENV_FILE}"
-    rm -f "${ENV_FILE}.bak"
-  else
-    echo "IMAGE_TAG=${NEW_TAG}" >> "${ENV_FILE}"
-  fi
+  echo "==> Switching image tag to :${NEW_TAG} in ${COMPOSE_FILE}"
+  # 替换 ghcr.io/mingspace/nodedeck:<anything> 为新 tag
+  sed -i.bak -E "s|(image:[[:space:]]+ghcr\.io/mingspace/nodedeck):[^[:space:]]+|\1:${NEW_TAG}|" "${COMPOSE_FILE}"
+  rm -f "${COMPOSE_FILE}.bak"
 fi
 
-CURRENT_TAG=$(grep '^IMAGE_TAG=' "${ENV_FILE}" | cut -d= -f2 || echo "latest")
-echo "==> Target tag: ${CURRENT_TAG:-latest}"
+CURRENT_IMAGE=$(grep -E '^[[:space:]]*image:' "${COMPOSE_FILE}" | head -n1 | awk '{print $2}')
+echo "==> Target image: ${CURRENT_IMAGE}"
 
 echo "==> Pulling image"
 docker compose -f "${COMPOSE_FILE}" pull

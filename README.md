@@ -24,14 +24,22 @@
 
 ### Docker(推荐生产部署)
 
+服务器只需要 docker + 一个 compose 文件,镜像直接从 GHCR 拉:
+
 ```bash
-git clone <this-repo> NodeDeck && cd NodeDeck
-cp .env.example .env       # 编辑 INITIAL_PASSWORD / SESSION_SECRET / PUBLIC_BASE_URL
-docker build -f docker/Dockerfile -t nodedeck:latest .
-docker compose -f docker/docker-compose.yml up -d
+mkdir -p /opt/nodedeck && cd /opt/nodedeck
+curl -fsSL https://raw.githubusercontent.com/MingSpace/NodeDeck/main/docker/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/MingSpace/NodeDeck/main/scripts/update.sh -o update.sh && chmod +x update.sh
+
+vim docker-compose.yml      # 改两个 [必改] 项:INITIAL_PASSWORD / PUBLIC_BASE_URL
+docker compose up -d
 ```
 
+> Session 密钥首次启动会自动生成在 `data/secret.key`,不需要手填;后续启动直接复用,不会让登录态失效。
+
 打开 `http://your-vps:8080`,首次登录用 `admin` + 你设置的 `INITIAL_PASSWORD`,系统会强制改密。
+
+升级:`./update.sh` (沿用当前 tag) 或 `./update.sh v0.2.0` (锁版本)。完整部署文档见 [docs/deployment.md](docs/deployment.md)。
 
 ### 本地开发
 
@@ -81,7 +89,7 @@ Profile 列表页有「复制 URL」按钮,直接粘贴到客户端的"订阅"�
 ```
 backend/   Node.js 20 + Hono + TypeScript
 frontend/  React 18 + Vite + Tailwind + shadcn-style + TanStack Query + Monaco
-docker/    multi-stage Dockerfile + docker-compose.yml
+docker/    multi-stage Dockerfile + docker-compose.yml(GHCR 镜像 + 内联配置)
 data/      运行时持久化(YAML + JSON,挂载到容器,gitignored)
 docs/      设计 / 字段映射 / 链式代理 / 部署文档
 ```
@@ -113,10 +121,9 @@ pnpm dev                  # 同时起后端 + 前端
 pnpm typecheck            # 全 workspace 类型检查
 pnpm test                 # backend vitest run
 pnpm build                # 构建生产产物
-pnpm docker:build         # 构建镜像
-pnpm docker:up            # docker compose up -d
-pnpm docker:logs          # 看日志
 ```
+
+> Docker 镜像由 GitHub Actions 在 push 时自动构建并推送到 GHCR,服务器只需 pull(详见 [docs/deployment.md](docs/deployment.md))。本地不再提供 `docker:*` 脚本。
 
 ---
 

@@ -15,11 +15,7 @@
     "lint": "eslint . --max-warnings 0",
     "typecheck": "pnpm -r typecheck",
     "test": "pnpm -F backend test",
-    "test:watch": "pnpm -F backend test:watch",
-    "docker:build": "docker build -f docker/Dockerfile -t nodedeck:latest .",
-    "docker:up": "docker compose -f docker/docker-compose.yml up -d",
-    "docker:down": "docker compose -f docker/docker-compose.yml down",
-    "docker:logs": "docker compose -f docker/docker-compose.yml logs -f"
+    "test:watch": "pnpm -F backend test:watch"
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
