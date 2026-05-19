@@ -1,4 +1,4 @@
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { verifySessionCookie } from "./session.js";
 import { loadConfig } from "../storage/config-store.js";
 import { logger } from "../logger.js";
@@ -7,6 +7,15 @@ declare module "hono" {
   interface ContextVariableMap {
     user?: { username: string; must_change_password: boolean };
   }
+}
+
+/** 从请求里提取客户端 IP。优先 X-Forwarded-For 链首,其次 X-Real-IP,都没有就 "unknown"。 */
+export function getClientIp(c: Context): string {
+  return (
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+    c.req.header("x-real-ip") ??
+    "unknown"
+  );
 }
 
 export const requireSession: MiddlewareHandler = async (c, next) => {
@@ -27,7 +36,7 @@ export const ipAllowlist: MiddlewareHandler = async (c, next) => {
   const cfg = await loadConfig();
   const list = cfg.ip_allowlist;
   if (list.length === 0) return next();
-  const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? c.req.header("x-real-ip") ?? "unknown";
+  const ip = getClientIp(c);
   if (!list.some((entry) => matchIp(entry, ip))) {
     logger.warn({ ip, path: c.req.path }, "Blocked by IP allowlist");
     return c.json({ error: "forbidden" }, 403);

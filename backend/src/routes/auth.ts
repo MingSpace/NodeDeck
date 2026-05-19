@@ -7,7 +7,14 @@ import {
   clearSessionCookie,
   verifySessionCookie,
 } from "../auth/session.js";
-import { requireSession } from "../auth/middleware.js";
+import { requireSession, getClientIp } from "../auth/middleware.js";
+import {
+  loginRateLimit,
+  checkAccountLock,
+  recordFail,
+  recordSuccess,
+} from "../auth/rate-limit.js";
+import { logger } from "../logger.js";
 
 const loginSchema = z.object({
   username: z.string().min(1),
@@ -37,19 +44,42 @@ authRouter.get("/me", async (c) => {
   });
 });
 
-authRouter.post("/login", async (c) => {
+authRouter.post("/login", loginRateLimit, async (c) => {
   const body = loginSchema.safeParse(await c.req.json().catch(() => null));
   if (!body.success) {
     return c.json({ error: "invalid request" }, 400);
   }
   const cfg = await loadConfig();
-  if (cfg.admin.username !== body.data.username) {
+  const ip = getClientIp(c);
+  const username = body.data.username;
+  const rateCfg = cfg.auth.login_rate_limit;
+
+  // 账号维度的锁要在路由内查:middleware 阶段拿不到 body
+  if (rateCfg.enabled) {
+    const acctLock = checkAccountLock(username, rateCfg);
+    if (acctLock.locked && acctLock.retryAfterMs) {
+      c.header("Retry-After", String(Math.ceil(acctLock.retryAfterMs / 1000)));
+      return c.json({ error: "尝试次数过多,请稍后再试" }, 429);
+    }
+  }
+
+  const recordFailIfEnabled = () => {
+    if (rateCfg.enabled) recordFail(ip, username, rateCfg);
+  };
+
+  // 用户名不匹配和密码错误一律走相同的失败分支,不暴露"用户名是否存在"
+  if (cfg.admin.username !== username) {
+    recordFailIfEnabled();
+    logger.info({ ip, username }, "Login failed: unknown username");
     return c.json({ error: "用户名或密码错误" }, 401);
   }
   const ok = await bcrypt.compare(body.data.password, cfg.admin.password_hash);
   if (!ok) {
+    recordFailIfEnabled();
+    logger.info({ ip, username }, "Login failed: wrong password");
     return c.json({ error: "用户名或密码错误" }, 401);
   }
+  if (rateCfg.enabled) recordSuccess(ip, username);
   c.header("Set-Cookie", createSessionCookie(cfg.admin.username));
   return c.json({
     authenticated: true,

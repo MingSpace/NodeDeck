@@ -25,7 +25,8 @@ COPY backend/ backend/
 RUN pnpm -F backend build
 # 用 pnpm deploy 把 prod 依赖 + 编译产物打包到独立目录,
 # runtime stage 直接 COPY 即可,无需再装一遍 corepack/pnpm。
-RUN pnpm --filter @nodedeck/backend deploy --prod /out
+# --legacy: pnpm v10 改了默认行为,非 inject-workspace-packages 模式必须显式 opt-in 旧版 deploy
+RUN pnpm --filter @nodedeck/backend deploy --legacy --prod /out
 
 # ---------- Stage 3: runtime(裸 node) ----------
 FROM node:20-alpine AS runtime

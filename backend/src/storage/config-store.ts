@@ -41,16 +41,15 @@ export async function saveConfig(cfg: AppConfig): Promise<AppConfig> {
 async function initDefaultConfig(): Promise<AppConfig> {
   const initialPassword = env.INITIAL_PASSWORD || "changeme";
   const hash = await bcrypt.hash(initialPassword, 10);
-  const cfg: AppConfig = {
+  // 让 schema 的 .default() 链替我们填默认值,避免在两处维护
+  const cfg = appConfigSchema.parse({
     admin: {
       username: "admin",
       password_hash: hash,
       must_change_password: true,
     },
-    ip_allowlist: [],
     public_base_url: env.PUBLIC_BASE_URL,
-    default_user_agent: "Surge/2400",
-  };
+  });
   await saveConfig(cfg);
   logger.warn(
     "Initial admin config written. Please log in and change the password immediately.",
