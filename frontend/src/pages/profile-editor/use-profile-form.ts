@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEntity, useSaveEntity } from "@/api/entities";
 import { api } from "@/lib/api";
+import { useDebounced, useDebouncedWithStaleFlag } from "@/lib/use-debounced";
 import { toast } from "@/components/ui/toast";
 import type { Profile, NodePoolPreviewResp, RuleModuleRef, ChainRule } from "./types";
 
@@ -81,7 +82,8 @@ export function useProfileForm(id: string) {
 }
 
 export function useNodePoolPreview(id: string, draft: Profile | null) {
-  const debouncedKey = useDebounced(
+  // @user_flow: isStaleInput 用于让候选列表在防抖窗口内做渐隐动画提示,不影响 query 本身。
+  const { value: debouncedKey, isStale: isStaleInput } = useDebouncedWithStaleFlag(
     {
       providers: draft?.providers ?? [],
       include_regex: draft?.node_filter.include_regex ?? "",
@@ -90,7 +92,7 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
     },
     300,
   );
-  return useQuery<NodePoolPreviewResp>({
+  const query = useQuery<NodePoolPreviewResp>({
     queryKey: ["node-pool-preview", id, debouncedKey],
     queryFn: () =>
       api.post<NodePoolPreviewResp>(`/api/profiles/${id}/node-pool-preview`, {
@@ -103,7 +105,11 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
         },
       }),
     enabled: !!id && !!draft,
+    // 关键反闪烁:queryKey 变化时保留上一次的 data,让"先变灰再复原"动画期间下方仍展示旧节点列表,
+    // 避免瞬间出现"加载节点池中..."文案;isFetching 仍能驱动 opacity 渐隐。
+    placeholderData: keepPreviousData,
   });
+  return Object.assign(query, { isStaleInput });
 }
 
 export function useGeneratedPreview(
@@ -133,19 +139,6 @@ export function useGeneratedPreview(
     // 个人自用,不需要 windowFocus 自动刷新。
     refetchOnWindowFocus: false,
   });
-}
-
-function useDebounced<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => setDebounced(value), delay);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [JSON.stringify(value), delay]);
-  return debounced;
 }
 
 export function policyOptionsForGroups(groupNames: string[]): string[] {

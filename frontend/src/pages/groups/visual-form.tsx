@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useEntityList } from "@/api/entities";
 import { api } from "@/lib/api";
+import { useDebouncedWithStaleFlag } from "@/lib/use-debounced";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -81,19 +82,56 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
 
   const ensureSelector = () => sel;
 
-  // @business_rule: from_providers 非空 → 只显示这些 provider 的节点;
-  // 为空 → 视为"所有 Provider"(对齐 selector 语义),包含 manual 节点。
-  // @user_flow: 用户切换 from_providers chip 时,候选立即跟随过滤,无需重新请求后端。
+  // @user_flow: include_regex / exclude_regex 输入后 300ms 防抖再生效,期间 isStale = true 用于动画提示。
+  // 与后端 backend/src/generators/node-filter.ts 的 applyNodeFilter 保持顺序与语义一致(invalid regex 静默忽略)。
+  const { value: debouncedRegex, isStale: isRegexStale } = useDebouncedWithStaleFlag(
+    {
+      include: sel.include_regex ?? "",
+      exclude: sel.exclude_regex ?? "",
+    },
+    300,
+  );
+
+  // @business_rule: from_providers 为空 → 候选区不显示任何节点 (UI 行为)。
+  // 这跟后端 selector 语义"空 = 所有 Provider"刻意不一致 — 后端在生成 yaml 时仍按"空=全部"
+  // 展开,但前端 UI 不主动呈现一大堆节点,避免新建组时扑面而来的视觉噪音,强迫用户先收窄机场范围。
+  // @user_flow: 用户切换 from_providers / include_regex / exclude_regex / exclude_type 任一筛选条件,
+  // 候选立即跟随过滤(对齐后端 applyNodeFilter + 各 generator 的 selector pipeline),无需重新请求后端。
   const candidateNodes = useMemo<NodeCandidate[]>(() => {
+    if (sel.from_providers.length === 0) return [];
     const all = nodePool.data?.nodes ?? [];
-    if (sel.from_providers.length === 0) {
-      return all.map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
-    }
     const allow = new Set(sel.from_providers);
-    return all
+    let list = all
       .filter((n) => n.source_provider_id && allow.has(n.source_provider_id))
       .map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
-  }, [nodePool.data?.nodes, sel.from_providers]);
+    if (sel.exclude_type.length > 0) {
+      const blocked = new Set(sel.exclude_type);
+      list = list.filter((n) => !blocked.has(n.type));
+    }
+    if (debouncedRegex.include) {
+      try {
+        const re = new RegExp(debouncedRegex.include);
+        list = list.filter((n) => re.test(n.name));
+      } catch {
+        // invalid regex 静默忽略,与后端 applyNodeFilter 一致;UI 上保持上一轮可用结果,避免输入到一半瞬间清空
+      }
+    }
+    if (debouncedRegex.exclude) {
+      try {
+        const re = new RegExp(debouncedRegex.exclude);
+        list = list.filter((n) => !re.test(n.name));
+      } catch {
+        // 同上
+      }
+    }
+    return list;
+  }, [
+    nodePool.data?.nodes,
+    sel.from_providers,
+    sel.exclude_type,
+    debouncedRegex.include,
+    debouncedRegex.exclude,
+  ]);
 
   const candidateGroups = useMemo(() => {
     return (allGroups.data?.items ?? []).filter((g) => g.id !== data.id);
@@ -222,15 +260,26 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
 
       <fieldset className="border rounded-md p-3">
         <legend className="text-xs font-medium px-1">显式 proxies 列表 (顺序敏感,可拖拽)</legend>
-        <ProxyListEditor
-          proxies={data.proxies}
-          onChange={(arr) => update({ proxies: arr })}
-          candidateNodes={candidateNodes}
-          candidateGroups={candidateGroups}
-          onRefreshNodes={() => nodePool.refetch()}
-          isLoadingNodes={nodePool.isLoading}
-          hasAnyProvider={(providers.data?.items.length ?? 0) > 0}
-        />
+        <div
+          className="transition-opacity duration-150 ease-out"
+          style={{ opacity: isRegexStale ? 0.5 : 1 }}
+        >
+          <ProxyListEditor
+            proxies={data.proxies}
+            onChange={(arr) => update({ proxies: arr })}
+            includeOtherGroup={sel.include_other_group}
+            onIncludeOtherGroupChange={(arr) =>
+              update({ selector: { ...ensureSelector(), include_other_group: arr } })
+            }
+            candidateNodes={candidateNodes}
+            candidateGroups={candidateGroups}
+            providers={providers.data?.items ?? []}
+            onRefreshNodes={() => nodePool.refetch()}
+            isLoadingNodes={nodePool.isLoading}
+            hasAnyProvider={(providers.data?.items.length ?? 0) > 0}
+            hasFromProviders={sel.from_providers.length > 0}
+          />
+        </div>
       </fieldset>
     </div>
   );

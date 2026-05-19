@@ -125,7 +125,13 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
         )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-auto">
+      <div
+        className="flex-1 min-h-0 overflow-auto transition-opacity duration-150 ease-out"
+        style={{
+          opacity:
+            preview.data && (preview.isStaleInput || preview.isFetching) ? 0.5 : 1,
+        }}
+      >
         {preview.isLoading && (
           <div className="p-4 text-xs text-muted-foreground">加载节点池中...</div>
         )}

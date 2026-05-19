@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Cloud,
+  FileText,
   AlertCircle,
   Clock,
   Calendar,
@@ -11,6 +12,7 @@ import {
   Trash2,
   Copy,
   Ban,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -22,10 +24,21 @@ import { cn } from "@/lib/utils";
 import { useEntityList, useDeleteEntity, useSaveEntity } from "@/api/entities";
 import { toast } from "@/components/ui/toast";
 
+type ProviderType = "http" | "file" | "inline";
+
+const PROVIDER_TYPE_ICON: Record<
+  ProviderType,
+  { Icon: LucideIcon; label: string }
+> = {
+  http: { Icon: Cloud, label: "URL 订阅" },
+  inline: { Icon: FileText, label: "静态节点" },
+  file: { Icon: FileText, label: "静态节点" },
+};
+
 interface AirportItem {
   id: string;
   name: string;
-  type: string;
+  type: ProviderType;
   url?: string;
   enabled: boolean;
   status: "ok" | "stale" | "error" | "unknown";
@@ -93,7 +106,7 @@ export function DashboardPage() {
     <div className="p-8 max-w-[1800px] mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">仪表板</h1>
-        <p className="text-muted-foreground mt-1">订阅与机场状态</p>
+        <p className="text-muted-foreground mt-1">订阅与节点源</p>
       </div>
 
       <section className="mb-10">
@@ -128,12 +141,12 @@ export function DashboardPage() {
 
       <section>
         <div className="mb-3">
-          <h2 className="text-lg font-semibold">机场状态</h2>
+          <h2 className="text-lg font-semibold">节点源</h2>
         </div>
 
         {airports.data && airports.data.items.length === 0 && (
           <div className="rounded-lg border border-dashed p-12 flex flex-col items-center gap-3 text-muted-foreground">
-            <span>暂无机场,前往「节点源」页面添加</span>
+            <span>暂无节点源，前往节点源页面添加</span>
             {/* @user_flow: 直接给跳转按钮,?new=http 让落地页自动弹出「新建订阅」对话框 */}
             <Button asChild size="sm" variant="outline">
               <Link to="/providers?new=http">
@@ -243,6 +256,9 @@ function AirportCard({ airport }: { airport: AirportItem }) {
     return <Badge variant="secondary">未知</Badge>;
   })();
 
+  const { Icon: TypeIcon, label: typeLabel } =
+    PROVIDER_TYPE_ICON[airport.type] ?? PROVIDER_TYPE_ICON.http;
+
   return (
     <Card
       className={cn(
@@ -273,10 +289,10 @@ function AirportCard({ airport }: { airport: AirportItem }) {
         </div>
         <div
           className="text-muted-foreground shrink-0"
-          aria-label="机场"
-          title="机场状态"
+          aria-label={typeLabel}
+          title={typeLabel}
         >
-          <Cloud className="h-5 w-5" />
+          <TypeIcon className="h-5 w-5" />
         </div>
       </div>
 
