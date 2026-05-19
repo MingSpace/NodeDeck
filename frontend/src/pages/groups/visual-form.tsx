@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useEntityList } from "@/api/entities";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import { useDebouncedWithStaleFlag } from "@/lib/use-debounced";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -44,6 +45,8 @@ export interface ProxyGroupData {
 interface NamedItem {
   id: string;
   name: string;
+  // @business_rule: 仅 exclude_type chip 使用; undefined = 不显示徽标, 数字(含 0)显示徽标
+  count?: number;
 }
 
 // @business_rule: 候选节点池来自 GET /api/dashboard/node-pool,该 API 已合并 enabled provider + manual 节点
@@ -136,6 +139,28 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
   const candidateGroups = useMemo(() => {
     return (allGroups.data?.items ?? []).filter((g) => g.id !== data.id);
   }, [allGroups.data?.items, data.id]);
+
+  // @business_rule: exclude_type chip 上的数字 = 当前 from_providers 范围内该 type 的节点数。
+  // from_providers 为空时按后端语义"空=所有 Provider"统计整个节点池(UI 候选区虽然此时不显示,但
+  // 用户依然能感知到节点池里每种类型的总量,便于决定是否切某个 provider)。
+  // 仅按 type 聚合, 不叠加 include/exclude_regex —— regex 是按名字筛, 与"类型分布"是不同维度,
+  // 叠加上去会让数字随每次输入抖动, 反而干扰判断。
+  const typeCounts = useMemo<Record<string, number>>(() => {
+    const all = nodePool.data?.nodes ?? [];
+    const scope = sel.from_providers.length === 0
+      ? all
+      : all.filter((n) => n.source_provider_id && sel.from_providers.includes(n.source_provider_id));
+    const counts: Record<string, number> = {};
+    for (const n of scope) {
+      counts[n.type] = (counts[n.type] ?? 0) + 1;
+    }
+    return counts;
+  }, [nodePool.data?.nodes, sel.from_providers]);
+
+  const excludeTypeItems = useMemo<NamedItem[]>(
+    () => NODE_TYPES.map((t) => ({ id: t, name: t, count: typeCounts[t] ?? 0 })),
+    [typeCounts],
+  );
 
   return (
     <div className="space-y-4">
@@ -231,7 +256,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
               />
             </Field>
           </div>
-          <Field label="from_providers (从哪些机场拉)">
+          <Field label="from_providers (节点来源)">
             <ChipMultiSelect
               items={providers.data?.items ?? []}
               selected={sel.from_providers}
@@ -249,7 +274,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
           </Field>
           <Field label="exclude_type (排除节点类型)">
             <ChipMultiSelect
-              items={NODE_TYPES.map((t) => ({ id: t, name: t }))}
+              items={excludeTypeItems}
               selected={sel.exclude_type}
               onChange={(arr) => update({ selector: { ...ensureSelector(), exclude_type: arr } })}
               empty="不排除"
@@ -319,18 +344,34 @@ function ChipMultiSelect({
     <div className="flex flex-wrap gap-1.5">
       {items.map((item) => {
         const active = selected.includes(item.id);
+        const showCount = item.count !== undefined;
         return (
           <button
             key={item.id}
             type="button"
             onClick={() => toggle(item.id)}
-            className={
+            className={cn(
+              "inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium border",
               active
-                ? "px-2 py-1 rounded-md text-xs font-medium border bg-primary text-primary-foreground border-primary"
-                : "px-2 py-1 rounded-md text-xs font-medium border bg-background text-foreground hover:bg-accent border-input"
-            }
+                ? "bg-primary text-primary-foreground border-primary"
+                : "bg-background text-foreground hover:bg-accent border-input",
+            )}
           >
-            {item.name}
+            <span>{item.name}</span>
+            {showCount && (
+              <span
+                className={cn(
+                  "inline-flex items-center justify-center rounded-sm px-1 text-[10px] leading-4 tabular-nums",
+                  active
+                    ? "bg-primary-foreground/20 text-primary-foreground"
+                    : item.count === 0
+                      ? "bg-muted text-muted-foreground/60"
+                      : "bg-muted text-muted-foreground",
+                )}
+              >
+                {item.count}
+              </span>
+            )}
           </button>
         );
       })}
