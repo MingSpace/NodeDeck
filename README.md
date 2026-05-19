@@ -1,8 +1,8 @@
 # NodeDeck
 
-> 个人自用的 Clash + Surge 订阅转换器,带 Web 配置中心。
+> Clash + Surge 订阅转换器,带 Web 配置中心。
 
-替代 [subconverter](https://github.com/tindy2013/subconverter),只服务 **Clash Meta (Mihomo) + Surge 5**。后端 Node.js + Hono,前端 React + 现代 UI,单 Docker 镜像部署,文件系统持久化(改完即生效)。
+服务 **Clash Meta (Mihomo) + Surge 5**。后端 Node.js + Hono,前端 React + 现代 UI,单 Docker 镜像部署,文件系统持久化(改完即生效)。
 
 ---
 
