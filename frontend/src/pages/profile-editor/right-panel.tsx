@@ -337,7 +337,7 @@ function ChainRulesEditor({
                   selector: { ...draft.selector, include_regex: e.target.value || undefined },
                 })
               }
-              placeholder="(?i)stream"
+              placeholder="stream|netflix|disney"
               className="h-7 text-xs"
             />
           </div>

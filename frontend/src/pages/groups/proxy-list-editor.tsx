@@ -50,6 +50,8 @@ interface Props {
   hasAnyProvider?: boolean;
   /** selector.from_providers 是否非空 — 影响候选区空状态文案 */
   hasFromProviders?: boolean;
+  /** 整个节点池(/api/dashboard/node-pool)的全量节点数 — 用于状态栏让用户感知 selector 筛掉了多少 */
+  totalNodePoolSize: number;
 }
 
 export function ProxyListEditor({
@@ -64,6 +66,7 @@ export function ProxyListEditor({
   isLoadingNodes,
   hasAnyProvider,
   hasFromProviders,
+  totalNodePoolSize,
 }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const items = proxies.map((p, i) => ({ id: `proxy-${i}-${p}`, idx: i, name: p }));
@@ -112,6 +115,7 @@ export function ProxyListEditor({
         isLoadingNodes={isLoadingNodes}
         hasAnyProvider={hasAnyProvider}
         hasFromProviders={hasFromProviders}
+        totalNodePoolSize={totalNodePoolSize}
       />
 
       {/* @user_flow: 已加入列表合并展示 (1) proxies 数组里的节点 / 内置 policy / 历史组引用 — DnD 调整顺序;
@@ -192,6 +196,7 @@ function Picker({
   isLoadingNodes,
   hasAnyProvider,
   hasFromProviders,
+  totalNodePoolSize,
 }: {
   proxies: string[];
   onChange: (arr: string[]) => void;
@@ -201,6 +206,7 @@ function Picker({
   isLoadingNodes?: boolean;
   hasAnyProvider?: boolean;
   hasFromProviders?: boolean;
+  totalNodePoolSize: number;
 }) {
   const [search, setSearch] = useState("");
 
@@ -330,8 +336,13 @@ function Picker({
           disabled={filteredNodes.length === 0}
           aria-label="全选可见节点"
         />
+        {/* @user_flow: 三个数语义不重叠 —
+            已选 = 当前可见(搜索框过滤后)且已加入 proxies 的节点数;
+            可见 = Picker 内搜索框过滤后剩余的候选;
+            节点池 = /api/dashboard/node-pool 全量(未被 from_providers/regex/exclude_type 筛过),
+            让用户能直观感知 selector 筛掉了多少。 */}
         <span className="text-muted-foreground">
-          已选 {visibleSelectedCount} · 可见 {filteredNodes.length} · 总 {candidateNodes.length}
+          已选 {visibleSelectedCount} · 可见 {filteredNodes.length} · 节点池 {totalNodePoolSize}
         </span>
         <div className="flex-1" />
         <Button

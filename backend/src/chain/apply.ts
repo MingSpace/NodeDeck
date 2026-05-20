@@ -35,9 +35,11 @@ export function matchesSelector(node: Node, selector: SelectorLike): boolean {
   if (selector.exclude_type && selector.exclude_type.includes(node.type)) {
     return false;
   }
+  // include/exclude_regex 默认大小写不敏感,与 node-filter.ts / clash.ts / surge.ts 保持一致。
+  // 详见 node-filter.ts 上的注释。
   if (selector.include_regex) {
     try {
-      const re = new RegExp(selector.include_regex);
+      const re = new RegExp(selector.include_regex, "i");
       if (!re.test(node.name)) return false;
     } catch {
       // invalid regex => non-match
@@ -46,7 +48,7 @@ export function matchesSelector(node: Node, selector: SelectorLike): boolean {
   }
   if (selector.exclude_regex) {
     try {
-      const re = new RegExp(selector.exclude_regex);
+      const re = new RegExp(selector.exclude_regex, "i");
       if (re.test(node.name)) return false;
     } catch {
       // ignore

@@ -103,7 +103,7 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
             <Input
               value={draft.node_filter.exclude_regex ?? ""}
               onChange={(e) => onFilterChange({ exclude_regex: e.target.value || undefined })}
-              placeholder="(?i)(过期|expired|官网|流量|剩余)"
+              placeholder="过期|expired|官网|流量|剩余"
               className="h-8 text-xs"
             />
           </div>

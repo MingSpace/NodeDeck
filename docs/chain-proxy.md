@@ -41,21 +41,23 @@ chain_rules:
   # 规则 1: bbb-airport 机场的所有香港节点都先过 WARP
   - selector:
       from_providers: [bbb-airport]
-      include_regex: "(?i)港|hk|hong\\s*kong"
+      include_regex: "港|hk|hong\\s*kong"
     via: WARP-Cloudflare
 
   # 规则 2: 任何包含"实验性"的节点先过 Front-Relay
   - selector:
-      include_regex: "(?i)实验性"
+      include_regex: "实验性"
     via: Front-Relay
 ```
 
 `selector` 字段支持:
 
 - `from_providers: [string]` — 限制匹配某些 Provider 的节点
-- `include_regex: string` — 节点名匹配此正则
-- `exclude_regex: string` — 节点名不匹配此正则
+- `include_regex: string` — 节点名匹配此正则 (默认大小写不敏感,直接写 `hk` 就能命中 `HK/Hk/hk`)
+- `exclude_regex: string` — 节点名不匹配此正则 (同上)
 - `exclude_type: [string]` — 排除某些协议类型(避免给 wireguard 自己加 wireguard 前置)
+
+> include/exclude_regex 走 JS `RegExp(str, "i")`,**不要**写 PCRE 风格的 `(?i)` 前缀 —— JS 不认这种内联标志,会因为 SyntaxError 被静默忽略,导致"正则填了但好像没生效"。
 
 ---
 

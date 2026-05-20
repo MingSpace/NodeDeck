@@ -47,13 +47,19 @@ describe("matchesSelector", () => {
     expect(matchesSelector(n, { exclude_type: ["vmess"] })).toBe(true);
   });
 
-  it("matches by include_regex (case-sensitive, no flag prefix support)", () => {
+  it("matches by include_regex (case-insensitive by default)", () => {
+    // include/exclude_regex 默认带 "i" flag,因为 JS RegExp 不支持 `(?i)` 这种 PCRE 内联标志,
+    // 强制用户写字符类 `[Jj][Pp]` 反直觉;且机场命名大小写混乱,默认大小写不敏感更符合诉求。
     const n = node("🇯🇵 JP-Premium-01");
     expect(matchesSelector(n, { include_regex: "JP" })).toBe(true);
     expect(matchesSelector(n, { include_regex: "[Pp]remium" })).toBe(true);
     expect(matchesSelector(n, { include_regex: "HK" })).toBe(false);
-    // case-sensitive by default
-    expect(matchesSelector(n, { include_regex: "premium" })).toBe(false);
+    // 小写 / 混合大小写都能匹配
+    expect(matchesSelector(n, { include_regex: "jp" })).toBe(true);
+    expect(matchesSelector(n, { include_regex: "premium" })).toBe(true);
+    expect(matchesSelector(n, { include_regex: "PREMIUM" })).toBe(true);
+    // PCRE `(?i)` 在 JS RegExp 里语法非法,会被静默吞掉返回 false(invalid regex => non-match)
+    expect(matchesSelector(n, { include_regex: "(?i)premium" })).toBe(false);
   });
 
   it("excludes by exclude_regex", () => {

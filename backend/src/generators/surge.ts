@@ -597,9 +597,10 @@ function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
     if (g.selector.exclude_type && g.selector.exclude_type.length > 0) {
       pool = pool.filter((n) => !g.selector!.exclude_type.includes(n.type));
     }
+    // selector.include/exclude_regex 默认大小写不敏感,与 node-filter.ts 保持一致。详见该文件注释。
     if (g.selector.include_regex) {
       try {
-        const re = new RegExp(g.selector.include_regex);
+        const re = new RegExp(g.selector.include_regex, "i");
         pool = pool.filter((n) => re.test(n.name));
       } catch {
         // ignore
@@ -607,7 +608,7 @@ function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
     }
     if (g.selector.exclude_regex) {
       try {
-        const re = new RegExp(g.selector.exclude_regex);
+        const re = new RegExp(g.selector.exclude_regex, "i");
         pool = pool.filter((n) => !re.test(n.name));
       } catch {
         // ignore

@@ -111,17 +111,20 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
       const blocked = new Set(sel.exclude_type);
       list = list.filter((n) => !blocked.has(n.type));
     }
+    // 与后端 applyNodeFilter / chain/apply.ts / clash.ts / surge.ts 一致,
+    // include/exclude_regex 一律带 "i" flag 大小写不敏感,避免用户在 placeholder 看到 (?i) 字面量后照抄
+    // 却踩到 JS RegExp 不支持 PCRE 内联标志的坑(语法上会抛 SyntaxError 被 try/catch 静默吞掉)。
     if (debouncedRegex.include) {
       try {
-        const re = new RegExp(debouncedRegex.include);
+        const re = new RegExp(debouncedRegex.include, "i");
         list = list.filter((n) => re.test(n.name));
       } catch {
-        // invalid regex 静默忽略,与后端 applyNodeFilter 一致;UI 上保持上一轮可用结果,避免输入到一半瞬间清空
+        // invalid regex 静默忽略;UI 上保持上一轮可用结果,避免输入到一半瞬间清空
       }
     }
     if (debouncedRegex.exclude) {
       try {
-        const re = new RegExp(debouncedRegex.exclude);
+        const re = new RegExp(debouncedRegex.exclude, "i");
         list = list.filter((n) => !re.test(n.name));
       } catch {
         // 同上
@@ -241,7 +244,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
                     },
                   })
                 }
-                placeholder="(?i)JP|HK"
+                placeholder="JP|HK|日本|香港"
               />
             </Field>
             <Field label="exclude_regex">
@@ -252,7 +255,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
                     selector: { ...ensureSelector(), exclude_regex: e.target.value || undefined },
                   })
                 }
-                placeholder="(?i)expire|官网"
+                placeholder="expire|官网|到期"
               />
             </Field>
           </div>
@@ -303,6 +306,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
             isLoadingNodes={nodePool.isLoading}
             hasAnyProvider={(providers.data?.items.length ?? 0) > 0}
             hasFromProviders={sel.from_providers.length > 0}
+            totalNodePoolSize={nodePool.data?.nodes.length ?? 0}
           />
         </div>
       </fieldset>

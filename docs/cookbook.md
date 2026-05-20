@@ -389,11 +389,15 @@ name: Home
 token: V1StGXR8_Z5j   # 12 字符 nanoid;请用 Web UI 生成,不要复用此示例
 providers: [airport-a, airport-b, self-host]   # 含订阅源 + 静态节点源(自建/导入)
 node_filter:
-  exclude_regex: "(?i)(测试|trial|试用)"  # 个性化排除;机场"信息节点"(Traffic/Expire/官网...)已由 parser 默认过滤,见 1.2
+  # include/exclude_regex 默认大小写不敏感,直接写 "trial" 就能命中 "TRIAL/Trial/trial",
+  # 不需要(也不能)用 PCRE 风格的 `(?i)` 前缀 —— 那是 Go/Python 语法,JS RegExp 不认。
+  exclude_regex: "测试|trial|试用"  # 个性化排除;机场"信息节点"(Traffic/Expire/官网...)已由 parser 默认过滤,见 1.2
   exclude_types: [direct]
   rename_rules:
-    - pattern: "(?i)\\bIPLC\\b"
+    # rename_rules 走另一条管线,有独立 `flags` 字段,大小写不敏感请加 "i" 到 flags 里:
+    - pattern: "\\bIPLC\\b"
       replace: "[IPLC]"
+      flags: "gi"
 
 chain_rules:
   - selector: { include_regex: "^🇭🇰" }
