@@ -55,19 +55,22 @@ interface Props {
    * 全量节点池的所有节点名集合,用于在「已锁定」段对每行做三态分类:
    *   - 在 candidateNodes(selector 命中)里 → 普通行
    *   - 不在 candidateNodes 但在 allPoolNodeNames → "已锁定但 selector 不命中" 灰色 hint
-   *   - 完全不在节点池 / 组 / builtin → "未知引用" 警告
+   *   - 完全不在节点池 + 不是内置 policy → "未知引用" 警告 (含误把组名写进 g.proxies 的情形)
    * 与 candidateNodes 是不同集合: candidateNodes 受 selector 收窄, allPoolNodeNames 是全量。
    */
   allPoolNodeNames: Set<string>;
 }
 
-// @business_rule: 三态划分用于「已锁定」段每行徽标:
-//   node-in: 该名在当前 selector 命中范围 → 不显示额外徽标 (正常行)
-//   node-out: 该名在节点池里但 selector 不命中 → 灰色"selector 不命中" hint
-//                                                (订阅里仍输出,因为锁定优先于 selector)
-//   non-node-known: 是 builtin policy 或组引用 → 由各自徽标处理 (走 isSpecial / 组路径)
-//   unknown: 完全不在节点池 / 组 / builtin → 橘色"未知引用" 警告
-type RowClassification = "node-in" | "node-out" | "non-node-known" | "unknown";
+// @business_rule: 三态划分用于「已锁定」段每行徽标。
+// 规范: g.proxies 数组里**只**放节点名 + 内置 policy (DIRECT / REJECT*);
+// 其它策略组的引用一律走 selector.include_other_group 数组 (UI 里"合并自..."段)。
+// 因此这里识别的是 "这个名字是不是池里的节点 / 内置 policy", 组名会被归到 unknown 提醒用户挪走。
+//   node-in: 在当前 selector 命中节点池 ∪ 内置 policy → 不显示额外徽标 (正常行/由 isSpecial 走"内置"徽标)
+//   node-out: 在全量节点池里但 selector 不命中 → 灰色"selector 不命中" hint
+//             (订阅里仍输出, 锁定优先于 selector; 提示用户考虑解锁或放宽 selector)
+//   unknown: 完全不在节点池且不是内置 policy → 橘色"未知引用" 警告
+//            (机场改名 / 节点被删 / 拼写错误 / 把组名误写进 g.proxies)
+type RowClassification = "node-in" | "node-out" | "unknown";
 
 export function ProxyListEditor({
   proxies,
@@ -93,20 +96,9 @@ export function ProxyListEditor({
     return s;
   }, [candidateNodes]);
 
-  // @business_rule: candidateGroups 仍参与已知名集合 — 历史 proxies 里的策略组引用
-  // (如 "Japan(DIP)") 不应被误标为 unknown。selector.include_other_group 是另一通道,
-  // 但 g.proxies 里如果直接写了组名 (老 yaml / 用户手贴) 也合法。
-  const knownNonNodeNames = useMemo(() => {
-    const s = new Set<string>();
-    candidateGroups.forEach((g) => s.add(g.name));
-    BUILTIN_POLICIES.forEach((p) => s.add(p));
-    return s;
-  }, [candidateGroups]);
-
   const classifyRowName = (name: string): RowClassification => {
-    if (candidateNamesSet.has(name)) return "node-in";
+    if (candidateNamesSet.has(name) || BUILTIN_SET.has(name)) return "node-in";
     if (allPoolNodeNames.has(name)) return "node-out";
-    if (knownNonNodeNames.has(name)) return "non-node-known";
     return "unknown";
   };
 
@@ -146,9 +138,10 @@ export function ProxyListEditor({
         totalNodePoolSize={totalNodePoolSize}
       />
 
-      {/* @user_flow: 已锁定列表合并展示 (1) proxies 数组里的节点 / 内置 policy / 历史组引用 — DnD 调整顺序;
-          (2) selector.include_other_group 选中的组 — 独立 DnD 段(分别更新两个字段,互不干扰)。
-          每段都是「整行可拖」(整个边框可点击拖拽),删除按钮的 pointerdown 被 stop 掉避免误触发拖拽。 */}
+      {/* @user_flow: 已锁定列表分两段展示:
+          (1) g.proxies 数组里的节点 / 内置 policy — DnD 调整顺序;
+          (2) selector.include_other_group 选中的组 — 独立 DnD 段 (两个字段顺序敏感, 互不干扰)。
+          每段都是「整行可拖」(整个边框可点击拖拽), 删除按钮的 pointerdown 被 stop 掉避免误触发拖拽。 */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground px-0.5 pt-1">
         <span>
           已锁定 · 节点 {proxies.length}
@@ -286,8 +279,8 @@ function Picker({
     else onChange([...proxies, name]);
   };
 
-  // @business_rule: 批量操作严格限定在当前搜索过滤可见的节点,不影响内置 policy chip
-  // 的状态和历史策略组引用。这样改 from_providers / regex 后,工具栏不会误删 DIRECT 之类的 fallback。
+  // @business_rule: 批量操作严格限定在当前搜索过滤可见的节点,不影响内置 policy chip 的锁定状态。
+  // 这样改 from_providers / regex 后,工具栏不会误删 DIRECT 之类的 fallback。
   const pinAllVisible = () => {
     const toAdd = visibleNodeNames.filter((n) => !pinnedSet.has(n));
     if (toAdd.length === 0) return;
@@ -627,8 +620,9 @@ function SortableRow({
       {/* @user_flow: 三态 hint 一目了然(只在非 builtin 行显示):
           - node-in: 当前 selector 命中 → 不额外标 (整行就是普通锁定项)
           - node-out: 节点在池里但 selector 不命中 → 灰色"selector 不命中"
-                      (订阅里仍输出,因为锁定优先于 selector 过滤;提示用户考虑解锁)
-          - unknown: 完全不在池/组/builtin → 橘色"未知引用"警告 (可能机场改名 / 节点被删) */}
+                      (订阅里仍输出, 因为锁定优先于 selector 过滤; 提示用户考虑解锁)
+          - unknown: 完全不在节点池且不是 builtin → 橘色"未知引用"警告
+                     (机场改名 / 节点被删 / 拼写错误 / 把组名误写进 g.proxies 而非 selector.include_other_group) */}
       {!isSpecial && classification === "node-out" && (
         <Badge
           variant="outline"
@@ -643,7 +637,7 @@ function SortableRow({
         <Badge
           variant="outline"
           className="text-[10px] text-amber-700 dark:text-amber-300 border-amber-500/50 bg-amber-500/10 gap-1 shrink-0"
-          title="该引用名当前不在节点池 / 策略组 / 内置 policy 中,可能已失效(机场改名 / 节点被删 / 拼写错误)"
+          title="该引用名当前不在节点池且不是内置 policy,可能已失效(机场改名 / 节点被删 / 拼写错误)。如果是组名,请挪到 selector.include_other_group 数组里"
         >
           <AlertTriangle className="h-3 w-3" />
           未知引用
