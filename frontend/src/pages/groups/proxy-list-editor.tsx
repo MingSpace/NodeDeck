@@ -73,9 +73,9 @@ interface Props {
 type RowClassification = "node-in" | "node-out" | "unknown";
 
 export function ProxyListEditor({
-  proxies,
+  proxies: proxiesProp,
   onChange,
-  includeOtherGroup,
+  includeOtherGroup: includeOtherGroupProp,
   onIncludeOtherGroupChange,
   candidateNodes,
   candidateGroups,
@@ -87,6 +87,12 @@ export function ProxyListEditor({
   totalNodePoolSize,
   allPoolNodeNames,
 }: Props) {
+  // @business_rule: 防御性归一化 — 上游(YAML 编辑切回可视化、被用户改成 `proxies:` 空标量等)
+  // 可能传入 null。entity-visual-dialog 的 normalizeFromTemplate 是主要保护层,这里再加一道,
+  // 避免后续重构万一漏了归一化也导致 .map() / new Set() 抛错白屏。
+  const proxies = proxiesProp ?? [];
+  const includeOtherGroup = includeOtherGroupProp ?? [];
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const items = proxies.map((p, i) => ({ id: `proxy-${i}-${p}`, idx: i, name: p }));
 
@@ -147,7 +153,27 @@ export function ProxyListEditor({
           已锁定 · 节点 {proxies.length}
           {includeOtherGroup.length > 0 && ` + 合并组 ${includeOtherGroup.length}`}
         </span>
-        {(proxies.length > 0 || includeOtherGroup.length > 0) && <span>整行可拖动调整顺序</span>}
+        <div className="flex items-center gap-3">
+          {(proxies.length > 0 || includeOtherGroup.length > 0) && <span>整行可拖动调整顺序</span>}
+          {/* @user_flow: 候选区底部的「全部解锁」按钮只对当前搜索可见的节点生效;
+              当 from_providers 为空(候选区不显示节点)或大量节点跨多个机场时,
+              那个按钮帮不上忙。这里提供一个无视过滤的「清空」入口,一键删空 g.proxies。
+              window.confirm 防误触 — 80+ 个节点的锁定不应一键归零无确认。 */}
+          {proxies.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`确定清空所有 ${proxies.length} 个已锁定节点?\n\n清空后,符合 selector 的节点仍会自动包含在订阅里。`)) {
+                  onChange([]);
+                }
+              }}
+              className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+              title="清空 g.proxies 数组(仅清空显式锁定,不影响 selector / include_other_group)"
+            >
+              清空节点
+            </button>
+          )}
+        </div>
       </div>
 
       {proxies.length === 0 && includeOtherGroup.length === 0 ? (
@@ -179,8 +205,22 @@ export function ProxyListEditor({
 
           {includeOtherGroup.length > 0 && (
             <>
-              <div className="text-[10px] text-muted-foreground px-0.5 pt-1.5 italic">
-                合并自 selector.include_other_group (整组成员动态注入, 顺序敏感, 可拖动):
+              <div className="flex items-center justify-between text-[10px] text-muted-foreground px-0.5 pt-1.5">
+                <span className="italic">
+                  合并自 selector.include_other_group (整组成员动态注入, 顺序敏感, 可拖动):
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm(`确定清空所有 ${includeOtherGroup.length} 个合并组引用?`)) {
+                      onIncludeOtherGroupChange([]);
+                    }
+                  }}
+                  className="text-[10px] text-muted-foreground hover:text-destructive transition-colors not-italic shrink-0"
+                  title="清空 selector.include_other_group 数组(不影响 g.proxies 锁定的节点)"
+                >
+                  清空合并组
+                </button>
               </div>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onGroupDragEnd}>
                 <SortableContext items={groupItemIds} strategy={verticalListSortingStrategy}>

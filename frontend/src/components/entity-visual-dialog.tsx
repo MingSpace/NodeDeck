@@ -14,6 +14,38 @@ import { YamlEditor } from "./yaml-editor";
 import { useSaveEntity, type EntityKind } from "@/api/entities";
 import { toast } from "@/components/ui/toast";
 
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+// 通用归一化: YAML 标准里 `field:` 空标量会被 js-yaml 解析为 null,如果直接交给可视化组件
+// (它们通常假设拿到的是 []/{} ),在 .map / .forEach / new Set(...) 上会直接抛 TypeError
+// 中断渲染,UI 看起来就是白屏。
+// 这里以 templateValue 为参考类型字典:遍历 template 每个键,若 parsed 对应值是 null/undefined
+// 且 template 值是数组 → 回填 [];若 template 值是对象 → 同样递归一层处理嵌套数组字段。
+// 不动 parsed 中 template 没声明的字段(保留用户在 yaml 里写的内容)。
+function normalizeFromTemplate<T extends object>(parsed: T, template?: Partial<T>): T {
+  if (!template) return parsed;
+  const result: Record<string, unknown> = { ...(parsed as Record<string, unknown>) };
+  for (const key of Object.keys(template) as Array<keyof T & string>) {
+    const tplVal = (template as Record<string, unknown>)[key];
+    const curVal = result[key];
+    if (Array.isArray(tplVal)) {
+      if (curVal == null) result[key] = [];
+    } else if (isPlainObject(tplVal)) {
+      if (curVal == null) {
+        result[key] = JSON.parse(JSON.stringify(tplVal));
+      } else if (isPlainObject(curVal)) {
+        result[key] = normalizeFromTemplate(
+          curVal as Record<string, unknown>,
+          tplVal as Record<string, unknown>,
+        );
+      }
+    }
+  }
+  return result as T;
+}
+
 interface Props<T extends { id: string }> {
   kind: EntityKind;
   entity?: T | null;
@@ -60,6 +92,7 @@ export function EntityVisualDialog<T extends { id: string }>({
     } else {
       initial = { id: defaultId ?? "new-id", ...(templateValue ?? {}) } as T;
     }
+    initial = normalizeFromTemplate(initial, templateValue);
     setData(initial);
     setYamlText(yaml.dump(initial, { sortKeys: false, lineWidth: 200 }));
     setMode("visual");
@@ -84,7 +117,8 @@ export function EntityVisualDialog<T extends { id: string }>({
           setError("YAML 非对象");
           return;
         }
-        setData(parsed);
+        // 归一化 null 数组/对象 → 空容器,避免下游可视化组件 .map() 等抛错白屏
+        setData(normalizeFromTemplate(parsed, templateValue));
         setError(null);
       } catch (err) {
         setError("YAML 解析失败: " + (err as Error).message);
@@ -109,6 +143,8 @@ export function EntityVisualDialog<T extends { id: string }>({
       setError("缺少 id 字段");
       return;
     }
+    // 保存前同样归一化,避免用户在 yaml 模式直接保存 `proxies:` 空标量时被后端 zod 拒收
+    target = normalizeFromTemplate(target, templateValue);
     if (isEdit && originalId && target.id !== originalId) {
       setError(
         `id 不可修改(原 id:${originalId},现 id:${target.id})。\n` +
