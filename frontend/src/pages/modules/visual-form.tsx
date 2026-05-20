@@ -50,6 +50,10 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
     });
   };
 
+  const defaultTab =
+    SECTION_LABELS.find(({ key }) => !!data.content_sections[key])?.key ??
+    SECTION_LABELS[0].key;
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
@@ -95,7 +99,7 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
 
       <div>
         <Label className="text-xs">Content Sections (按段编辑;留空表示该段不输出)</Label>
-        <Tabs defaultValue="mitm" className="mt-2">
+        <Tabs defaultValue={defaultTab} className="mt-2">
           <TabsList className="flex-wrap h-auto">
             {SECTION_LABELS.map(({ key, label }) => {
               const has = !!data.content_sections[key];
