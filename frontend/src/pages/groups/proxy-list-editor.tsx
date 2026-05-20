@@ -9,11 +9,10 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, Check, GripVertical, RefreshCw, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, GripVertical, Info, Pin, PinOff, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 
 export interface NodeCandidate {
   name: string;
@@ -52,7 +51,23 @@ interface Props {
   hasFromProviders?: boolean;
   /** 整个节点池(/api/dashboard/node-pool)的全量节点数 — 用于状态栏让用户感知 selector 筛掉了多少 */
   totalNodePoolSize: number;
+  /**
+   * 全量节点池的所有节点名集合,用于在「已锁定」段对每行做三态分类:
+   *   - 在 candidateNodes(selector 命中)里 → 普通行
+   *   - 不在 candidateNodes 但在 allPoolNodeNames → "已锁定但 selector 不命中" 灰色 hint
+   *   - 完全不在节点池 / 组 / builtin → "未知引用" 警告
+   * 与 candidateNodes 是不同集合: candidateNodes 受 selector 收窄, allPoolNodeNames 是全量。
+   */
+  allPoolNodeNames: Set<string>;
 }
+
+// @business_rule: 三态划分用于「已锁定」段每行徽标:
+//   node-in: 该名在当前 selector 命中范围 → 不显示额外徽标 (正常行)
+//   node-out: 该名在节点池里但 selector 不命中 → 灰色"selector 不命中" hint
+//                                                (订阅里仍输出,因为锁定优先于 selector)
+//   non-node-known: 是 builtin policy 或组引用 → 由各自徽标处理 (走 isSpecial / 组路径)
+//   unknown: 完全不在节点池 / 组 / builtin → 橘色"未知引用" 警告
+type RowClassification = "node-in" | "node-out" | "non-node-known" | "unknown";
 
 export function ProxyListEditor({
   proxies,
@@ -67,20 +82,33 @@ export function ProxyListEditor({
   hasAnyProvider,
   hasFromProviders,
   totalNodePoolSize,
+  allPoolNodeNames,
 }: Props) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const items = proxies.map((p, i) => ({ id: `proxy-${i}-${p}`, idx: i, name: p }));
 
-  // @business_rule: 候选名集合(节点 + 策略组 + 内置 policy)用于给已加入行打 unknown 徽标。
-  // candidateGroups 仍参与,虽然 Picker 不再展示「策略组」Section,但历史 proxies 里
-  // 的策略组引用(如 "Japan(DIP)")不应被误标为 unknown。语义合并到 selector.include_other_group。
-  const knownNames = useMemo(() => {
+  const candidateNamesSet = useMemo(() => {
     const s = new Set<string>();
     candidateNodes.forEach((n) => s.add(n.name));
+    return s;
+  }, [candidateNodes]);
+
+  // @business_rule: candidateGroups 仍参与已知名集合 — 历史 proxies 里的策略组引用
+  // (如 "Japan(DIP)") 不应被误标为 unknown。selector.include_other_group 是另一通道,
+  // 但 g.proxies 里如果直接写了组名 (老 yaml / 用户手贴) 也合法。
+  const knownNonNodeNames = useMemo(() => {
+    const s = new Set<string>();
     candidateGroups.forEach((g) => s.add(g.name));
     BUILTIN_POLICIES.forEach((p) => s.add(p));
     return s;
-  }, [candidateNodes, candidateGroups]);
+  }, [candidateGroups]);
+
+  const classifyRowName = (name: string): RowClassification => {
+    if (candidateNamesSet.has(name)) return "node-in";
+    if (allPoolNodeNames.has(name)) return "node-out";
+    if (knownNonNodeNames.has(name)) return "non-node-known";
+    return "unknown";
+  };
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -118,20 +146,23 @@ export function ProxyListEditor({
         totalNodePoolSize={totalNodePoolSize}
       />
 
-      {/* @user_flow: 已加入列表合并展示 (1) proxies 数组里的节点 / 内置 policy / 历史组引用 — DnD 调整顺序;
+      {/* @user_flow: 已锁定列表合并展示 (1) proxies 数组里的节点 / 内置 policy / 历史组引用 — DnD 调整顺序;
           (2) selector.include_other_group 选中的组 — 独立 DnD 段(分别更新两个字段,互不干扰)。
           每段都是「整行可拖」(整个边框可点击拖拽),删除按钮的 pointerdown 被 stop 掉避免误触发拖拽。 */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground px-0.5 pt-1">
         <span>
-          已加入 · 节点 {proxies.length}
+          已锁定 · 节点 {proxies.length}
           {includeOtherGroup.length > 0 && ` + 合并组 ${includeOtherGroup.length}`}
         </span>
         {(proxies.length > 0 || includeOtherGroup.length > 0) && <span>整行可拖动调整顺序</span>}
       </div>
 
       {proxies.length === 0 && includeOtherGroup.length === 0 ? (
-        <div className="text-xs text-muted-foreground border border-dashed rounded p-3 text-center">
-          暂无显式成员 (selector 可动态注入)
+        <div className="text-xs text-muted-foreground border border-dashed rounded p-3 leading-relaxed">
+          当前未锁定任何节点 — selector 命中的节点会按节点池顺序自动包含在订阅里(含未来 provider 新增的同类节点)。
+          只有需要固定顺序时(如 fallback / url-test 优先),才需要在上方候选区点
+          <Pin className="inline h-3 w-3 mx-1 -translate-y-px" />
+          锁定。
         </div>
       ) : (
         <div className="space-y-1">
@@ -144,7 +175,7 @@ export function ProxyListEditor({
                       key={id}
                       id={id}
                       name={name}
-                      unknown={!knownNames.has(name)}
+                      classification={classifyRowName(name)}
                       onRemove={() => onChange(proxies.filter((_, i) => i !== idx))}
                     />
                   ))}
@@ -210,7 +241,15 @@ function Picker({
 }) {
   const [search, setSearch] = useState("");
 
-  const selectedSet = useMemo(() => new Set(proxies), [proxies]);
+  const pinnedSet = useMemo(() => new Set(proxies), [proxies]);
+
+  // @business_rule: 锁定序号 = 该节点名在 g.proxies 数组中的 index + 1。
+  // 与下方「已锁定」段拖拽顺序一致,用户拖拽时序号也会随之变化(因为 proxies 数组顺序变了)。
+  const pinnedIndexMap = useMemo(() => {
+    const m = new Map<string, number>();
+    proxies.forEach((p, i) => m.set(p, i + 1));
+    return m;
+  }, [proxies]);
 
   const providerNameMap = useMemo(() => {
     const m = new Map<string, string>();
@@ -235,52 +274,50 @@ function Picker({
 
   const visibleNodeNames = useMemo(() => filteredNodes.map((n) => n.name), [filteredNodes]);
   const visibleSet = useMemo(() => new Set(visibleNodeNames), [visibleNodeNames]);
-  const visibleSelectedCount = useMemo(() => {
+  const visiblePinnedCount = useMemo(() => {
     let c = 0;
-    for (const n of filteredNodes) if (selectedSet.has(n.name)) c++;
+    for (const n of filteredNodes) if (pinnedSet.has(n.name)) c++;
     return c;
-  }, [filteredNodes, selectedSet]);
+  }, [filteredNodes, pinnedSet]);
+  const visibleAutoCount = filteredNodes.length - visiblePinnedCount;
 
-  const allVisibleSelected = filteredNodes.length > 0 && visibleSelectedCount === filteredNodes.length;
-  const noneVisibleSelected = visibleSelectedCount === 0;
-  const headerCheckboxState: boolean | "indeterminate" = allVisibleSelected
-    ? true
-    : noneVisibleSelected
-      ? false
-      : "indeterminate";
-
-  const toggleOne = (name: string) => {
-    if (selectedSet.has(name)) onChange(proxies.filter((p) => p !== name));
+  const togglePin = (name: string) => {
+    if (pinnedSet.has(name)) onChange(proxies.filter((p) => p !== name));
     else onChange([...proxies, name]);
   };
 
-  // @business_rule: 三个批量操作的作用域**严格限定在当前过滤可见的节点**,不影响内置 policy chip
+  // @business_rule: 批量操作严格限定在当前搜索过滤可见的节点,不影响内置 policy chip
   // 的状态和历史策略组引用。这样改 from_providers / regex 后,工具栏不会误删 DIRECT 之类的 fallback。
-  const selectAllVisible = () => {
-    const toAdd = visibleNodeNames.filter((n) => !selectedSet.has(n));
+  const pinAllVisible = () => {
+    const toAdd = visibleNodeNames.filter((n) => !pinnedSet.has(n));
     if (toAdd.length === 0) return;
     onChange([...proxies, ...toAdd]);
   };
 
-  const deselectAllVisible = () => {
-    if (visibleSelectedCount === 0) return;
+  const unpinAllVisible = () => {
+    if (visiblePinnedCount === 0) return;
     onChange(proxies.filter((p) => !visibleSet.has(p)));
-  };
-
-  const invertVisibleSelection = () => {
-    if (filteredNodes.length === 0) return;
-    const kept = proxies.filter((p) => !visibleSet.has(p));
-    const toAdd = visibleNodeNames.filter((n) => !selectedSet.has(n));
-    onChange([...kept, ...toAdd]);
-  };
-
-  const onHeaderCheckboxToggle = () => {
-    if (allVisibleSelected) deselectAllVisible();
-    else selectAllVisible();
   };
 
   return (
     <div className="border rounded-md bg-card">
+      {/* @user_flow: 顶部固定说明 — 这是整套语义重写后的核心引导,告诉用户
+          1) selector 命中节点已经自动包含在订阅里 (无需勾选/锁定)
+          2) 只有需要固定 fallback / url-test 顺序时才需要锁定
+          避免用户陷入"必须勾选才会生效"的旧心智模型。 */}
+      <div className="flex items-start gap-2 px-2 py-1.5 border-b bg-muted/30">
+        <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+        <p className="text-[11px] text-muted-foreground leading-snug">
+          以下节点已通过 selector{" "}
+          <span className="font-medium text-foreground">自动包含</span>
+          {" "}在订阅里(含未来 provider 新增的同类节点),无需操作。仅当需要
+          <span className="font-medium text-foreground">固定 fallback / url-test 优先顺序</span>
+          时,才点
+          <Pin className="inline h-3 w-3 mx-0.5 -translate-y-px" />
+          把节点锁定到下方显式列表。
+        </p>
+      </div>
+
       <div className="flex items-center gap-2 px-2 py-1.5 border-b">
         <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <Input
@@ -304,45 +341,43 @@ function Picker({
         )}
       </div>
 
-      {/* @user_flow: 内置 policy 5 项常驻 chip 行,点击切换加入/移除(双向同步)。
-          原来的「内置 policy」独立 Section 折叠到这里,节省垂直空间。 */}
+      {/* @user_flow: 内置 policy 5 项常驻 chip 行,点击切换加入/移除(双向同步 g.proxies)。
+          DIRECT/REJECT 这些不属于"节点池",所以仍是直接显式写入 g.proxies,锁定语义。 */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b flex-wrap">
         <span className="text-[11px] text-muted-foreground shrink-0 mr-0.5">快捷:</span>
         {BUILTIN_POLICIES.map((p) => {
-          const added = selectedSet.has(p);
+          const added = pinnedSet.has(p);
           return (
             <button
               key={p}
               type="button"
-              onClick={() => toggleOne(p)}
+              onClick={() => togglePin(p)}
               className={
                 added
                   ? "px-2 py-0.5 rounded text-[11px] font-mono font-medium border bg-primary text-primary-foreground border-primary inline-flex items-center gap-1"
                   : "px-2 py-0.5 rounded text-[11px] font-mono font-medium border bg-background text-foreground hover:bg-accent border-input inline-flex items-center gap-1"
               }
-              title={added ? "已加入 (点击移除)" : `添加 ${p}`}
+              title={added ? `已锁定 ${p} (点击解锁)` : `锁定 ${p} 到显式列表`}
             >
-              {added && <Check className="h-3 w-3" strokeWidth={3} />}
+              {added && <Pin className="h-2.5 w-2.5" strokeWidth={2.5} />}
               {p}
             </button>
           );
         })}
       </div>
 
+      {/* @user_flow: 状态栏三个数语义不重叠 —
+          已锁定 = 当前可见(搜索框过滤后)且在 g.proxies 显式数组里的节点数
+          自动包含 = 可见但未锁定 → 后端按节点池顺序追加在锁定段之后
+          节点池 = /api/dashboard/node-pool 全量,让用户感知 selector 筛掉了多少。 */}
       <div className="flex items-center gap-2 px-2 py-1 border-b text-[11px]">
-        <Checkbox
-          checked={headerCheckboxState}
-          onCheckedChange={() => onHeaderCheckboxToggle()}
-          disabled={filteredNodes.length === 0}
-          aria-label="全选可见节点"
-        />
-        {/* @user_flow: 三个数语义不重叠 —
-            已选 = 当前可见(搜索框过滤后)且已加入 proxies 的节点数;
-            可见 = Picker 内搜索框过滤后剩余的候选;
-            节点池 = /api/dashboard/node-pool 全量(未被 from_providers/regex/exclude_type 筛过),
-            让用户能直观感知 selector 筛掉了多少。 */}
         <span className="text-muted-foreground">
-          已选 {visibleSelectedCount} · 可见 {filteredNodes.length} · 节点池 {totalNodePoolSize}
+          已锁定{" "}
+          <span className="font-medium text-foreground tabular-nums">{visiblePinnedCount}</span>
+          {" · "}自动包含{" "}
+          <span className="font-medium text-foreground tabular-nums">{visibleAutoCount}</span>
+          {" · "}节点池{" "}
+          <span className="tabular-nums">{totalNodePoolSize}</span>
         </span>
         <div className="flex-1" />
         <Button
@@ -350,22 +385,24 @@ function Picker({
           variant="ghost"
           size="sm"
           className="h-6 px-2 text-[11px]"
-          onClick={invertVisibleSelection}
-          disabled={filteredNodes.length === 0}
-          title="在当前可见范围内反转选中状态"
+          onClick={pinAllVisible}
+          disabled={visibleAutoCount === 0}
+          title="把当前可见且未锁定的节点全部加入显式列表(通常仅在需要固定 fallback 顺序时才用)"
         >
-          反选
+          <Pin className="h-3 w-3 mr-1" />
+          全部锁定
         </Button>
         <Button
           type="button"
           variant="ghost"
           size="sm"
           className="h-6 px-2 text-[11px]"
-          onClick={deselectAllVisible}
-          disabled={visibleSelectedCount === 0}
-          title="移除当前可见且已选的节点"
+          onClick={unpinAllVisible}
+          disabled={visiblePinnedCount === 0}
+          title="把当前可见的已锁定节点全部解锁(仍由 selector 自动包含)"
         >
-          清空可见已选
+          <PinOff className="h-3 w-3 mr-1" />
+          全部解锁
         </Button>
       </div>
 
@@ -386,13 +423,16 @@ function Picker({
               const sourceLabel = n.source_provider_id
                 ? providerNameMap.get(n.source_provider_id) ?? n.source_provider_id
                 : null;
+              const pinned = pinnedSet.has(n.name);
+              const pinIndex = pinnedIndexMap.get(n.name);
               return (
-                <NodeCheckRow
+                <NodePickerRow
                   key={`node-${n.source_provider_id ?? "?"}-${n.name}`}
                   node={n}
-                  checked={selectedSet.has(n.name)}
+                  pinned={pinned}
+                  pinIndex={pinIndex}
                   sourceLabel={sourceLabel}
-                  onToggle={() => toggleOne(n.name)}
+                  onTogglePin={() => togglePin(n.name)}
                 />
               );
             })}
@@ -407,32 +447,46 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
   return <div className="px-3 py-2 text-xs text-muted-foreground italic leading-relaxed">{children}</div>;
 }
 
-function NodeCheckRow({
+function NodePickerRow({
   node,
-  checked,
+  pinned,
+  pinIndex,
   sourceLabel,
-  onToggle,
+  onTogglePin,
 }: {
   node: NodeCandidate;
-  checked: boolean;
+  pinned: boolean;
+  pinIndex?: number;
   sourceLabel: string | null;
-  onToggle: () => void;
+  onTogglePin: () => void;
 }) {
+  // @user_flow: 整行 onClick 切换锁定状态;右侧 Pin/PinOff 按钮提供更明显的 affordance,
+  // 点按钮时阻止冒泡避免双触发。Pinned 时左侧徽标显示 `📌 #序号`,Auto 时显示绿色"自动"徽标。
   return (
-    // @user_flow: 整行 onClick 切换 checkbox。Checkbox 自身 pointerEvents:none + tabIndex:-1
-    // 避免重复触发(点 checkbox 不会冒泡再次切换),只展示状态。
     <div
       className="flex items-center gap-2 px-2 py-1 hover:bg-muted/40 text-xs cursor-pointer select-none"
-      onClick={onToggle}
-      role="checkbox"
-      aria-checked={checked}
+      onClick={onTogglePin}
+      role="button"
+      aria-label={pinned ? `解锁 ${node.name}` : `锁定 ${node.name} 到显式列表`}
     >
-      <Checkbox
-        checked={checked}
-        tabIndex={-1}
-        aria-hidden="true"
-        className="pointer-events-none"
-      />
+      {pinned ? (
+        <Badge
+          variant="default"
+          className="text-[10px] px-1.5 py-0 shrink-0 gap-0.5 inline-flex items-center font-medium tabular-nums"
+          title={pinIndex !== undefined ? `已锁定 — 在显式列表第 ${pinIndex} 位` : "已锁定"}
+        >
+          <Pin className="h-2.5 w-2.5" strokeWidth={2.5} />
+          {pinIndex !== undefined ? `#${pinIndex}` : ""}
+        </Badge>
+      ) : (
+        <Badge
+          variant="success"
+          className="text-[10px] px-1.5 py-0 shrink-0 font-medium"
+          title="该节点会被 selector 自动包含在订阅里。点击可锁定它在显式列表中的位置(用于固定 fallback / url-test 优先顺序)"
+        >
+          自动
+        </Badge>
+      )}
       <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0 shrink-0">
         {node.type}
       </Badge>
@@ -456,6 +510,23 @@ function NodeCheckRow({
           (无来源)
         </Badge>
       )}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-6 w-6 shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          onTogglePin();
+        }}
+        title={pinned ? "解锁 (移出显式列表,仍由 selector 自动包含)" : "锁定到显式列表 (固定顺序)"}
+      >
+        {pinned ? (
+          <PinOff className="h-3.5 w-3.5 text-muted-foreground" />
+        ) : (
+          <Pin className="h-3.5 w-3.5 text-muted-foreground" />
+        )}
+      </Button>
     </div>
   );
 }
@@ -523,12 +594,12 @@ function SortableGroupRefRow({
 function SortableRow({
   id,
   name,
-  unknown,
+  classification,
   onRemove,
 }: {
   id: string;
   name: string;
-  unknown: boolean;
+  classification: RowClassification;
   onRemove: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
@@ -553,11 +624,26 @@ function SortableRow({
           内置
         </Badge>
       )}
-      {unknown && !isSpecial && (
+      {/* @user_flow: 三态 hint 一目了然(只在非 builtin 行显示):
+          - node-in: 当前 selector 命中 → 不额外标 (整行就是普通锁定项)
+          - node-out: 节点在池里但 selector 不命中 → 灰色"selector 不命中"
+                      (订阅里仍输出,因为锁定优先于 selector 过滤;提示用户考虑解锁)
+          - unknown: 完全不在池/组/builtin → 橘色"未知引用"警告 (可能机场改名 / 节点被删) */}
+      {!isSpecial && classification === "node-out" && (
+        <Badge
+          variant="outline"
+          className="text-[10px] text-muted-foreground border-muted-foreground/30 bg-muted/40 gap-1 shrink-0"
+          title="该节点在节点池里存在,但当前 selector 不命中(被 from_providers / include_regex / exclude_type 过滤掉)。订阅里仍会输出它,因为锁定优先于 selector;如不需要可解锁。"
+        >
+          <Info className="h-3 w-3" />
+          selector 不命中
+        </Badge>
+      )}
+      {!isSpecial && classification === "unknown" && (
         <Badge
           variant="outline"
           className="text-[10px] text-amber-700 dark:text-amber-300 border-amber-500/50 bg-amber-500/10 gap-1 shrink-0"
-          title="该引用名当前不在节点池 / 策略组 / 内置 policy 中,可能已失效"
+          title="该引用名当前不在节点池 / 策略组 / 内置 policy 中,可能已失效(机场改名 / 节点被删 / 拼写错误)"
         >
           <AlertTriangle className="h-3 w-3" />
           未知引用

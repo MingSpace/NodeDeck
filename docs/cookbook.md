@@ -356,6 +356,15 @@ proxy-groups:
 
 mihomo 启动后会自己去拉两个 provider URL,健康检查独立运行。
 
+> **selector 是动态匹配的,不需要"重新勾选"**
+>
+> 上面 group 范本里 `proxies: []` 一直留空,`selector.from_providers` 配好两家机场就行。每次客户端拉订阅 (`/sub`) 时,后端都会**实时**从节点池按 `from_providers` / `include_regex` / `exclude_regex` / `exclude_type` 重新过滤,把命中节点写到 yaml。
+>
+> 这意味着:**机场后续新增节点(或改名/下线),只要符合 selector 条件,下次拉订阅就自动生效,无需到 Web UI 重新勾选**。这跟传统的"先全选 3 个节点保存→机场加到 4 个→回来再勾一次"完全不一样,普通模式下也是同样的动态语义(`use:` 段不存在,但 `proxies:` 段会被 selector 动态展开)。
+>
+> 只有需要**固定 fallback / url-test 优先顺序**(比如想让香港节点排前面、日本节点排后面)时,才在 Web UI「候选节点与已锁定列表」段点
+> <kbd>📌</kbd> 把节点"锁定"到 `proxies` 显式数组里。锁定的节点严格按数组顺序输出,后续新增的同类节点会按节点池顺序追加在锁定段之后。
+
 ---
 
 ## 5. Surge 模块嵌入

@@ -143,6 +143,13 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
     return (allGroups.data?.items ?? []).filter((g) => g.id !== data.id);
   }, [allGroups.data?.items, data.id]);
 
+  // @business_rule: 全量节点池 name 集合 —— 给「已锁定」段每行做三态分类:
+  // 在 candidateNodes (selector 命中) / 仅在节点池但 selector 不命中 / 完全不存在。
+  // 不受 selector / search 影响,跟 candidateNodes 是不同集合(后者会随筛选条件收窄)。
+  const allPoolNodeNames = useMemo(() => {
+    return new Set((nodePool.data?.nodes ?? []).map((n) => n.name));
+  }, [nodePool.data?.nodes]);
+
   // @business_rule: exclude_type chip 上的数字 = 当前 from_providers 范围内该 type 的节点数。
   // from_providers 为空时按后端语义"空=所有 Provider"统计整个节点池(UI 候选区虽然此时不显示,但
   // 用户依然能感知到节点池里每种类型的总量,便于决定是否切某个 provider)。
@@ -287,7 +294,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
       </fieldset>
 
       <fieldset className="border rounded-md p-3">
-        <legend className="text-xs font-medium px-1">显式 proxies 列表 (顺序敏感,可拖拽)</legend>
+        <legend className="text-xs font-medium px-1">候选节点与已锁定列表</legend>
         <div
           className="transition-opacity duration-150 ease-out"
           style={{ opacity: isRegexStale ? 0.5 : 1 }}
@@ -307,6 +314,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
             hasAnyProvider={(providers.data?.items.length ?? 0) > 0}
             hasFromProviders={sel.from_providers.length > 0}
             totalNodePoolSize={nodePool.data?.nodes.length ?? 0}
+            allPoolNodeNames={allPoolNodeNames}
           />
         </div>
       </fieldset>

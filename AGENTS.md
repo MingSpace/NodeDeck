@@ -86,18 +86,20 @@ pnpm build                   # 前端 + 后端
 - **只要 HTTP 状态码 / API JSON / SSR 后 HTML 骨架** → `curl http://localhost:5173/<route>` 或 `curl http://localhost:8080/api/<path>`,agent 自己就能跑,无需用户参与
 - **要看渲染后的 DOM / 截图 / 控制台错误 / 网络请求** → 必须用 `cursor-ide-browser` MCP 的 `browser_navigate` / `browser_snapshot` / `browser_take_screenshot` / `browser_console_messages` 等工具
 
-**`cursor-ide-browser` 的关键机制(很反直觉,踩过坑)**:
+**`cursor-ide-browser` 的关键机制(踩过坑的经验)**:
 
-1. **首次激活必须由用户在聊天里发 `@Browser` mention**(任意 prompt,例如 `@Browser 看下 /providers 渲染对不对`)。Mention 解析只发生在用户输入阶段,**parent agent 没法在自己的回复里"自我触发"** —— 即便你输出字符串 `@Browser` 也不会触发工具注入
-2. **一旦在某个 conversation 里触发过 mention,工具注入是粘性的** —— 后续 turn 里 agent 可以直接 `CallMcpTool` 调用 `browser_*` 系列,不需要用户每轮都打 `@Browser`
-3. **新会话(/new chat)开始时,粘性失效**,需要用户重新发一次 mention 才能再次激活
+1. **先自主尝试,失败再请求用户触发** —— 需要浏览器时,**直接调用 `browser_tabs` action="list" 探活**:
+   - 工具能正常返回(可能是空 tabs 列表,也可能列出已有 tabs)就是已激活,直接继续后续 `browser_*` 调用,**不一定要让用户先 mention**
+   - 只有返回 `Tool not found, available tools:` 空 list 时,才请求用户在聊天里发一次 `@Browser` mention(任意 prompt,例如 `@Browser 看下 /providers 渲染对不对`)来激活工具集
+2. **一旦激活,工具注入在会话内是粘性的** —— 后续 turn 里 agent 可以直接 `CallMcpTool` 调用 `browser_*` 系列,不需要用户每轮都打 `@Browser`
+3. **新会话(/new chat)开始时,粘性可能失效** —— 但仍然先按第 1 条探活,不要预判"新会话所以肯定没激活"就直接让用户 mention
 
-**如何判断当前会话有没有激活**:试调用一次 `browser_tabs` action="list",成功返回(可能为空 tabs 列表)就是激活了;返回 `Tool not found, available tools:` 空 list 就是没激活,**这时去请求用户用 `@Browser` 触发,不要尝试任何"绕过"方案**(下面这些都是死路,不要再走):
+**当探活返回 `Tool not found` 时**,直接请求用户用 `@Browser` 触发,不要尝试任何"绕过"方案(下面这些都是死路,不要再走):
 
 - ❌ 看 `mcps/cursor-ide-browser/tools/` 目录是不是空的 —— **它本来就是空的**,工具是按 mention 动态注入的,不落盘到 `tools/*.json`
 - ❌ 看 `~/.cursor-server/data/logs/*/exthost*/anysphere.cursor-agent-exec/Mcp FileSystem Writer.log` 里有没有 `lease returned 0 tools across 1 clients` —— **常态就是 0**,这是上游故意设计,不是 bug
 - ❌ 推断"Remote-WSL 模式不支持 / Cursor 版本有 bug / Browser 面板没开" —— 都不是,跟 WSL 远程模式、Cursor 客户端版本、Browser 面板状态都无关
-- ❌ 用 `Task` 工具 spawn `generalPurpose` 等 subagent 让它代调 —— subagent 上下文也拿不到,工具集只 lease 给"用户主动 mention 过 `@Browser`"的 parent 上下文
+- ❌ 用 `Task` 工具 spawn `generalPurpose` 等 subagent 让它代调 —— subagent 上下文也拿不到,工具集只 lease 给当前 parent 上下文
 
 **调用注意事项**(完整指南见 `mcps/cursor-ide-browser/INSTRUCTIONS.md`):
 
