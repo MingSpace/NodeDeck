@@ -55,6 +55,18 @@ export function RulePipeline({ draft, onChange }: Props) {
     return policyOptionsForGroups(selectedGroupNames);
   }, [groupList.data, draft.proxy_groups]);
 
+  const usedRefs = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of draft.rule_modules) {
+      if (isRuleSetRef(r) && r.ref) set.add(r.ref);
+    }
+    return set;
+  }, [draft.rule_modules]);
+
+  const rulesetTotal = rulesetList.data?.items.length ?? 0;
+  const noRulesets = rulesetTotal === 0;
+  const allRulesetUsed = rulesetTotal > 0 && usedRefs.size >= rulesetTotal;
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -82,7 +94,9 @@ export function RulePipeline({ draft, onChange }: Props) {
   const addRow = (kind: "ruleset" | "final" | "geoip") => {
     const last = policyOptions[0] ?? "DIRECT";
     if (kind === "ruleset") {
-      const ref = rulesetList.data?.items[0]?.id ?? "";
+      const rulesets = rulesetList.data?.items ?? [];
+      const firstUnused = rulesets.find((r) => !usedRefs.has(r.id));
+      const ref = firstUnused?.id ?? "";
       onChange([...draft.rule_modules, makeRuleSetRef(ref, last)]);
     } else if (kind === "final") {
       onChange([...draft.rule_modules, makeFinal(last)]);
@@ -100,7 +114,19 @@ export function RulePipeline({ draft, onChange }: Props) {
       </div>
 
       <div className="border-b p-2.5 flex flex-wrap gap-2 shrink-0">
-        <Button size="sm" variant="outline" onClick={() => addRow("ruleset")}>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => addRow("ruleset")}
+          disabled={noRulesets || allRulesetUsed}
+          title={
+            noRulesets
+              ? "暂无可用规则模块"
+              : allRulesetUsed
+                ? "所有规则模块已添加"
+                : undefined
+          }
+        >
           <Plus className="h-3.5 w-3.5" />
           规则模块
         </Button>
@@ -130,6 +156,7 @@ export function RulePipeline({ draft, onChange }: Props) {
                   idx={idx}
                   rule={rule}
                   rulesetOptions={rulesetList.data?.items ?? []}
+                  usedRefs={usedRefs}
                   policyOptions={policyOptions}
                   onUpdate={updateRow}
                   onRemove={removeRow}
@@ -148,12 +175,13 @@ interface RowProps {
   idx: number;
   rule: RuleModuleRef;
   rulesetOptions: RuleSetItem[];
+  usedRefs: Set<string>;
   policyOptions: string[];
   onUpdate: (idx: number, rule: RuleModuleRef) => void;
   onRemove: (idx: number) => void;
 }
 
-function SortableRow({ id, idx, rule, rulesetOptions, policyOptions, onUpdate, onRemove }: RowProps) {
+function SortableRow({ id, idx, rule, rulesetOptions, usedRefs, policyOptions, onUpdate, onRemove }: RowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -211,11 +239,22 @@ function SortableRow({ id, idx, rule, rulesetOptions, policyOptions, onUpdate, o
               <SelectValue placeholder="选择规则集" />
             </SelectTrigger>
             <SelectContent>
-              {rulesetOptions.map((r) => (
-                <SelectItem key={r.id} value={r.id} className="text-xs">
-                  {r.name}
-                </SelectItem>
-              ))}
+              {rulesetOptions.map((r) => {
+                const isUsedElsewhere = r.id !== rule.ref && usedRefs.has(r.id);
+                return (
+                  <SelectItem
+                    key={r.id}
+                    value={r.id}
+                    disabled={isUsedElsewhere}
+                    className="text-xs"
+                  >
+                    {r.name}
+                    {isUsedElsewhere && (
+                      <span className="ml-1 text-muted-foreground/60">(已添加)</span>
+                    )}
+                  </SelectItem>
+                );
+              })}
               {rulesetOptions.length === 0 && (
                 <div className="px-2 py-1 text-xs text-muted-foreground">暂无规则模块</div>
               )}
