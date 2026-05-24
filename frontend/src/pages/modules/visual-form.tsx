@@ -7,7 +7,6 @@ export interface SurgeModuleData {
   id: string;
   name: string;
   description?: string;
-  enabled_by_default: boolean;
   arguments?: string;
   requirement?: string;
   content_sections: {
@@ -87,15 +86,6 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
           />
         </Field>
       </div>
-
-      <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          checked={data.enabled_by_default}
-          onChange={(e) => update({ enabled_by_default: e.target.checked })}
-        />
-        默认启用 (Profile 中可单独覆盖)
-      </label>
 
       <div>
         <Label className="text-xs">Content Sections (按段编辑;留空表示该段不输出)</Label>

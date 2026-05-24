@@ -5,7 +5,6 @@ import { SurgeModuleVisualForm, type SurgeModuleData } from "./visual-form";
 const TEMPLATE: Partial<SurgeModuleData> = {
   name: "新模块",
   description: "",
-  enabled_by_default: true,
   content_sections: {
     mitm: "hostname = %APPEND% example.com",
   },

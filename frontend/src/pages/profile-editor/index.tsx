@@ -139,7 +139,7 @@ export function ProfileEditorPage() {
               <RulePipeline draft={draft} onChange={(rules) => update({ rule_modules: rules })} />
             </div>
             <div className="min-h-0">
-              <RightPanel draft={draft} onChange={update} />
+              <RightPanel profileId={id} draft={draft} onChange={update} />
             </div>
           </div>
           <PreviewPane profileId={id} draft={draft} enabled={true} />

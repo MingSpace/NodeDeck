@@ -47,10 +47,13 @@ export function RulePipeline({ draft, onChange }: Props) {
   const rulesetList = useEntityList<RuleSetItem>("rules");
   const groupList = useEntityList<ProxyGroupItem>("groups");
 
-  const policyOptions = useMemo(
-    () => policyOptionsForGroups((groupList.data?.items ?? []).map((g) => g.name)),
-    [groupList.data],
-  );
+  const policyOptions = useMemo(() => {
+    const selected = new Set(draft.proxy_groups);
+    const selectedGroupNames = (groupList.data?.items ?? [])
+      .filter((g) => selected.has(g.id))
+      .map((g) => g.name);
+    return policyOptionsForGroups(selectedGroupNames);
+  }, [groupList.data, draft.proxy_groups]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -96,10 +99,25 @@ export function RulePipeline({ draft, onChange }: Props) {
         <span className="text-[11px] text-muted-foreground/70">(从上到下顺序匹配)</span>
       </div>
 
+      <div className="border-b p-2.5 flex flex-wrap gap-2 shrink-0">
+        <Button size="sm" variant="outline" onClick={() => addRow("ruleset")}>
+          <Plus className="h-3.5 w-3.5" />
+          规则模块
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => addRow("geoip")}>
+          <Globe className="h-3.5 w-3.5" />
+          GeoIP CN
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => addRow("final")}>
+          <Flag className="h-3.5 w-3.5" />
+          FINAL
+        </Button>
+      </div>
+
       <div className="flex-1 min-h-0 overflow-auto p-3">
         {draft.rule_modules.length === 0 && (
           <div className="text-center text-xs text-muted-foreground py-8 border border-dashed rounded-md">
-            暂无规则,点击下方按钮添加
+            暂无规则,点击按钮添加
           </div>
         )}
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
@@ -120,21 +138,6 @@ export function RulePipeline({ draft, onChange }: Props) {
             </div>
           </SortableContext>
         </DndContext>
-      </div>
-
-      <div className="border-t p-3 flex flex-wrap gap-2 shrink-0">
-        <Button size="sm" variant="outline" onClick={() => addRow("ruleset")}>
-          <Plus className="h-3.5 w-3.5" />
-          规则模块
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => addRow("geoip")}>
-          <Globe className="h-3.5 w-3.5" />
-          GeoIP CN
-        </Button>
-        <Button size="sm" variant="outline" onClick={() => addRow("final")}>
-          <Flag className="h-3.5 w-3.5" />
-          FINAL
-        </Button>
       </div>
     </div>
   );

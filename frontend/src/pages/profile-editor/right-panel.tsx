@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useEntityList } from "@/api/entities";
+import { useNodePoolPreview } from "./use-profile-form";
 import type { Profile, ChainRule } from "./types";
 
 interface NamedItem {
@@ -14,15 +15,29 @@ interface NamedItem {
 }
 
 interface Props {
+  profileId: string;
   draft: Profile;
   onChange: (patch: Partial<Profile>) => void;
 }
 
-export function RightPanel({ draft, onChange }: Props) {
+export function RightPanel({ profileId, draft, onChange }: Props) {
   const groups = useEntityList<NamedItem>("groups");
   const modules = useEntityList<NamedItem>("modules");
   const generals = useEntityList<NamedItem>("generals");
   const providers = useEntityList<NamedItem>("providers");
+  const nodePool = useNodePoolPreview(profileId, draft);
+
+  const selectedGroupNames = useMemo(() => {
+    const selected = new Set(draft.proxy_groups);
+    return (groups.data?.items ?? [])
+      .filter((g) => selected.has(g.id))
+      .map((g) => g.name);
+  }, [groups.data, draft.proxy_groups]);
+
+  const nodeNames = useMemo(
+    () => Array.from(new Set((nodePool.data?.nodes ?? []).map((n) => n.name))),
+    [nodePool.data],
+  );
 
   return (
     <div className="flex flex-col h-full min-h-0 overflow-auto">
@@ -81,6 +96,8 @@ export function RightPanel({ draft, onChange }: Props) {
         <ChainRulesEditor
           rules={draft.chain_rules}
           providers={providers.data?.items ?? []}
+          groupNames={selectedGroupNames}
+          nodeNames={nodeNames}
           onChange={(rules) => onChange({ chain_rules: rules })}
         />
       </Section>
@@ -264,10 +281,14 @@ function ChipPicker({
 function ChainRulesEditor({
   rules,
   providers,
+  groupNames,
+  nodeNames,
   onChange,
 }: {
   rules: ChainRule[];
   providers: NamedItem[];
+  groupNames: string[];
+  nodeNames: string[];
   onChange: (rules: ChainRule[]) => void;
 }) {
   const [draft, setDraft] = useState<ChainRule>({ selector: {}, via: "" });
@@ -320,12 +341,21 @@ function ChainRulesEditor({
         <div className="p-2 space-y-2 border-t">
           <div>
             <label className="text-[11px] block mb-1">via (出口节点/组名)</label>
-            <Input
+            <input
+              list="chain-via-suggestions"
               value={draft.via}
               onChange={(e) => setDraft({ ...draft, via: e.target.value })}
               placeholder="例如: 🇯🇵 JP-DIP"
-              className="h-7 text-xs"
+              className="flex h-7 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
             />
+            <datalist id="chain-via-suggestions">
+              {groupNames.map((name) => (
+                <option key={`group-${name}`} value={name} label="策略组" />
+              ))}
+              {nodeNames.map((name) => (
+                <option key={`node-${name}`} value={name} label="节点" />
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="text-[11px] block mb-1">include_regex</label>
