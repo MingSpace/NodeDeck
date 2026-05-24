@@ -81,6 +81,7 @@ authRouter.post("/login", loginRateLimit, async (c) => {
   }
   if (rateCfg.enabled) recordSuccess(ip, username);
   c.header("Set-Cookie", createSessionCookie(cfg.admin.username));
+  logger.info({ ip, username: cfg.admin.username }, "Login success");
   return c.json({
     authenticated: true,
     username: cfg.admin.username,
@@ -89,7 +90,9 @@ authRouter.post("/login", loginRateLimit, async (c) => {
 });
 
 authRouter.post("/logout", (c) => {
+  const session = verifySessionCookie(c.req.header("cookie"));
   c.header("Set-Cookie", clearSessionCookie());
+  logger.info({ username: session?.username ?? "anonymous" }, "Logout");
   return c.json({ ok: true });
 });
 
@@ -112,5 +115,6 @@ authRouter.post("/change-password", requireSession, async (c) => {
       must_change_password: false,
     },
   });
+  logger.info({ username: cfg.admin.username }, "Password changed");
   return c.json({ ok: true });
 });

@@ -24,6 +24,7 @@ interface SelectorLike {
   include_other_group?: string[];
   from_providers?: string[];
   exclude_type?: string[];
+  include_region?: string[];
 }
 
 export function matchesSelector(node: Node, selector: SelectorLike): boolean {
@@ -34,6 +35,13 @@ export function matchesSelector(node: Node, selector: SelectorLike): boolean {
   }
   if (selector.exclude_type && selector.exclude_type.includes(node.type)) {
     return false;
+  }
+  // include_region 是白名单:非空时,node.region 必须命中;region 未识别(undefined)的节点也被排除,
+  // 与 from_providers "source_provider_id 缺失则不匹配" 的语义一致。
+  if (selector.include_region && selector.include_region.length > 0) {
+    if (!node.region || !selector.include_region.includes(node.region)) {
+      return false;
+    }
   }
   // include/exclude_regex 默认大小写不敏感,与 node-filter.ts / clash.ts / surge.ts 保持一致。
   // 详见 node-filter.ts 上的注释。

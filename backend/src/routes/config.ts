@@ -61,6 +61,14 @@ configRouter.put("/", async (c) => {
         : (parsed.data.public_base_url ?? current.public_base_url),
     default_user_agent: parsed.data.default_user_agent ?? current.default_user_agent,
   });
+  logger.info(
+    {
+      ip_allowlist: updated.ip_allowlist,
+      public_base_url: updated.public_base_url ?? null,
+      default_user_agent: updated.default_user_agent,
+    },
+    "Config updated",
+  );
   return c.json({
     ip_allowlist: updated.ip_allowlist,
     public_base_url: updated.public_base_url ?? "",

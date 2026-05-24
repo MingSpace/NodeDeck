@@ -12,6 +12,14 @@ import { startProviderScheduler } from "./providers/scheduler.js";
 import { mountApiRoutes } from "./routes/api.js";
 import { mountSubRoute } from "./routes/sub.js";
 import { ensureSessionSecret } from "./auth/secret.js";
+import {
+  providerRepo,
+  profileRepo,
+  proxyGroupRepo,
+  rulesetRepo,
+  generalPresetRepo,
+  surgeModuleRepo,
+} from "./storage/repos.js";
 
 async function bootstrap() {
   await ensureDataDirs(env.DATA_DIR);
@@ -53,9 +61,40 @@ async function bootstrap() {
   startWatcher();
   startProviderScheduler();
 
+  // 启动期清点一次磁盘上的实体数量,让 /logs 一打开就能看到当前数据规模。
+  // 各 repo 都走 mtimeMs 缓存,这里并发拉取一次不会带来明显额外开销。
+  void logInventory();
+
   serve({ fetch: app.fetch, port: env.PORT, hostname: "0.0.0.0" }, (info) => {
     logger.info({ port: info.port }, `NodeDeck listening on http://0.0.0.0:${info.port}`);
   });
+}
+
+async function logInventory(): Promise<void> {
+  try {
+    const [providers, profiles, groups, rules, generals, modules] = await Promise.all([
+      providerRepo.list(),
+      profileRepo.list(),
+      proxyGroupRepo.list(),
+      rulesetRepo.list(),
+      generalPresetRepo.list(),
+      surgeModuleRepo.list(),
+    ]);
+    logger.info(
+      {
+        providers: providers.length,
+        profiles: profiles.length,
+        groups: groups.length,
+        rules: rules.length,
+        generals: generals.length,
+        modules: modules.length,
+        logLevel: env.LOG_LEVEL,
+      },
+      "Inventory loaded",
+    );
+  } catch (err) {
+    logger.warn({ err }, "Inventory scan failed");
+  }
 }
 
 function resolveStaticDir(): string | null {

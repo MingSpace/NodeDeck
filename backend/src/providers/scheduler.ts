@@ -40,6 +40,7 @@ async function runOnce(): Promise<void> {
       e.data.refresh.interval !== "on_request",
     // never(手动刷新)仍进 refreshProvider:无 cache 时拉一次种子,有 ok cache 时内部 short-circuit(non-force 路径)。
   );
+  logger.debug({ candidates: targets.length, total: all.length }, "Scheduler tick");
   // 并发拉取:个人用机场数量不多(<=10),全并发即可。单机场失败不影响其它,异常已就地降级到 stale。
   const results = await Promise.allSettled(
     targets.map((entry) => refreshProvider(entry.data, { force: false })),

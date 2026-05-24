@@ -9,6 +9,7 @@ import { loadConfig } from "../storage/config-store.js";
 import { buildNodePool } from "../providers/pool.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
 import { nodeFilterSchema, profileSchema, type Profile } from "../schemas/profile.js";
+import { logger } from "../logger.js";
 
 export const profilePreviewRouter = new Hono();
 
@@ -122,6 +123,15 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
       general: resolved.general,
       warnings: allWarnings,
     });
+    logger.debug(
+      {
+        profileId: id,
+        target,
+        nodeCount: resolved.nodes.length,
+        warningCount: allWarnings.length,
+      },
+      "Profile preview",
+    );
     return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length });
   }
   const cfg = await loadConfig();
@@ -145,6 +155,15 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
     managed_config_url: managedConfigUrl,
     warnings: allWarnings,
   });
+  logger.debug(
+    {
+      profileId: id,
+      target,
+      nodeCount: resolved.nodes.length,
+      warningCount: allWarnings.length,
+    },
+    "Profile preview",
+  );
   return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length });
 });
 
@@ -181,6 +200,15 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
   for (const [provId, nodes] of pool.byProvider) {
     byProvider[provId] = nodes.length;
   }
+  logger.debug(
+    {
+      profileId: id,
+      providerCount: parsed.data.providers.length,
+      rawCount: pool.nodes.length,
+      filteredCount: filtered.length,
+    },
+    "Node pool preview",
+  );
   return c.json({
     nodes: filtered.map((n) => ({
       name: n.name,
@@ -206,5 +234,6 @@ profilePreviewRouter.post("/:id/regenerate-token", async (c) => {
   const { generateToken } = await import("../auth/token.js");
   const updated = { ...entry.data, token: generateToken() };
   await profileRepo.save(updated);
+  logger.info({ profileId: id }, "Profile token regenerated");
   return c.json({ token: updated.token });
 });

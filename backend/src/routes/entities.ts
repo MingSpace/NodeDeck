@@ -102,6 +102,10 @@ entitiesRouter.put("/:kind/:id", async (c) => {
   // PUT 是 upsert,前端"新建/编辑"都走这条路径;先看文件是否存在以区分两种语义。
   const existed = await def.repo.exists(id);
   const saved = await def.repo.save(result.data);
+  logger.info(
+    { kind, id: saved.data.id, op: existed ? "update" : "create" },
+    "Entity saved",
+  );
   maybeAutoRefreshProvider(kind, !existed, saved.data);
   return c.json(saved.data);
 });
@@ -117,14 +121,18 @@ entitiesRouter.post("/:kind", async (c) => {
     return c.json({ error: "validation failed", details: result.error.flatten() }, 400);
   }
   const saved = await def.repo.save(result.data);
+  logger.info({ kind, id: saved.data.id, op: "create" }, "Entity saved");
   maybeAutoRefreshProvider(kind, true, saved.data);
   return c.json(saved.data, 201);
 });
 
 entitiesRouter.delete("/:kind/:id", async (c) => {
-  const def = KINDS[c.req.param("kind")];
+  const kind = c.req.param("kind");
+  const def = KINDS[kind];
   if (!def) return c.json({ error: "unknown entity kind" }, 404);
-  await def.repo.delete(c.req.param("id"));
+  const id = c.req.param("id");
+  await def.repo.delete(id);
+  logger.info({ kind, id }, "Entity deleted");
   return c.json({ ok: true });
 });
 

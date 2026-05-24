@@ -24,6 +24,7 @@ import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { SurgeModule } from "../schemas/surge-module.js";
 import type { Provider } from "../schemas/provider.js";
 import { nodesToInlineContent } from "../import/serialize-nodes.js";
+import { logger } from "../logger.js";
 
 export const importRouter = new Hono();
 
@@ -37,10 +38,33 @@ importRouter.post("/preview", async (c) => {
   const fileName = typeof body.file_name === "string" ? body.file_name : undefined;
   if (kind === "surge") {
     const result = importSurgeConf(text, fileName);
+    logger.debug(
+      {
+        kind,
+        fileName: fileName ?? null,
+        nodes: result.manualNodes.length,
+        ruleSets: result.ruleSets.length,
+        groups: result.proxyGroups.length,
+        modules: result.modules?.length ?? 0,
+        hasGeneral: !!result.general,
+      },
+      "Import preview",
+    );
     return c.json({ kind, ...redact(result) });
   }
   if (kind === "clash") {
     const result = importClashYaml(text, fileName);
+    logger.debug(
+      {
+        kind,
+        fileName: fileName ?? null,
+        nodes: result.manualNodes.length,
+        ruleSets: result.ruleSets.length,
+        groups: result.proxyGroups.length,
+        hasGeneral: !!result.general,
+      },
+      "Import preview",
+    );
     return c.json({ kind, ...redact(result) });
   }
   return c.json({ error: "unable to detect format; specify kind=clash|surge" }, 400);
@@ -214,6 +238,22 @@ importRouter.post("/commit", async (c) => {
     stats.modules = saved;
     stats.modules_skipped = skipped.length;
     pushSkippedWarning(result.warnings, "module(s)", skipped);
+  }
+
+  logger.info(
+    {
+      kind,
+      fileName: fileName ?? null,
+      stats,
+      warningCount: result.warnings.length,
+    },
+    "Import committed",
+  );
+  if (result.warnings.length > 0) {
+    logger.warn(
+      { kind, count: result.warnings.length, warnings: result.warnings },
+      "Import warnings",
+    );
   }
 
   return c.json({ ok: true, stats, warnings: result.warnings });

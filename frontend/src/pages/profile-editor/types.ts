@@ -12,6 +12,7 @@ export interface ChainRule {
     include_other_group?: string[];
     from_providers?: string[];
     exclude_type?: string[];
+    include_region?: string[];
   };
   via: string;
   comment?: string;

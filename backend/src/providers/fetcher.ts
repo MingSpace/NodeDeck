@@ -43,12 +43,22 @@ export async function fetchProviderContent(provider: Provider): Promise<FetchRes
     if (!res.ok) {
       throw new Error(`HTTP ${res.status} ${res.statusText}`);
     }
+    const userinfoHeader = res.headers.get("subscription-userinfo");
     const reader = res.body?.getReader();
     if (!reader) {
       const text = await res.text();
+      logger.info(
+        {
+          providerId: provider.id,
+          status: res.status,
+          bytes: text.length,
+          hasUserinfo: !!userinfoHeader,
+        },
+        "Provider HTTP fetch ok",
+      );
       return {
         text,
-        userinfo_header: res.headers.get("subscription-userinfo"),
+        userinfo_header: userinfoHeader,
         fetched_at: Date.now(),
       };
     }
@@ -72,9 +82,19 @@ export async function fetchProviderContent(provider: Provider): Promise<FetchRes
       buf.set(c, offset);
       offset += c.byteLength;
     }
+    const text = new TextDecoder().decode(buf);
+    logger.info(
+      {
+        providerId: provider.id,
+        status: res.status,
+        bytes: text.length,
+        hasUserinfo: !!userinfoHeader,
+      },
+      "Provider HTTP fetch ok",
+    );
     return {
-      text: new TextDecoder().decode(buf),
-      userinfo_header: res.headers.get("subscription-userinfo"),
+      text,
+      userinfo_header: userinfoHeader,
       fetched_at: Date.now(),
     };
   } catch (err) {

@@ -464,6 +464,10 @@ function resolveGroupMembers(
     if (g.selector.from_providers && g.selector.from_providers.length > 0) {
       pool = pool.filter((n) => n.source_provider_id && g.selector!.from_providers.includes(n.source_provider_id));
     }
+    if (g.selector.include_region && g.selector.include_region.length > 0) {
+      // 白名单:region 未识别(undefined)的节点也排除,与 from_providers 行为一致。
+      pool = pool.filter((n) => n.region && g.selector!.include_region.includes(n.region));
+    }
     if (g.selector.exclude_type && g.selector.exclude_type.length > 0) {
       pool = pool.filter((n) => !g.selector!.exclude_type.includes(n.type));
     }

@@ -58,7 +58,7 @@ describe("generateClashConfig", () => {
         name: "Proxys",
         type: "url-test",
         proxies: [],
-        selector: { include_other_group: [], from_providers: [], exclude_type: [] },
+        selector: { include_other_group: [], from_providers: [], exclude_type: [], include_region: [] },
         url: "http://cp.cloudflare.com",
         interval: 600,
       },
@@ -212,6 +212,47 @@ describe("generateClashConfig", () => {
     expect(proxysMembers).toContain("REJECT-DROP");
     // 至少有一条 warning 提到 Proxys 组的悬空引用(per-group 截断格式)
     expect(warnings.some((w) => w.includes("Proxys") && w.includes("广告测试-1") && w.includes("移除了 1 个"))).toBe(true);
+  });
+
+  it("filters group members by selector.include_region (whitelist)", () => {
+    // include_region 是白名单:只保留 node.region 命中的节点;region 未识别(undefined)的节点也排除。
+    // 与 from_providers / exclude_type 同 pipeline,这里专门验证 region 过滤在 group members 解析时生效。
+    const nodes: Node[] = [
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", tags: [] },
+      { name: "HK-01", type: "ss", server: "h.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "HK", tags: [] },
+      { name: "US-01", type: "ss", server: "u.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "US", tags: [] },
+      { name: "Unknown-01", type: "ss", server: "z.com", port: 8388, cipher: "aes-128-gcm", password: "x", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "AsiaOnly",
+        name: "AsiaOnly",
+        type: "select",
+        proxies: [],
+        selector: {
+          include_other_group: [],
+          from_providers: [],
+          exclude_type: [],
+          include_region: ["JP", "HK"],
+        },
+      },
+    ];
+    const out = generateClashConfig({
+      profile: baseProfile({ proxy_groups: ["AsiaOnly"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "AsiaOnly" },
+      warnings: [],
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const proxyGroups = parsed["proxy-groups"] as Array<Record<string, unknown>>;
+    const asiaGroup = proxyGroups.find((g) => g.name === "AsiaOnly")!;
+    const members = asiaGroup.proxies as string[];
+    expect(members).toContain("JP-01");
+    expect(members).toContain("HK-01");
+    expect(members).not.toContain("US-01");
+    expect(members).not.toContain("Unknown-01");
   });
 
   it("translates chain_via to dialer-proxy", () => {

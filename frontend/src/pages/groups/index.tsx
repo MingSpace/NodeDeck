@@ -6,7 +6,7 @@ const TEMPLATE: Partial<ProxyGroupData> = {
   name: "Proxys",
   type: "url-test",
   proxies: [],
-  selector: { from_providers: [], include_other_group: [], exclude_type: [] },
+  selector: { from_providers: [], include_other_group: [], exclude_type: [], include_region: [] },
   url: "http://cp.cloudflare.com/generate_204",
   interval: 600,
   tolerance: 50,

@@ -47,6 +47,20 @@ describe("matchesSelector", () => {
     expect(matchesSelector(n, { exclude_type: ["vmess"] })).toBe(true);
   });
 
+  it("filters by include_region (whitelist)", () => {
+    // include_region 是白名单:空 = 不过滤;非空 = 只保留 node.region 命中的节点;
+    // region 未识别(undefined)的节点也排除 —— 与 from_providers 在 source_provider_id 缺失时不匹配的行为一致。
+    const jp = node("JP-01", { region: "JP" });
+    const us = node("US-01", { region: "US" });
+    const unknown = node("???-01"); // 无 region
+    expect(matchesSelector(jp, { include_region: [] })).toBe(true);
+    expect(matchesSelector(jp, { include_region: ["JP"] })).toBe(true);
+    expect(matchesSelector(jp, { include_region: ["JP", "HK"] })).toBe(true);
+    expect(matchesSelector(us, { include_region: ["JP"] })).toBe(false);
+    expect(matchesSelector(unknown, { include_region: ["JP"] })).toBe(false);
+    expect(matchesSelector(unknown, { include_region: [] })).toBe(true);
+  });
+
   it("matches by include_regex (case-insensitive by default)", () => {
     // include/exclude_regex 默认带 "i" flag,因为 JS RegExp 不支持 `(?i)` 这种 PCRE 内联标志,
     // 强制用户写字符类 `[Jj][Pp]` 反直觉;且机场命名大小写混乱,默认大小写不敏感更符合诉求。

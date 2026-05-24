@@ -17,6 +17,9 @@ export const selectorSchema = z.object({
   include_other_group: z.array(z.string()).default([]),
   from_providers: z.array(z.string()).default([]),
   exclude_type: z.array(z.string()).default([]),
+  // 地区白名单:空 = 不限制;非空 = 只保留 node.region ∈ 列表 的节点。
+  // 用 string[] 而不是 regionCodeSchema[],给将来加新国家留余地,旧 yaml 不会失效。
+  include_region: z.array(z.string()).default([]),
 });
 
 export const proxyGroupSchema = z.object({

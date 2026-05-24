@@ -20,6 +20,7 @@ export interface ProxyGroupData {
     include_other_group: string[];
     from_providers: string[];
     exclude_type: string[];
+    include_region: string[];
   };
   url?: string;
   interval?: number;
@@ -58,6 +59,7 @@ interface NodePoolResp {
     server: string;
     port: number;
     source_provider_id?: string;
+    region?: string;
   }>;
 }
 
@@ -81,6 +83,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
     include_other_group: [],
     from_providers: [],
     exclude_type: [],
+    include_region: [],
   };
 
   const ensureSelector = () => sel;
@@ -98,15 +101,21 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
   // @business_rule: from_providers 为空 → 候选区不显示任何节点 (UI 行为)。
   // 这跟后端 selector 语义"空 = 所有 Provider"刻意不一致 — 后端在生成 yaml 时仍按"空=全部"
   // 展开,但前端 UI 不主动呈现一大堆节点,避免新建组时扑面而来的视觉噪音,强迫用户先收窄机场范围。
-  // @user_flow: 用户切换 from_providers / include_regex / exclude_regex / exclude_type 任一筛选条件,
-  // 候选立即跟随过滤(对齐后端 applyNodeFilter + 各 generator 的 selector pipeline),无需重新请求后端。
+  // @user_flow: 用户切换 from_providers / include_regex / exclude_regex / exclude_type / include_region
+  // 任一筛选条件,候选立即跟随过滤(对齐后端 applyNodeFilter + 各 generator 的 selector pipeline),
+  // 无需重新请求后端。pipeline 顺序与后端 clash.ts / surge.ts 保持一致:
+  //   from_providers → include_region → exclude_type → include_regex → exclude_regex
   const candidateNodes = useMemo<NodeCandidate[]>(() => {
     if (sel.from_providers.length === 0) return [];
     const all = nodePool.data?.nodes ?? [];
     const allow = new Set(sel.from_providers);
-    let list = all
-      .filter((n) => n.source_provider_id && allow.has(n.source_provider_id))
-      .map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
+    let filtered = all.filter((n) => n.source_provider_id && allow.has(n.source_provider_id));
+    if (sel.include_region.length > 0) {
+      const allowRegions = new Set(sel.include_region);
+      // 白名单:region 未识别(undefined)的节点也排除,与后端 clash.ts / surge.ts 行为一致。
+      filtered = filtered.filter((n) => n.region && allowRegions.has(n.region));
+    }
+    let list = filtered.map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
     if (sel.exclude_type.length > 0) {
       const blocked = new Set(sel.exclude_type);
       list = list.filter((n) => !blocked.has(n.type));
@@ -135,6 +144,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
     nodePool.data?.nodes,
     sel.from_providers,
     sel.exclude_type,
+    sel.include_region,
     debouncedRegex.include,
     debouncedRegex.exclude,
   ]);
@@ -170,6 +180,32 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
   const excludeTypeItems = useMemo<NamedItem[]>(
     () => NODE_TYPES.map((t) => ({ id: t, name: t, count: typeCounts[t] ?? 0 })),
     [typeCounts],
+  );
+
+  // @business_rule: include_region chip 上的数字 = 当前 from_providers 范围内该地区的节点数。
+  // 与 typeCounts 同理:from_providers 空 = 按整个节点池统计;不叠加 regex / exclude_type
+  // (前者每次输入抖动数字, 后者类型和地区是正交两维, 叠加上去用户难以判断该选哪个 region)。
+  // 与 exclude_type 不同的是:这里只展示节点池里**确实存在**的地区(count > 0),不像 NODE_TYPES
+  // 那样把全表 14 种类型都列出来 —— 地区表有几十个 ISO 码,全列噪音太大;参考节点池页 FacetRow 行为。
+  const regionCounts = useMemo<Record<string, number>>(() => {
+    const all = nodePool.data?.nodes ?? [];
+    const scope = sel.from_providers.length === 0
+      ? all
+      : all.filter((n) => n.source_provider_id && sel.from_providers.includes(n.source_provider_id));
+    const counts: Record<string, number> = {};
+    for (const n of scope) {
+      if (n.region) counts[n.region] = (counts[n.region] ?? 0) + 1;
+    }
+    return counts;
+  }, [nodePool.data?.nodes, sel.from_providers]);
+
+  // 按节点数降序排序,与节点池页 FacetRow region 的展示一致 —— 让 JP/US/HK 这种大头排最前。
+  const includeRegionItems = useMemo<NamedItem[]>(
+    () =>
+      Object.entries(regionCounts)
+        .sort((a, b) => b[1] - a[1])
+        .map(([code, count]) => ({ id: code, name: code, count })),
+    [regionCounts],
   );
 
   return (
@@ -288,6 +324,18 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
               selected={sel.exclude_type}
               onChange={(arr) => update({ selector: { ...ensureSelector(), exclude_type: arr } })}
               empty="不排除"
+            />
+          </Field>
+          <Field label="include_region (只保留地区)">
+            <ChipMultiSelect
+              items={includeRegionItems}
+              selected={sel.include_region}
+              onChange={(arr) => update({ selector: { ...ensureSelector(), include_region: arr } })}
+              empty={
+                sel.from_providers.length === 0
+                  ? "选择 from_providers 后会显示该范围内的地区分布"
+                  : "当前范围内无可识别地区的节点"
+              }
             />
           </Field>
         </div>

@@ -77,7 +77,7 @@ describe("generateSurgeConfig", () => {
         name: "Proxys",
         type: "url-test",
         proxies: ["🇭🇰 HK-01", "🇭🇰 HK-SS"],
-        selector: { include_other_group: [], from_providers: [], exclude_type: [] },
+        selector: { include_other_group: [], from_providers: [], exclude_type: [], include_region: [] },
         url: "http://cp.cloudflare.com",
         interval: 600,
         tolerance: 10,
@@ -212,6 +212,46 @@ describe("generateSurgeConfig", () => {
     expect(proxysLine).toContain("DIRECT");
     expect(proxysLine).toContain("REJECT-DROP");
     expect(warnings.some((w) => w.includes("Proxys") && w.includes("AD-01") && w.includes("移除了 1 个"))).toBe(true);
+  });
+
+  it("filters group members by selector.include_region (whitelist)", () => {
+    // include_region 白名单:只保留 node.region 命中的节点;region 未识别(undefined)的节点也排除。
+    // 与 clash 端等价测试同步,确保两端行为一致。
+    const nodes: Node[] = [
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", tags: [] },
+      { name: "HK-01", type: "ss", server: "h.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "HK", tags: [] },
+      { name: "US-01", type: "ss", server: "u.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "US", tags: [] },
+      { name: "Unknown-01", type: "ss", server: "z.com", port: 8388, cipher: "aes-128-gcm", password: "x", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "AsiaOnly",
+        name: "AsiaOnly",
+        type: "select",
+        proxies: [],
+        selector: {
+          include_other_group: [],
+          from_providers: [],
+          exclude_type: [],
+          include_region: ["JP", "HK"],
+        },
+      },
+    ];
+    const out = generateSurgeConfig({
+      profile: baseProfile({ proxy_groups: ["AsiaOnly"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "AsiaOnly" },
+      surgeModules: [],
+      warnings: [],
+    });
+    const asiaLine = out.split(/\r?\n/).find((l) => l.startsWith("AsiaOnly = "))!;
+    expect(asiaLine).toBeDefined();
+    expect(asiaLine).toContain("JP-01");
+    expect(asiaLine).toContain("HK-01");
+    expect(asiaLine).not.toContain("US-01");
+    expect(asiaLine).not.toContain("Unknown-01");
   });
 
   it("translates chain_via to underlying-proxy", () => {

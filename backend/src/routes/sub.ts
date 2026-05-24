@@ -9,6 +9,8 @@ import { env } from "../env.js";
 import { loadConfig } from "../storage/config-store.js";
 import { loadProviderNodes } from "../providers/load.js";
 import { refreshIntervalToSeconds } from "../schemas/common.js";
+import { logger } from "../logger.js";
+import { getClientIp } from "../auth/middleware.js";
 
 export function mountSubRoute(app: Hono): void {
   app.get("/sub", async (c) => handleSub(c));
@@ -38,16 +40,31 @@ async function handleSubInner(
   c: import("hono").Context,
   args: { profile: string; target: string; t: string },
 ) {
+  const ip = getClientIp(c);
   if (!args.profile || !args.target || !args.t) {
+    logger.info(
+      { profileId: args.profile || null, target: args.target || null, ip },
+      "Sub request rejected: missing query parameters",
+    );
     return c.text("missing query parameters: profile, target, t", 400);
   }
   if (args.target !== "clash" && args.target !== "surge") {
+    logger.info(
+      { profileId: args.profile, target: args.target, ip },
+      "Sub request rejected: invalid target",
+    );
     return c.text("target must be 'clash' or 'surge'", 400);
   }
   const entry = await profileRepo.get(args.profile);
-  if (!entry) return c.text("profile not found", 404);
+  if (!entry) {
+    logger.info({ profileId: args.profile, target: args.target, ip }, "Sub request: profile not found");
+    return c.text("profile not found", 404);
+  }
   const profile = entry.data;
-  if (profile.token !== args.t) return c.text("invalid token", 401);
+  if (profile.token !== args.t) {
+    logger.warn({ profileId: profile.id, target: args.target, ip }, "Sub request: token mismatch");
+    return c.text("invalid token", 401);
+  }
 
   const resolved = await resolveProfile(profile);
 
@@ -81,6 +98,10 @@ async function handleSubInner(
   // 之前只有 clash 分支 hard-code 24,这里统一从 profile.managed_config_interval(秒)派生。
   const intervalHours = String(Math.max(1, Math.round(profile.managed_config_interval / 3600)));
 
+  const useProxyProviders =
+    profile.clash_options.use_proxy_providers &&
+    resolved.providers.some((p) => p.clash_proxy_provider.enabled);
+
   if (args.target === "clash") {
     const text = generateClashConfig({
       profile,
@@ -96,6 +117,7 @@ async function handleSubInner(
       general: resolved.general,
       warnings: resolved.warnings,
     });
+    logSubGenerated(profile.id, "clash", resolved.nodes.length, resolved.warnings, useProxyProviders, text.length, ip);
     c.header("Content-Type", "text/yaml; charset=utf-8");
     c.header("Content-Disposition", `attachment; filename="${profile.id}.yaml"`);
     c.header("Profile-Update-Interval", intervalHours);
@@ -114,6 +136,7 @@ async function handleSubInner(
       managed_config_url: managedConfigUrl,
       warnings: resolved.warnings,
     });
+    logSubGenerated(profile.id, "surge", resolved.nodes.length, resolved.warnings, false, text.length, ip);
     c.header("Content-Type", "text/plain; charset=utf-8");
     c.header("Content-Disposition", `attachment; filename="${profile.id}.conf"`);
     c.header("Profile-Update-Interval", intervalHours);
@@ -121,25 +144,81 @@ async function handleSubInner(
   }
 }
 
+/**
+ * 把单次 generator 调用的产物聚合成日志:
+ * - 1 条 info 表示生成成功(总览)
+ * - 若 warnings 非空再补 1 条 warn,内容为整个数组(避免 N 条 warn 刷屏)
+ */
+function logSubGenerated(
+  profileId: string,
+  target: "clash" | "surge",
+  nodeCount: number,
+  warnings: string[],
+  useProxyProviders: boolean,
+  size: number,
+  ip: string,
+): void {
+  logger.info(
+    {
+      profileId,
+      target,
+      nodeCount,
+      warningCount: warnings.length,
+      useProxyProviders,
+      size,
+      ip,
+    },
+    "Sub generated",
+  );
+  if (warnings.length > 0) {
+    logger.warn(
+      { profileId, target, count: warnings.length, warnings },
+      "Generator produced warnings",
+    );
+  }
+}
+
 async function handleProviderClashYaml(c: import("hono").Context) {
+  const ip = getClientIp(c);
   const providerId = c.req.param("id");
   const profileId = c.req.query("profile") ?? "";
   const t = c.req.query("t") ?? "";
   if (!providerId || !profileId || !t) {
+    logger.info(
+      { providerId: providerId || null, profileId: profileId || null, ip },
+      "Provider sub request rejected: missing query parameters",
+    );
     return c.text("missing query parameters: profile, t", 400);
   }
   const profileEntry = await profileRepo.get(profileId);
-  if (!profileEntry) return c.text("profile not found", 404);
+  if (!profileEntry) {
+    logger.info({ providerId, profileId, ip }, "Provider sub request: profile not found");
+    return c.text("profile not found", 404);
+  }
   const profile = profileEntry.data;
-  if (profile.token !== t) return c.text("invalid token", 401);
+  if (profile.token !== t) {
+    logger.warn({ providerId, profileId, ip }, "Provider sub request: token mismatch");
+    return c.text("invalid token", 401);
+  }
   if (!profile.providers.includes(providerId)) {
+    logger.info({ providerId, profileId, ip }, "Provider sub request: provider not part of profile");
     return c.text("provider not part of this profile", 404);
   }
   const providerEntry = await providerRepo.get(providerId);
-  if (!providerEntry) return c.text("provider not found", 404);
+  if (!providerEntry) {
+    logger.info({ providerId, profileId, ip }, "Provider sub request: provider not found");
+    return c.text("provider not found", 404);
+  }
   const provider = providerEntry.data;
-  if (!provider.enabled) return c.text("provider disabled", 404);
+  if (!provider.enabled) {
+    logger.info({ providerId, profileId, ip }, "Provider sub request: provider disabled");
+    return c.text("provider disabled", 404);
+  }
   if (!provider.clash_proxy_provider.enabled) {
+    logger.info(
+      { providerId, profileId, ip },
+      "Provider sub request: clash_proxy_provider disabled",
+    );
     return c.text("provider has clash_proxy_provider disabled", 404);
   }
 
@@ -149,6 +228,24 @@ async function handleProviderClashYaml(c: import("hono").Context) {
   const filtered = applyNodeFilter(allNodes, profile.node_filter);
   const warnings: string[] = [];
   const text = generateProxyProviderYaml(filtered, warnings);
+
+  logger.info(
+    {
+      providerId,
+      profileId,
+      nodeCount: filtered.length,
+      warningCount: warnings.length,
+      size: text.length,
+      ip,
+    },
+    "Provider sub yaml generated",
+  );
+  if (warnings.length > 0) {
+    logger.warn(
+      { providerId, profileId, count: warnings.length, warnings },
+      "Provider sub generator produced warnings",
+    );
+  }
 
   c.header("Content-Type", "text/yaml; charset=utf-8");
   c.header("Content-Disposition", `attachment; filename="${providerId}.yaml"`);
