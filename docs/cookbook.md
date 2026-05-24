@@ -375,7 +375,6 @@ Surge `.sgmodule` 不能"原样 include",但可以把内容拆解到 `data/modul
 # data/modules/google-cn.yaml
 id: google-cn
 name: Google 中国版重写到国际版
-enabled_by_default: true
 content_sections:
   url_rewrite: |
     ^https?://(www.)?(g|google)\.?(cn|com\.hk) https://www.google.com 302

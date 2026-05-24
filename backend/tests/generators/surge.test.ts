@@ -361,7 +361,6 @@ describe("generateSurgeConfig", () => {
         {
           id: "google-cn",
           name: "google-cn",
-          enabled_by_default: true,
           content_sections: {
             url_rewrite: "^https?://(www.)?(g|google)\\.?(cn|com.hk) https://www.google.com 302",
             mitm: "hostname = %APPEND% *.google.cn",

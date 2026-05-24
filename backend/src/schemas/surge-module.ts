@@ -9,7 +9,6 @@ export const surgeModuleSchema = z.object({
   id: idSchema,
   name: z.string().min(1),
   description: z.string().optional(),
-  enabled_by_default: z.boolean().default(true),
 
   // raw section content (without section header, e.g. for `[MITM]` section, just the body)
   content_sections: z.object({
