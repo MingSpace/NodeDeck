@@ -149,7 +149,9 @@ describe("/sub route", () => {
     const res = await app.request("/sub?profile=home&target=clash&t=GOODtoken123");
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/yaml");
-    expect(res.headers.get("Content-Disposition")).toContain('filename="home.yaml"');
+    // 文件名由 profile.name(Home)派生,而不是 profile.id(home);同时带 RFC 5987 UTF-8 form
+    expect(res.headers.get("Content-Disposition")).toContain('filename="Home.yaml"');
+    expect(res.headers.get("Content-Disposition")).toContain("filename*=UTF-8''Home.yaml");
     expect(res.headers.get("Profile-Update-Interval")).toBe("24");
     expect(res.headers.get("Subscription-UserInfo")).toContain("upload=1000");
     expect(res.headers.get("X-NodeDeck-Userinfo-airport-a")).toContain("upload=1000");
@@ -193,13 +195,57 @@ describe("/sub route", () => {
     const res = await app.request("/sub?profile=home&target=surge&t=GOODtoken123");
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/plain");
-    expect(res.headers.get("Content-Disposition")).toContain('filename="home.conf"');
+    expect(res.headers.get("Content-Disposition")).toContain('filename="Home.conf"');
+    expect(res.headers.get("Content-Disposition")).toContain("filename*=UTF-8''Home.conf");
     expect(res.headers.get("Profile-Update-Interval")).toBe("24");
 
     const body = await res.text();
     expect(body).toMatch(/^#!MANAGED-CONFIG https:\/\/sub\.example\.com\/sub\?profile=home&target=surge&t=GOODtoken123/);
     expect(body).toContain("[Proxy]");
     expect(body).toContain("🇭🇰 HK-01 = ss,");
+  });
+
+  it("文件名:中文 name 时 ASCII fallback 回退到 id,filename* 走 percent-encoded UTF-8", async () => {
+    mockedProfileGet.mockResolvedValue({
+      id: "home",
+      path: "",
+      mtimeMs: 0,
+      data: fakeProfile({ name: "家庭订阅" }),
+    });
+    mockedProviderGet.mockResolvedValue({ id: "airport-a", path: "", mtimeMs: 0, data: fakeProvider() });
+    mockedBuildNodePool.mockResolvedValue({ nodes: [sampleNode], byProvider: new Map() });
+    mockedAggregate.mockResolvedValue({ aggregated: null, perProvider: [] });
+    mockedLoadConfig.mockResolvedValue({});
+
+    const app = buildApp();
+    const res = await app.request("/sub?profile=home&target=clash&t=GOODtoken123");
+    expect(res.status).toBe(200);
+    const cd = res.headers.get("Content-Disposition") ?? "";
+    // 中文净化掉之后只剩扩展名,ASCII fallback 回退到 id(home)
+    expect(cd).toContain('filename="home.yaml"');
+    // RFC 5987 form 保留中文(percent-encoded UTF-8)
+    expect(cd).toContain(`filename*=UTF-8''${encodeURIComponent("家庭订阅.yaml")}`);
+  });
+
+  it("文件名:name 含路径分隔符 / 通配符等非法字符时,统一替换为下划线", async () => {
+    mockedProfileGet.mockResolvedValue({
+      id: "home",
+      path: "",
+      mtimeMs: 0,
+      data: fakeProfile({ name: 'Home / Backup *bak"v2"' }),
+    });
+    mockedProviderGet.mockResolvedValue({ id: "airport-a", path: "", mtimeMs: 0, data: fakeProvider() });
+    mockedBuildNodePool.mockResolvedValue({ nodes: [sampleNode], byProvider: new Map() });
+    mockedAggregate.mockResolvedValue({ aggregated: null, perProvider: [] });
+    mockedLoadConfig.mockResolvedValue({});
+
+    const app = buildApp();
+    const res = await app.request("/sub?profile=home&target=surge&t=GOODtoken123");
+    expect(res.status).toBe(200);
+    const cd = res.headers.get("Content-Disposition") ?? "";
+    // 三类非法字符(/ * ")都应该被替换成 _,且不出现在 ASCII filename 里
+    expect(cd).toContain('filename="Home _ Backup _bak_v2_.conf"');
+    expect(cd).not.toMatch(/filename=".*[\/*"].*"/);
   });
 });
 
@@ -252,7 +298,10 @@ describe("/sub/provider/:id/clash.yaml route", () => {
     const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/yaml");
-    expect(res.headers.get("Content-Disposition")).toContain('filename="airport-a.yaml"');
+    // 文件名由 provider.name(Airport A)派生;空格在 ASCII fallback 中合法(用双引号包裹),
+    // 在 RFC 5987 form 中编码为 %20
+    expect(res.headers.get("Content-Disposition")).toContain('filename="Airport A.yaml"');
+    expect(res.headers.get("Content-Disposition")).toContain("filename*=UTF-8''Airport%20A.yaml");
     const body = await res.text();
     expect(body).toContain("proxies:");
     expect(body).toContain("🇭🇰 HK-01");

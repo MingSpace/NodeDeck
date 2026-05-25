@@ -119,7 +119,7 @@ async function handleSubInner(
     });
     logSubGenerated(profile.id, "clash", resolved.nodes.length, resolved.warnings, useProxyProviders, text.length, ip);
     c.header("Content-Type", "text/yaml; charset=utf-8");
-    c.header("Content-Disposition", `attachment; filename="${profile.id}.yaml"`);
+    c.header("Content-Disposition", buildContentDisposition(profile.name, "yaml", profile.id));
     c.header("Profile-Update-Interval", intervalHours);
     return c.body(text);
   } else {
@@ -138,7 +138,7 @@ async function handleSubInner(
     });
     logSubGenerated(profile.id, "surge", resolved.nodes.length, resolved.warnings, false, text.length, ip);
     c.header("Content-Type", "text/plain; charset=utf-8");
-    c.header("Content-Disposition", `attachment; filename="${profile.id}.conf"`);
+    c.header("Content-Disposition", buildContentDisposition(profile.name, "conf", profile.id));
     c.header("Profile-Update-Interval", intervalHours);
     return c.body(text);
   }
@@ -248,7 +248,7 @@ async function handleProviderClashYaml(c: import("hono").Context) {
   }
 
   c.header("Content-Type", "text/yaml; charset=utf-8");
-  c.header("Content-Disposition", `attachment; filename="${providerId}.yaml"`);
+  c.header("Content-Disposition", buildContentDisposition(provider.name, "yaml", providerId));
   c.header(
     "Profile-Update-Interval",
     String(Math.max(1, Math.round(refreshIntervalToSeconds(provider.refresh.interval) / 3600))),
@@ -263,4 +263,55 @@ function formatUserInfo(info: { upload: number; download: number; total: number;
   if (info.total) parts.push(`total=${info.total}`);
   if (info.expire) parts.push(`expire=${info.expire}`);
   return parts.join("; ");
+}
+
+/**
+ * 把 profile / provider 的展示名(displayName,可能含中文/空格/特殊字符)做成合法下载文件名,
+ * 并按 RFC 6266 + RFC 5987 拼出 Content-Disposition 的值,同时给出 ASCII fallback,
+ * 这样 Surge / Clash Verge / 浏览器都能拿到友好的文件名(中文也不丢)。
+ *
+ * - `filename="..."` (ASCII fallback): 只保留 ASCII 可见字符,空了就回退到 fallbackBaseName(通常是 id)
+ * - `filename*=UTF-8''...` (RFC 5987): 对净化后的完整 name 做 percent-encode,保留中文 / emoji
+ */
+function buildContentDisposition(displayName: string, ext: string, fallbackBaseName: string): string {
+  const cleaned = sanitizeFilenameBase(displayName);
+  const fallbackClean = sanitizeFilenameBase(fallbackBaseName) || "download";
+  const utf8Base = cleaned || fallbackClean;
+
+  const asciiFromName = stripToAscii(utf8Base);
+  const asciiBase = asciiFromName || stripToAscii(fallbackClean) || "download";
+
+  const utf8Filename = `${utf8Base}.${ext}`;
+  const asciiFilename = `${asciiBase}.${ext}`;
+
+  return `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeRFC5987(utf8Filename)}`;
+}
+
+function sanitizeFilenameBase(name: string): string {
+  return name
+    // 控制字符(0x00-0x1F)和 DEL(0x7F)在下载文件名里非法
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    // Windows + 大多数客户端禁止的路径分隔/通配符,统一替换成下划线
+    .replace(/[\\/:*?"<>|]/g, "_")
+    // 多个连续空白合成单个空格,避免出现 "a   b.yaml" 这种奇怪文件名
+    .replace(/\s+/g, " ")
+    .trim()
+    // Windows 不允许文件名以 . 结尾(也容易在客户端被误处理)
+    .replace(/\.+$/, "")
+    .trim();
+}
+
+function stripToAscii(name: string): string {
+  return name
+    // 只保留 ASCII 可见字符,丢中文/emoji
+    .replace(/[^\x20-\x7E]/g, "")
+    // ASCII fallback 里再次去掉双引号 / 反斜杠,确保 filename="..." 不被破坏
+    .replace(/["\\]/g, "_")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function encodeRFC5987(value: string): string {
+  // encodeURIComponent 已经处理了大多数 unsafe 字符,但 RFC 5987 还要求 ' ( ) * 也编码
+  return encodeURIComponent(value).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 }
