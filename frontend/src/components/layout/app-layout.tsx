@@ -136,7 +136,9 @@ export function AppLayout() {
   );
 
   return (
-    <div className="flex min-h-screen">
+    // h-screen + overflow-hidden 把整个 app 锁死在视口高度内,避免任何内部页面溢出时撑大 body 触发整页滚动条
+    // (sidebar 会跟着滚走,糟糕的体验)。所有页面要滚动都在 <main> 内部滚(main 是 overflow-auto)。
+    <div className="flex h-screen overflow-hidden">
       {mustChangePassword && <ChangePasswordDialog forced />}
       <aside
         className={cn(

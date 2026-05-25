@@ -64,7 +64,9 @@ export function ProfileEditorPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen">
+    // h-screen + overflow-hidden 锁死整页在视口内,避免 PreviewPane(shrink-0,固定 height) 在窗口偏小或 stored height 偏大时
+    // 溢出 content div / h-screen 边界,从而把外层 <main className="overflow-auto"> 撑出滚动条(用户表现:"滚到底还能往下滚半屏")。
+    <div className="flex flex-col h-screen overflow-hidden">
       <header className="border-b bg-card px-4 py-2 flex items-center gap-3 shrink-0">
         <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
           <ArrowLeft className="h-4 w-4" />
@@ -125,7 +127,7 @@ export function ProfileEditorPage() {
       </header>
 
       {mode === "visual" ? (
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
           <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 2.1fr) minmax(0, 1.3fr)" }}>
             <div className="border-r min-h-0">
               <NodeSelector
