@@ -77,7 +77,8 @@ describe("generateSurgeConfig", () => {
         name: "Proxys",
         type: "url-test",
         proxies: ["🇭🇰 HK-01", "🇭🇰 HK-SS"],
-        selector: { include_other_group: [], from_providers: [], exclude_type: [], include_region: [] },
+        nested_groups: [],
+        selector: { from_providers: [], exclude_type: [], include_region: [] },
         url: "http://cp.cloudflare.com",
         interval: 600,
         tolerance: 10,
@@ -229,8 +230,8 @@ describe("generateSurgeConfig", () => {
         name: "AsiaOnly",
         type: "select",
         proxies: [],
+        nested_groups: [],
         selector: {
-          include_other_group: [],
           from_providers: [],
           exclude_type: [],
           include_region: ["JP", "HK"],
@@ -252,6 +253,46 @@ describe("generateSurgeConfig", () => {
     expect(asiaLine).toContain("HK-01");
     expect(asiaLine).not.toContain("US-01");
     expect(asiaLine).not.toContain("Unknown-01");
+  });
+
+  it("nested_groups: 把其它组作为嵌套引用加进 [Proxy Group] 行的成员段", () => {
+    // 跟 clash 的同名测试对称 — 验证 v2 nested_groups 字段在 surge 端的契约。
+    // Surge 客户端把每个组成员段(逗号分隔)里的"组名"识别成嵌套引用,
+    // 用户在 Stream 里选 Japan 会跳到 Japan 组的选择器。
+    const nodes: Node[] = [
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "Japan",
+        name: "Japan",
+        type: "url-test",
+        proxies: ["JP-01"],
+        nested_groups: [],
+        url: "http://cp.cloudflare.com",
+        interval: 300,
+      },
+      {
+        id: "Stream",
+        name: "Stream",
+        type: "select",
+        proxies: ["DIRECT"],
+        nested_groups: ["Japan"],
+      },
+    ];
+    const out = generateSurgeConfig({
+      profile: baseProfile({ proxy_groups: ["Japan", "Stream"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Stream" },
+      surgeModules: [],
+      warnings: [],
+    });
+    const streamLine = out.split(/\r?\n/).find((l) => l.startsWith("Stream = "))!;
+    expect(streamLine).toBeDefined();
+    expect(streamLine).toContain("Japan"); // 嵌套引用作为同级 proxy 项
+    expect(streamLine).toContain("DIRECT"); // 独立 builtin
   });
 
   it("translates chain_via to underlying-proxy", () => {

@@ -584,12 +584,14 @@ function buildSurgeProxyGroup(g: ProxyGroup, allNodes: Node[]): string {
 
 function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
   const members = new Set<string>(g.proxies);
+  // nested_groups:把其它策略组作为单个 proxy 项嵌套引用加进 [Proxy Group] 行的成员段。
+  // 与顶层 g.include_other_group(Surge 原生 include-other-group 参数,语义是平铺
+  // 展开其它组成员节点)互补——后者保留为 params。
+  // schema transform 已把老的 selector.include_other_group 迁移到这里,不再从 selector 读取。
+  // `?? []` 是 defensive — 经 schema parse 的 group 一定有这个字段(default []),
+  // 但测试里手动构造的 ProxyGroup literal 可能漏写。
+  for (const otherGroup of g.nested_groups ?? []) members.add(otherGroup);
   if (g.selector) {
-    // selector.include_other_group(数组形式)直接展开为成员引用,
-    // 与顶层 g.include_other_group(Surge 原生展平参数)互补——后者保留为 params。
-    if (g.selector.include_other_group && g.selector.include_other_group.length > 0) {
-      for (const otherGroup of g.selector.include_other_group) members.add(otherGroup);
-    }
     let pool = allNodes.slice();
     if (g.selector.from_providers && g.selector.from_providers.length > 0) {
       pool = pool.filter((n) => n.source_provider_id && g.selector!.from_providers.includes(n.source_provider_id));

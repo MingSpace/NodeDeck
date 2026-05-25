@@ -233,6 +233,25 @@ clash_proxy_provider:
 
 ---
 
+## 17. 策略组的嵌套引用 vs 平铺合并 (NodeDeck 专属字段)
+
+NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 generator 行为对齐:
+
+| 内部字段 | 数据形态 | 语义 | Clash 输出 | Surge 输出 |
+|---|---|---|---|---|
+| `g.proxies` | `[node名 / DIRECT / REJECT* / ...]` | 显式锁定的成员;顺序敏感(影响 fallback/url-test 优先级) | 写入 `proxy-groups[i].proxies` 数组前部 | 写入 `[Proxy Group]` 行成员段前部 |
+| `g.nested_groups` | `[其它组的 name, ...]` | **嵌套引用**:把其它组作为单个 proxy 项加入,客户端可点开跳到子选择器 | 与节点名同级,直接写入 `proxy-groups[i].proxies` 数组(mihomo 原生支持组名引用) | 与节点名同级,直接写入 `[Proxy Group]` 行成员段(Surge 原生支持组名引用) |
+| `g.include_other_group` (string) | `单个其它组 name` | **平铺合并**:把那个组的成员节点展开到当前组(只用于 Surge,Clash 端无原生支持) | 当作组名引用 *单独* 加进 proxies(因为 Clash 没有 include-other-group 参数,降级为嵌套引用) | 作为 `include-other-group=` 参数附加到 [Proxy Group] 行,Surge 客户端按"平铺"语义解析 |
+| `g.selector` (object) | regex / from_providers / include_region / exclude_type | **动态筛选**:从节点池里按条件挑独立节点加进来 | 命中节点直接写进 `proxies` 数组(与 g.proxies 同级) | 命中节点直接写进成员段(与 g.proxies 同级) |
+
+**关键区分**:`nested_groups` 与 `include_other_group` 字面上像,语义相反:
+- `nested_groups: [Japan]` → 客户端 Stream 面板看到「Japan」一行,点开后切到 Japan 组(层级保留)
+- `include_other_group: "Japan"`(Surge)→ 客户端 Stream 面板**直接列出** Japan 的所有节点(层级踩平)
+
+`v1` 历史字段 `selector.include_other_group: string[]` 命名误导,**实际行为是嵌套引用**;`v2` schema transform 自动把它搬到 `nested_groups`,旧 yaml 透明兼容。
+
+---
+
 ## 维护
 
 修改本文档时,**必须同步**更新 `backend/src/generators/protocol-mapping.ts`,反之亦然。新增协议或字段前请阅读 [AGENTS.md](../AGENTS.md) 中的 Boundaries 一节。

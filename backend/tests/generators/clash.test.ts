@@ -58,7 +58,8 @@ describe("generateClashConfig", () => {
         name: "Proxys",
         type: "url-test",
         proxies: [],
-        selector: { include_other_group: [], from_providers: [], exclude_type: [], include_region: [] },
+        nested_groups: [],
+        selector: { from_providers: [], exclude_type: [], include_region: [] },
         url: "http://cp.cloudflare.com",
         interval: 600,
       },
@@ -177,12 +178,14 @@ describe("generateClashConfig", () => {
         name: "Proxys",
         type: "select",
         proxies: ["🇭🇰 HK-01", "🇯🇵 JP-01", "广告测试-1", "Manual", "DIRECT", "REJECT-DROP"],
+        nested_groups: [],
       },
       {
         id: "Manual",
         name: "Manual",
         type: "select",
         proxies: ["Proxys", "DIRECT"],
+        nested_groups: [],
       },
     ];
     const warnings: string[] = [];
@@ -229,8 +232,8 @@ describe("generateClashConfig", () => {
         name: "AsiaOnly",
         type: "select",
         proxies: [],
+        nested_groups: [],
         selector: {
-          include_other_group: [],
           from_providers: [],
           exclude_type: [],
           include_region: ["JP", "HK"],
@@ -253,6 +256,49 @@ describe("generateClashConfig", () => {
     expect(members).toContain("HK-01");
     expect(members).not.toContain("US-01");
     expect(members).not.toContain("Unknown-01");
+  });
+
+  it("nested_groups: 把其它组作为嵌套 proxy 项加进 yaml proxies 数组", () => {
+    // 这是 v2 nested_groups 字段的核心行为契约 — 客户端会把 "Japan" 当成另一个
+    // proxy group 名,在 Stream → 选 Japan 时跳转到 Japan 组的子选择器。
+    // 跟 selector(动态筛选独立节点)是不同维度,跟 g.proxies(放节点+builtin)也不同。
+    const nodes: Node[] = [
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", tags: [] },
+      { name: "JP-02", type: "ss", server: "j2.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "Japan",
+        name: "Japan",
+        type: "url-test",
+        proxies: [],
+        nested_groups: [],
+        selector: { from_providers: [], exclude_type: [], include_region: ["JP"] },
+        url: "http://cp.cloudflare.com",
+        interval: 300,
+      },
+      {
+        id: "Stream",
+        name: "Stream",
+        type: "select",
+        proxies: ["DIRECT"],
+        nested_groups: ["Japan"],
+      },
+    ];
+    const out = generateClashConfig({
+      profile: baseProfile({ proxy_groups: ["Japan", "Stream"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Stream" },
+      warnings: [],
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const proxyGroups = parsed["proxy-groups"] as Array<Record<string, unknown>>;
+    const stream = proxyGroups.find((g) => g.name === "Stream")!;
+    const members = stream.proxies as string[];
+    expect(members).toContain("Japan"); // 嵌套引用作为同级 proxy 项
+    expect(members).toContain("DIRECT"); // 独立的内置 policy
   });
 
   it("translates chain_via to dialer-proxy", () => {

@@ -38,9 +38,14 @@ const BUILTIN_SET = new Set<string>(BUILTIN_POLICIES);
 interface Props {
   proxies: string[];
   onChange: (arr: string[]) => void;
-  /** selector.include_other_group 当前值 (其它策略组 id 数组) */
-  includeOtherGroup: string[];
-  onIncludeOtherGroupChange: (arr: string[]) => void;
+  /**
+   * g.nested_groups 当前值(其它策略组 **name** 数组,作为 proxy 项嵌套引用)。
+   * 不同于 g.proxies(放节点+内置 policy)和 selector(动态筛选独立节点),
+   * 这里的每一项展开到生成的 yaml proxies 列表里都是"另一个组的引用",
+   * 客户端会显示成可点开的子选择器。
+   */
+  nestedGroups: string[];
+  onNestedGroupsChange: (arr: string[]) => void;
   candidateNodes: NodeCandidate[];
   candidateGroups: GroupCandidate[];
   providers: ProviderRef[];
@@ -63,20 +68,20 @@ interface Props {
 
 // @business_rule: 三态划分用于「已锁定」段每行徽标。
 // 规范: g.proxies 数组里**只**放节点名 + 内置 policy (DIRECT / REJECT*);
-// 其它策略组的引用一律走 selector.include_other_group 数组 (UI 里"合并自..."段)。
+// 其它策略组的嵌套引用一律走 g.nested_groups 数组 (UI 里下方"嵌套引用的策略组"段)。
 // 因此这里识别的是 "这个名字是不是池里的节点 / 内置 policy", 组名会被归到 unknown 提醒用户挪走。
 //   node-in: 在当前 selector 命中节点池 ∪ 内置 policy → 不显示额外徽标 (正常行/由 isSpecial 走"内置"徽标)
 //   node-out: 在全量节点池里但 selector 不命中 → 灰色"selector 不命中" hint
 //             (订阅里仍输出, 锁定优先于 selector; 提示用户考虑解锁或放宽 selector)
 //   unknown: 完全不在节点池且不是内置 policy → 橘色"未知引用" 警告
-//            (机场改名 / 节点被删 / 拼写错误 / 把组名误写进 g.proxies)
+//            (机场改名 / 节点被删 / 拼写错误 / 把组名误写进 g.proxies 而非 nested_groups)
 type RowClassification = "node-in" | "node-out" | "unknown";
 
 export function ProxyListEditor({
   proxies: proxiesProp,
   onChange,
-  includeOtherGroup: includeOtherGroupProp,
-  onIncludeOtherGroupChange,
+  nestedGroups: nestedGroupsProp,
+  onNestedGroupsChange,
   candidateNodes,
   candidateGroups,
   providers,
@@ -91,7 +96,7 @@ export function ProxyListEditor({
   // 可能传入 null。entity-visual-dialog 的 normalizeFromTemplate 是主要保护层,这里再加一道,
   // 避免后续重构万一漏了归一化也导致 .map() / new Set() 抛错白屏。
   const proxies = proxiesProp ?? [];
-  const includeOtherGroup = includeOtherGroupProp ?? [];
+  const nestedGroups = nestedGroupsProp ?? [];
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const items = proxies.map((p, i) => ({ id: `proxy-${i}-${p}`, idx: i, name: p }));
@@ -117,17 +122,17 @@ export function ProxyListEditor({
     onChange(arrayMove(proxies, oldIdx, newIdx));
   };
 
-  // @business_rule: selector.include_other_group 数组顺序敏感 — 后端 generator 按数组顺序
-  // 展开各组的成员节点拼到当前组的 yaml proxies 列表里,顺序影响客户端 url-test/fallback
+  // @business_rule: g.nested_groups 数组顺序敏感 — 后端 generator 按数组顺序
+  // 把组名作为 proxy 项追加到当前组的 yaml proxies 列表里,顺序影响客户端 url-test/fallback
   // 的优先级。所以独立给一个 DnD 上下文,跟节点段的 proxies 互不干扰。
-  const groupItemIds = useMemo(() => includeOtherGroup.map((g) => `group-${g}`), [includeOtherGroup]);
+  const groupItemIds = useMemo(() => nestedGroups.map((g) => `group-${g}`), [nestedGroups]);
   const onGroupDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
     if (!over || active.id === over.id) return;
     const oldIdx = groupItemIds.indexOf(String(active.id));
     const newIdx = groupItemIds.indexOf(String(over.id));
     if (oldIdx === -1 || newIdx === -1) return;
-    onIncludeOtherGroupChange(arrayMove(includeOtherGroup, oldIdx, newIdx));
+    onNestedGroupsChange(arrayMove(nestedGroups, oldIdx, newIdx));
   };
 
   return (
@@ -135,7 +140,10 @@ export function ProxyListEditor({
       <Picker
         proxies={proxies}
         onChange={onChange}
+        nestedGroups={nestedGroups}
+        onNestedGroupsChange={onNestedGroupsChange}
         candidateNodes={candidateNodes}
+        candidateGroups={candidateGroups}
         providers={providers}
         onRefreshNodes={onRefreshNodes}
         isLoadingNodes={isLoadingNodes}
@@ -146,15 +154,16 @@ export function ProxyListEditor({
 
       {/* @user_flow: 已锁定列表分两段展示:
           (1) g.proxies 数组里的节点 / 内置 policy — DnD 调整顺序;
-          (2) selector.include_other_group 选中的组 — 独立 DnD 段 (两个字段顺序敏感, 互不干扰)。
+          (2) g.nested_groups 选中的组(嵌套引用,作为独立 proxy 项)— 独立 DnD 段
+              (两个字段顺序敏感, 互不干扰)。
           每段都是「整行可拖」(整个边框可点击拖拽), 删除按钮的 pointerdown 被 stop 掉避免误触发拖拽。 */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground px-0.5 pt-1">
         <span>
           已锁定 · 节点 {proxies.length}
-          {includeOtherGroup.length > 0 && ` + 合并组 ${includeOtherGroup.length}`}
+          {nestedGroups.length > 0 && ` + 嵌套组 ${nestedGroups.length}`}
         </span>
         <div className="flex items-center gap-3">
-          {(proxies.length > 0 || includeOtherGroup.length > 0) && <span>整行可拖动调整顺序</span>}
+          {(proxies.length > 0 || nestedGroups.length > 0) && <span>整行可拖动调整顺序</span>}
           {/* @user_flow: 候选区底部的「全部解锁」按钮只对当前搜索可见的节点生效;
               当 from_providers 为空(候选区不显示节点)或大量节点跨多个机场时,
               那个按钮帮不上忙。这里提供一个无视过滤的「清空」入口,一键删空 g.proxies。
@@ -168,7 +177,7 @@ export function ProxyListEditor({
                 }
               }}
               className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
-              title="清空 g.proxies 数组(仅清空显式锁定,不影响 selector / include_other_group)"
+              title="清空 g.proxies 数组(仅清空显式锁定,不影响 selector 与 nested_groups)"
             >
               清空节点
             </button>
@@ -176,7 +185,7 @@ export function ProxyListEditor({
         </div>
       </div>
 
-      {proxies.length === 0 && includeOtherGroup.length === 0 ? (
+      {proxies.length === 0 && nestedGroups.length === 0 ? (
         <div className="text-xs text-muted-foreground border border-dashed rounded p-3 leading-relaxed">
           当前未锁定任何节点 — selector 命中的节点会按节点池顺序自动包含在订阅里(含未来 provider 新增的同类节点)。
           只有需要固定顺序时(如 fallback / url-test 优先),才需要在上方候选区点
@@ -203,39 +212,41 @@ export function ProxyListEditor({
             </DndContext>
           )}
 
-          {includeOtherGroup.length > 0 && (
+          {nestedGroups.length > 0 && (
             <>
               <div className="flex items-center justify-between text-[10px] text-muted-foreground px-0.5 pt-1.5">
                 <span className="italic">
-                  合并自 selector.include_other_group (整组成员动态注入, 顺序敏感, 可拖动):
+                  嵌套引用的策略组 (作为单个 proxy 项, 客户端展开后可点进去再选, 顺序敏感, 可拖动):
                 </span>
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm(`确定清空所有 ${includeOtherGroup.length} 个合并组引用?`)) {
-                      onIncludeOtherGroupChange([]);
+                    if (window.confirm(`确定清空所有 ${nestedGroups.length} 个嵌套组引用?`)) {
+                      onNestedGroupsChange([]);
                     }
                   }}
                   className="text-[10px] text-muted-foreground hover:text-destructive transition-colors not-italic shrink-0"
-                  title="清空 selector.include_other_group 数组(不影响 g.proxies 锁定的节点)"
+                  title="清空 g.nested_groups 数组(不影响 g.proxies 锁定的节点)"
                 >
-                  清空合并组
+                  清空嵌套组
                 </button>
               </div>
               <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onGroupDragEnd}>
                 <SortableContext items={groupItemIds} strategy={verticalListSortingStrategy}>
                   <div className="space-y-1">
-                    {includeOtherGroup.map((groupId) => {
-                      const display = candidateGroups.find((g) => g.id === groupId);
-                      const danglingHint = !display ? "组已不存在或被禁用" : null;
+                    {nestedGroups.map((groupName) => {
+                      // candidateGroups 是 {id, name}[],这里按 name 反查(用户期望
+                      // yaml 里就是 group name)。找不到 → dangling hint。
+                      const display = candidateGroups.find((g) => g.name === groupName);
+                      const danglingHint = !display ? "该名字找不到对应的策略组(已删除/未启用/重命名)" : null;
                       return (
                         <SortableGroupRefRow
-                          key={`group-${groupId}`}
-                          id={`group-${groupId}`}
-                          name={display?.name ?? groupId}
+                          key={`group-${groupName}`}
+                          id={`group-${groupName}`}
+                          name={groupName}
                           danglingHint={danglingHint}
                           onRemove={() =>
-                            onIncludeOtherGroupChange(includeOtherGroup.filter((id) => id !== groupId))
+                            onNestedGroupsChange(nestedGroups.filter((n) => n !== groupName))
                           }
                         />
                       );
@@ -254,7 +265,10 @@ export function ProxyListEditor({
 function Picker({
   proxies,
   onChange,
+  nestedGroups,
+  onNestedGroupsChange,
   candidateNodes,
+  candidateGroups,
   providers,
   onRefreshNodes,
   isLoadingNodes,
@@ -264,7 +278,10 @@ function Picker({
 }: {
   proxies: string[];
   onChange: (arr: string[]) => void;
+  nestedGroups: string[];
+  onNestedGroupsChange: (arr: string[]) => void;
   candidateNodes: NodeCandidate[];
+  candidateGroups: GroupCandidate[];
   providers: ProviderRef[];
   onRefreshNodes?: () => void;
   isLoadingNodes?: boolean;
@@ -398,6 +415,49 @@ function Picker({
           );
         })}
       </div>
+
+      {/* @user_flow: 嵌套引用其它策略组 chip 行,跟 BUILTIN_POLICIES 同一类"非节点池的 proxy 项"。
+          点击 chip 切换加入/移除 g.nested_groups。
+          @business_rule: 数据存 group **name**(不是 id),跟后端 yaml 输出直接对接;
+          客户端把每个嵌套组项展示成可点开的子选择器。
+          @user_flow: 当全局还没有其它 group 可选时(新装环境),整行折叠为单行 hint
+          避免视觉空洞;有候选时才展开 chip 行。 */}
+      {candidateGroups.length > 0 && (
+        <div className="flex items-start gap-1.5 px-2 py-1.5 border-b flex-wrap">
+          <span
+            className="text-[11px] text-muted-foreground shrink-0 mr-0.5 mt-0.5"
+            title="把其它策略组作为单个 proxy 项嵌套引用 — 客户端展开后可点进去再选那个组的成员"
+          >
+            嵌套组:
+          </span>
+          {candidateGroups.map((g) => {
+            const added = nestedGroups.includes(g.name);
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => {
+                  if (added) onNestedGroupsChange(nestedGroups.filter((n) => n !== g.name));
+                  else onNestedGroupsChange([...nestedGroups, g.name]);
+                }}
+                className={
+                  added
+                    ? "px-2 py-0.5 rounded text-[11px] font-medium border bg-primary text-primary-foreground border-primary inline-flex items-center gap-1"
+                    : "px-2 py-0.5 rounded text-[11px] font-medium border bg-background text-foreground hover:bg-accent border-input inline-flex items-center gap-1"
+                }
+                title={
+                  added
+                    ? `已嵌套引用 "${g.name}" (点击移除)`
+                    : `把 "${g.name}" 作为嵌套 proxy 项加入当前组(客户端可点开选成员)`
+                }
+              >
+                {added && <Pin className="h-2.5 w-2.5" strokeWidth={2.5} />}
+                {g.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* @user_flow: 状态栏三个数语义不重叠 —
           已锁定 = 当前可见(搜索框过滤后)且在 g.proxies 显式数组里的节点数
@@ -616,7 +676,7 @@ function SortableGroupRefRow({
         className="h-7 w-7 shrink-0"
         onClick={onRemove}
         onPointerDown={stopDragOnPointerDown}
-        title="从 selector.include_other_group 移除"
+          title="从 g.nested_groups 移除"
       >
         <Trash2 className="h-3.5 w-3.5 text-destructive" />
       </Button>
@@ -662,7 +722,7 @@ function SortableRow({
           - node-out: 节点在池里但 selector 不命中 → 灰色"selector 不命中"
                       (订阅里仍输出, 因为锁定优先于 selector 过滤; 提示用户考虑解锁)
           - unknown: 完全不在节点池且不是 builtin → 橘色"未知引用"警告
-                     (机场改名 / 节点被删 / 拼写错误 / 把组名误写进 g.proxies 而非 selector.include_other_group) */}
+                     (机场改名 / 节点被删 / 拼写错误 / 把组名误写进 g.proxies 而非 g.nested_groups) */}
       {!isSpecial && classification === "node-out" && (
         <Badge
           variant="outline"
@@ -677,7 +737,7 @@ function SortableRow({
         <Badge
           variant="outline"
           className="text-[10px] text-amber-700 dark:text-amber-300 border-amber-500/50 bg-amber-500/10 gap-1 shrink-0"
-          title="该引用名当前不在节点池且不是内置 policy,可能已失效(机场改名 / 节点被删 / 拼写错误)。如果是组名,请挪到 selector.include_other_group 数组里"
+          title="该引用名当前不在节点池且不是内置 policy,可能已失效(机场改名 / 节点被删 / 拼写错误)。如果是组名,请挪到上方 ProxyListEditor 快捷区的「嵌套组」chip 行(对应 g.nested_groups 数组)"
         >
           <AlertTriangle className="h-3 w-3" />
           未知引用

@@ -111,6 +111,10 @@ export function importClashYaml(text: string, fileName?: string): ClashImportRes
         name: String(raw.name),
         type: (String(raw.type) as ProxyGroup["type"]),
         proxies: Array.isArray(raw.proxies) ? (raw.proxies as string[]) : [],
+        // Clash 导入侧暂不主动识别嵌套组(client yaml 里的组名引用直接在 proxies 数组里,
+        // 跟节点名/builtin 混在一起且无字段区分);留空数组让后续 schema parse 直通。
+        // 想拆分的用户可以在 Web UI 编辑该组时手动把组名挪到嵌套引用 chip。
+        nested_groups: [],
         url: typeof raw.url === "string" ? raw.url : undefined,
         interval: typeof raw.interval === "number" ? raw.interval : undefined,
         tolerance: typeof raw.tolerance === "number" ? raw.tolerance : undefined,

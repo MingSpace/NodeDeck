@@ -14,10 +14,17 @@ export interface ProxyGroupData {
   name: string;
   type: "select" | "url-test" | "fallback" | "load-balance" | "smart" | "ssid" | "external";
   proxies: string[];
+  /**
+   * 嵌套引用的其它策略组(作为单个 proxy 项加入)。存 group **name**,跟后端 yaml 输出
+   * 直接对接。客户端会把每个项展示成可点开的子选择器(选 当前组 → Japan → 再选 Japan 的成员)。
+   * 跟 selector 是不同维度: selector 是"动态筛选独立节点", nested_groups 是"嵌套引用别的策略组"。
+   */
+  nested_groups: string[];
   selector?: {
     include_regex?: string;
     exclude_regex?: string;
-    include_other_group: string[];
+    /** @deprecated v1 老字段, 后端 schema transform 会自动迁移到顶层 nested_groups, UI 不再写入 */
+    include_other_group?: string[];
     from_providers: string[];
     exclude_type: string[];
     include_region: string[];
@@ -80,13 +87,17 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
   });
 
   const sel = data.selector ?? {
-    include_other_group: [],
     from_providers: [],
     exclude_type: [],
     include_region: [],
   };
 
   const ensureSelector = () => sel;
+
+  // @business_rule: nested_groups (嵌套引用其它策略组) 数据源 — 兜底空数组,
+  // 老 yaml 经后端 schema transform 已把 selector.include_other_group 搬过来,
+  // 前端这里只读写顶层字段。
+  const nestedGroups = data.nested_groups ?? [];
 
   // @user_flow: include_regex / exclude_regex 输入后 300ms 防抖再生效,期间 isStale = true 用于动画提示。
   // 与后端 backend/src/generators/node-filter.ts 的 applyNodeFilter 保持顺序与语义一致(invalid regex 静默忽略)。
@@ -310,14 +321,9 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
               empty="未筛选 = 所有 Provider"
             />
           </Field>
-          <Field label="include_other_group (合并其它策略组的成员)">
-            <ChipMultiSelect
-              items={(allGroups.data?.items ?? []).filter((g) => g.id !== data.id)}
-              selected={sel.include_other_group}
-              onChange={(arr) => update({ selector: { ...ensureSelector(), include_other_group: arr } })}
-              empty="不合并"
-            />
-          </Field>
+          {/* @user_flow: 「嵌套引用其它策略组」不在这里 — 它已挪到下方 ProxyListEditor 的快捷区,
+              跟 DIRECT/REJECT 同级。selector 只做"筛选独立节点"维度的事(regex / providers / region / type)。
+              老 yaml 的 selector.include_other_group 会被后端 schema transform 自动迁移到顶层 nested_groups。 */}
           <Field label="exclude_type (排除节点类型)">
             <ChipMultiSelect
               items={excludeTypeItems}
@@ -350,10 +356,8 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
           <ProxyListEditor
             proxies={data.proxies}
             onChange={(arr) => update({ proxies: arr })}
-            includeOtherGroup={sel.include_other_group}
-            onIncludeOtherGroupChange={(arr) =>
-              update({ selector: { ...ensureSelector(), include_other_group: arr } })
-            }
+            nestedGroups={nestedGroups}
+            onNestedGroupsChange={(arr) => update({ nested_groups: arr })}
             candidateNodes={candidateNodes}
             candidateGroups={candidateGroups}
             providers={providers.data?.items ?? []}

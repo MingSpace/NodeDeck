@@ -39,7 +39,8 @@ export function uniquifyNodeNames(nodes: Node[], warnings: string[]): Node[] {
 /**
  * Surge 的节点/策略组名作为 INI 行的左侧标识符,不允许包含 `=` `,` `"` 等会破坏行解析的字符,
  * 也不允许首尾有空格。这里把这些字符替换为 `_`,并同步改写所有引用(node.chain_via,
- * group.proxies 中的成员引用,以及 group 的 include_other_group 字段)。
+ * group.proxies / group.nested_groups 中的成员/嵌套组引用,以及 group 的
+ * include_other_group 字段)。
  *
  * 注意:本函数只在 Surge generator 入口调用;Clash 不需要(Clash 的 name 是 yaml 字符串,
  * 任意字符都安全)。
@@ -79,7 +80,10 @@ export function escapeSurgeNames(
   const finalGroups = cleanedGroups.map((g) => {
     const newProxies = g.proxies.map((p) => renameMap.get(p) ?? p);
     const newIncludeOther = remap(g.include_other_group);
-    const newSelectorOther = g.selector?.include_other_group?.map((p) => renameMap.get(p) ?? p);
+    // `?? []` 是 defensive — 经 schema parse 的 group 一定有 nested_groups(default []),
+    // 但测试里手动构造的 ProxyGroup literal 可能漏写。
+    const currentNested = g.nested_groups ?? [];
+    const newNestedGroups = currentNested.map((p) => renameMap.get(p) ?? p);
     const updated: ProxyGroup = { ...g };
     let touched = false;
     if (newProxies.some((p, i) => p !== g.proxies[i])) {
@@ -90,8 +94,8 @@ export function escapeSurgeNames(
       updated.include_other_group = newIncludeOther;
       touched = true;
     }
-    if (g.selector && newSelectorOther && newSelectorOther.some((p, i) => p !== g.selector!.include_other_group[i])) {
-      updated.selector = { ...g.selector, include_other_group: newSelectorOther };
+    if (newNestedGroups.some((p, i) => p !== currentNested[i])) {
+      updated.nested_groups = newNestedGroups;
       touched = true;
     }
     return touched ? updated : g;

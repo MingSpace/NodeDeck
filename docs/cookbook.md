@@ -12,6 +12,7 @@
 4. [Clash proxy-providers 模式](#4-clash-proxy-providers-模式)
 5. [Surge 模块嵌入](#5-surge-模块嵌入)
 6. [Profile 拼装与订阅 URL](#6-profile-拼装与订阅-url)
+7. [嵌套引用其它策略组 (nested_groups)](#7-嵌套引用其它策略组-nested_groups)
 
 ---
 
@@ -276,7 +277,6 @@ chain_rules:
       include_regex: "^🇭🇰"        # 所有香港节点都套 WARP
       exclude_type: []
       from_providers: []
-      include_other_group: []
     via: WARP
     comment: HK 节点统一走 WARP 漂白
   - selector:
@@ -325,9 +325,9 @@ id: Proxys
 name: Proxys
 type: url-test
 proxies: []
+nested_groups: []                          # 不嵌套引用其它组,详见第 7 节
 selector:
   from_providers: [airport-a, airport-b]   # 这俩机场都用作来源
-  include_other_group: []
   exclude_type: []
 url: http://cp.cloudflare.com/generate_204
 interval: 300
@@ -455,3 +455,72 @@ http://your-vps:8080/sub?profile=home&target=surge&t=V1StGXR8_Z5j
 | `Content-Disposition` | `attachment; filename="<profile>.yaml/.conf"` |
 
 输出文件头部的 `# WARN: ...` 注释会列出所有自动降级/重命名/校验事件,便于排查问题。
+
+---
+
+## 7. 嵌套引用其它策略组 (nested_groups)
+
+场景: 主策略组 `Stream` 想引用 `Japan` 这个区域组作为一个 proxy 项(客户端展示成可点开的子选择器,选 Japan → 再选具体 JP 节点),同时还能再放几个独立节点 / `DIRECT` 等内置 policy。
+
+这跟"合并组内所有节点平铺到当前组"是**完全不同**的语义:嵌套引用让用户在客户端能感知到组的层级结构,平铺合并则把层级踩平。NodeDeck 用顶层字段 `nested_groups` 实现嵌套引用,UI 在 ProxyListEditor 快捷区有独立的「嵌套组」chip 行。
+
+### 7.1 yaml 写法
+
+```yaml
+# data/groups/japan.yaml
+id: Japan
+name: Japan
+type: url-test
+proxies: []
+nested_groups: []
+selector:
+  include_regex: "🇯🇵|JP|日本"
+url: http://cp.cloudflare.com/generate_204
+interval: 300
+```
+
+```yaml
+# data/groups/stream.yaml
+id: Stream
+name: Stream
+type: select
+proxies: [DIRECT]           # 这里只放节点名 / 内置 policy
+nested_groups: [Japan]      # 把 Japan 组作为单个 proxy 项嵌套引用
+```
+
+### 7.2 生成结果
+
+Clash 输出:
+
+```yaml
+proxy-groups:
+  - name: Japan
+    type: url-test
+    proxies: [🇯🇵 JP-01, 🇯🇵 JP-02, ...]
+  - name: Stream
+    type: select
+    proxies:
+      - Japan          # ← 嵌套引用(客户端可点进去再选 Japan 的成员)
+      - DIRECT         # ← 同级 proxy 项
+```
+
+Surge 输出:
+
+```ini
+[Proxy Group]
+Japan = url-test, 🇯🇵 JP-01, 🇯🇵 JP-02, ..., url=...
+Stream = select, Japan, DIRECT
+```
+
+mihomo / Surge 客户端加载后,Stream 的选择面板会显示两行:一个名叫 `Japan` 的"子选择器"(点进去能看到 Japan 组的所有节点) + 一个 `DIRECT` 直连项。
+
+### 7.3 跟其他类似字段的关系
+
+| 字段 | 数据形态 | 语义 |
+|---|---|---|
+| `g.proxies: string[]` | 节点名 / 内置 policy (DIRECT/REJECT*) | 显式锁定的成员,顺序决定 fallback / url-test 优先级 |
+| `g.nested_groups: string[]` | **其它组的 name** | 把其它组作为单个 proxy 项嵌套引用(客户端可点进去) |
+| `g.selector` | regex / from_providers / include_region / exclude_type | 动态筛选独立节点(从节点池里"挑出"满足条件的节点加进来) |
+| `g.include_other_group: string` | 单个组 name (Surge only) | Surge 原生 `include-other-group` 参数,把那个组的成员**平铺**展开到当前组(跟 nested_groups 的"嵌套引用"语义相反) |
+
+> **老 yaml 自动迁移**: 在旧版本里这事是通过 `selector.include_other_group` 数组实现的(名字误导)。NodeDeck v2 起读取旧 yaml 时,schema transform 会把那个字段的值搬到顶层 `nested_groups`,首次保存后写回的就是新字段形态。无需手动改 yaml。

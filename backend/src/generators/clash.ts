@@ -452,10 +452,14 @@ function resolveGroupMembers(
   // 顶层 include_other_group(Surge 风格的单组引用)在 Clash 端没有原生字段,
   // 这里直接当成"成员组名"展开,与 Surge 把它放进 params 的语义对齐。
   if (g.include_other_group) members.add(g.include_other_group);
+  // nested_groups:把其它策略组作为单个 proxy 项嵌套引用加进 yaml proxies 列表。
+  // 与 mihomo 原生写法(yaml proxies 数组里直接放组名)一致;客户端点开该项会
+  // 跳转到那个组的子选择器。schema transform 已把老的 selector.include_other_group
+  // 迁移到这里,不再从 selector 读取。
+  // `?? []` 是 defensive — 经 schema parse 的 group 一定有这个字段(default []),
+  // 但测试里手动构造的 ProxyGroup literal 可能漏写。
+  for (const otherGroup of g.nested_groups ?? []) members.add(otherGroup);
   if (g.selector) {
-    if (g.selector.include_other_group && g.selector.include_other_group.length > 0) {
-      for (const otherGroup of g.selector.include_other_group) members.add(otherGroup);
-    }
     let pool = allNodes.slice();
     // proxy-providers 模式:剥离掉 use 段引用的 provider 节点,避免重复
     if (proxyProviderIds.size > 0) {

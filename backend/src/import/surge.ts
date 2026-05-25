@@ -375,6 +375,9 @@ function parseRuleAndGroupSections(text: string): {
           ? (type as ProxyGroup["type"])
           : "select",
         proxies,
+        // Surge 导入侧暂不主动识别嵌套组(.conf 里的组成员段不区分节点名/组名);
+        // 留空数组让后续 schema parse 直通。用户想拆分可在 Web UI 编辑该组时手动操作。
+        nested_groups: [],
         url: params.url,
         interval: params.interval ? parseInt(params.interval, 10) : undefined,
         tolerance: params.tolerance ? parseInt(params.tolerance, 10) : undefined,

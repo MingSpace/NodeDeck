@@ -57,9 +57,11 @@ function formatNameList(names: string[]): string {
  * 不动 selector 部分:selector.from_providers / include_regex 等已经基于 filteredNodes 计算,
  * 本身不会产生悬空引用。
  *
- * 不动 g.include_other_group / g.selector.include_other_group:
+ * 不动 g.include_other_group / g.nested_groups:
  * 这是组名引用,即使被引用的组里所有节点都被过滤光,组本身仍是合法的(Mihomo/Surge
  * 运行时会把空组当成 DIRECT 或报组级别 warning,但不会因引用方加载失败)。
+ * 老字段 g.selector.include_other_group 已被 schema transform 迁移到 g.nested_groups,
+ * 这里也不再考虑它。
  *
  * 同一个 (group, missing_name) 只 warn 一次。
  *
