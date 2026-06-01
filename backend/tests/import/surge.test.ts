@@ -54,6 +54,25 @@ FINAL, Proxys, dns-failed
 `;
 
 describe("importSurgeConf", () => {
+  it("accumulates same-key [Host] lines into an array (multi upstream DNS)", () => {
+    const text = [
+      "[General]",
+      "loglevel = notify",
+      "",
+      "[Host]",
+      "*.ovalyraa.com = server:https://a.com/dns-query",
+      "*.ovalyraa.com = server:https://b.com/dns-query",
+      "example.com = 1.2.3.4",
+    ].join("\n");
+    const r = importSurgeConf(text);
+    expect(r.general?.hosts?.["*.ovalyraa.com"]).toEqual([
+      "server:https://a.com/dns-query",
+      "server:https://b.com/dns-query",
+    ]);
+    // 单行 host 仍保持字符串形态
+    expect(r.general?.hosts?.["example.com"]).toBe("1.2.3.4");
+  });
+
   it("parses general / host / mitm / proxies / groups / rules / modules", () => {
     const r = importSurgeConf(SAMPLE_SURGE);
 

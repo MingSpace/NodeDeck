@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { HostRowsEditor } from "@/components/host-rows-editor";
 import type { GeneralPresetData } from "../types";
 
 interface Props {
@@ -12,86 +13,7 @@ interface Props {
 }
 
 export function HostsSection({ data, update }: Props) {
-  const hosts = data.hosts ?? {};
-  const [newKey, setNewKey] = useState("");
-  const [newVal, setNewVal] = useState("");
-  const entries = Object.entries(hosts);
-
-  const setHosts = (next: Record<string, string>) => {
-    update({ hosts: Object.keys(next).length === 0 ? undefined : next });
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="text-xs text-muted-foreground">域名解析覆盖</div>
-      {entries.length === 0 && (
-        <div className="text-xs text-muted-foreground border border-dashed rounded p-3 text-center">
-          暂无 host 条目
-        </div>
-      )}
-      {entries.map(([k, v], i) => (
-        <div key={i} className="flex gap-2 items-center">
-          <Input
-            value={k}
-            onChange={(e) => {
-              const next = { ...hosts };
-              delete next[k];
-              next[e.target.value] = v;
-              setHosts(next);
-            }}
-            placeholder="*.example.com"
-            className="text-xs"
-          />
-          <span className="text-xs text-muted-foreground">=</span>
-          <Input
-            value={v}
-            onChange={(e) => setHosts({ ...hosts, [k]: e.target.value })}
-            placeholder="1.2.3.4 或 server:223.5.5.5"
-            className="text-xs"
-          />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => {
-              const next = { ...hosts };
-              delete next[k];
-              setHosts(next);
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5 text-destructive" />
-          </Button>
-        </div>
-      ))}
-      <div className="flex gap-2 items-center pt-2 border-t">
-        <Input
-          value={newKey}
-          onChange={(e) => setNewKey(e.target.value)}
-          placeholder="新 host (key)"
-          className="text-xs"
-        />
-        <span className="text-xs text-muted-foreground">=</span>
-        <Input
-          value={newVal}
-          onChange={(e) => setNewVal(e.target.value)}
-          placeholder="value"
-          className="text-xs"
-        />
-        <Button
-          size="sm"
-          onClick={() => {
-            if (!newKey.trim() || !newVal.trim()) return;
-            setHosts({ ...hosts, [newKey.trim()]: newVal.trim() });
-            setNewKey("");
-            setNewVal("");
-          }}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          添加
-        </Button>
-      </div>
-    </div>
-  );
+  return <HostRowsEditor value={data.hosts} onChange={(hosts) => update({ hosts })} />;
 }
 
 export function SsidSection({ data, update }: Props) {

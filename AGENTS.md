@@ -307,6 +307,8 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 | Subscription-UserInfo 显示 0 | Provider fetch 失败回退到旧缓存,但 header 没缓存 | cache JSON 里 `raw_userinfo_header` + `userinfo` 字段都要写;查 `providers/cache-store.ts` |
 | 改 yaml 后没生效 | chokidar 没触发(挂载文件系统问题) | 重启容器或在 Web UI Admin 触发刷新;Docker on macOS 的 NFS 挂载已知有延迟 |
 | Hysteria2 obfs 不工作 | obfs-password 没设(salamander 必填) | schema 加联动校验;客户端日志会写明缺哪个字段 |
+| Clash hosts 解析异常 / 出现 `server:` 前缀 | generals/provider hosts 写了 Surge 专属语法(`server:`/`DOMAIN-SET:`/`RULE-SET:`)被带进 Clash | 已由 `buildClashHosts` 自动跳过 + warning;同 key 多值 Clash 出数组、Surge 展开多行(`backend/src/generators/hosts.ts`) |
+| provider 的 host 没出现在订阅里 | provider `emit_hosts` 关了,或该 provider 被禁用 | 打开节点源编辑页「节点源 Host」区的 emit_hosts 开关;`general.hosts` 与启用 provider.hosts 由 `mergeHostMaps` 去重合并 |
 
 
 ## When You're Stuck

@@ -7,6 +7,7 @@ import type { Node } from "../schemas/node.js";
 import type { Provider } from "../schemas/provider.js";
 import { providerRepo, proxyGroupRepo, rulesetRepo, generalPresetRepo, surgeModuleRepo } from "../storage/repos.js";
 import { buildNodePool } from "../providers/pool.js";
+import { mergeHostMaps } from "./hosts.js";
 
 export interface ResolvedProfile {
   profile: Profile;
@@ -27,6 +28,8 @@ export interface ResolvedProfile {
   finalRule?: { policy: string; dns_failed?: boolean };
   geoipFallback?: { policy: string };
   general?: GeneralPreset;
+  // general.hosts + 启用且 emit_hosts 的 provider.hosts 去重合并后的结果(两端 generator 消费)。
+  hosts?: Record<string, string[]>;
   surgeModules: SurgeModule[];
   warnings: string[];
 }
@@ -97,6 +100,13 @@ export async function resolveProfile(profile: Profile): Promise<ResolvedProfile>
     else warnings.push(`surge_module "${id}" not found`);
   });
 
+  // general.hosts + 启用且 emit_hosts 的 provider.hosts 去重合并;同 key 多值会在 Surge 端展开多行。
+  const mergedHosts = mergeHostMaps(
+    general?.hosts,
+    ...providers.filter((p) => p.emit_hosts !== false && p.hosts).map((p) => p.hosts),
+  );
+  const hosts = Object.keys(mergedHosts).length > 0 ? mergedHosts : undefined;
+
   return {
     profile,
     nodes: pool.nodes,
@@ -107,6 +117,7 @@ export async function resolveProfile(profile: Profile): Promise<ResolvedProfile>
     finalRule,
     geoipFallback,
     general,
+    hosts,
     surgeModules,
     warnings,
   };

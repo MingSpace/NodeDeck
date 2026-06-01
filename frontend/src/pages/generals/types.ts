@@ -37,7 +37,7 @@ export interface GeneralPresetData {
   external_ui?: string;
   secret?: string;
   global_client_fingerprint?: string;
-  hosts?: Record<string, string>;
+  hosts?: Record<string, string | string[]>;
   ssid_rules?: Array<{ ssid: string; suspend?: boolean; policy?: string }>;
   dns?: {
     enable: boolean;

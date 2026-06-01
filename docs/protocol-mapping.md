@@ -201,11 +201,13 @@ WireGuard 在两端的**表达结构**完全不同:
 - Surge `Snell` 节点 → 跳过 + warning
 - Surge `RULE-SET,SYSTEM` → 跳过 + warning(含 USER-AGENT/PROCESS-NAME 无 Clash 等价)
 - Surge `RULE-SET,LAN` → 展开为内联 DOMAIN-SUFFIX,local + IP-CIDR 列表
+- Surge 专属 hosts(`server:` / `DOMAIN-SET:` / `RULE-SET:`) → 跳过 + warning
 
 ### Surge 输出降级
 - Clash `peers:` (WireGuard 多 peer) → 仅取第一个 peer + warning
 - Clash `GEOSITE,xxx` → 改为 `DOMAIN-SET,<url>` 若 ruleset 提供了 url,否则 warning
 - Clash `mrs` 格式 → 不支持 + warning(由 generator 注释提示)
+- 同 key 多值 hosts(多 IP / 多 server) → Surge 端展开成多行 `key = value`(支持同域名多上游 DNS)
 
 ---
 
@@ -249,6 +251,31 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 - `include_other_group: "Japan"`(Surge)→ 客户端 Stream 面板**直接列出** Japan 的所有节点(层级踩平)
 
 `v1` 历史字段 `selector.include_other_group: string[]` 命名误导,**实际行为是嵌套引用**;`v2` schema transform 自动把它搬到 `nested_groups`,旧 yaml 透明兼容。
+
+---
+
+## 18. hosts(域名解析覆盖,generals + provider)
+
+`general.hosts` 与 `provider.hosts` 都是 [CS] 共用字段(`Record<string, string | string[]>`,值可为单字符串、逗号分隔字符串或字符串数组),两端语法差异由 generator 自动处理(`backend/src/generators/hosts.ts`):
+
+| 写法 | Clash `hosts:` | Surge `[Host]` |
+|---|---|---|
+| 直接 IP | 支持 `domain: 1.2.3.4` | 支持 `domain = 1.2.3.4` |
+| 多个 IP / 多上游 | 支持 `domain: [1.1.1.1, 2.2.2.2]` | 同 key 展开多行 `domain = v` |
+| 域名别名(CNAME) | 支持(仅允许单个别名) | 支持 `domain = other.com` |
+| 通配符 | `*` / `+` / `.`(mihomo 语义) | `*` / `?`(Surge 语义,原样透传) |
+| 指定 DNS `server:` | 跳过 + warning | 支持 `domain = server:8.8.8.8`(含 `server:system`/`syslib`) |
+| `DOMAIN-SET:` / `RULE-SET:` 批量绑定 | 跳过 + warning | 原样输出 |
+
+**自动识别规则**(`isSurgeOnlyHostEntry`):key 以 `DOMAIN-SET:`/`RULE-SET:` 开头,或任一 value 以 `server:` 开头 → 判定为 Surge 专属,Clash 输出跳过该条并发 warning。
+
+**同 key 多值**:value 含逗号或为数组时,Clash 输出 YAML 数组(mihomo `config.go::parseHosts` / `NewHostValue` 支持);Surge `[Host]` 把每个值**展开成多行** `key = value` —— 支持给同一域名指定多个 `server:` 上游 DNS(机场常借此规避封锁),多 IP 同理。
+
+**provider 级 host**:每个 provider 可配 `hosts` + `emit_hosts`(默认 `true`)。`profile-resolver` 用 `mergeHostMaps` 把 `general.hosts` 与所有启用且 `emit_hosts` 的 provider.hosts 去重合并后交给两端 generator;导入 Surge conf 时 `[Host]` 段同一 key 的多行会保留为数组。
+
+**已知限制**:通配符 `+`/`.` 前缀与特殊值 `lan` 仅 Clash 有等价语义,透传到 Surge 会被当字面域名;Clash 端某条 host 若含 `server:` 值则整条跳过(实际场景多为纯 server:);多 IP 在 Surge 展开多行是否被客户端接受需真机确认,多 server 上游为实证场景。
+
+参考(mihomo Stable / Surge 5):mihomo `docs/config.yaml` hosts 段;Surge manual [Local DNS Mapping](https://manual.nssurge.com/dns/local-dns-mapping.html)。
 
 ---
 

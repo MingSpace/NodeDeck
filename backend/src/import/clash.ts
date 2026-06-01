@@ -23,7 +23,7 @@ interface ClashConfig {
   mode?: string;
   "log-level"?: string;
   ipv6?: boolean;
-  hosts?: Record<string, string>;
+  hosts?: Record<string, string | string[]>;
   proxies?: unknown[];
   "proxy-groups"?: unknown[];
   rules?: string[];

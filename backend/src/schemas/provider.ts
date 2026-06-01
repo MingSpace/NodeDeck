@@ -43,6 +43,10 @@ export const providerSchema = z
       health_check_url: "http://www.gstatic.com/generate_204",
       health_check_interval: 300,
     }),
+    // 针对该节点源的 DNS 解析覆盖([CS] hosts);emit_hosts 控制是否在订阅输出时自动带出。
+    // 典型用途:机场为规避封锁,给代理节点域名指定多个 server: DoH(同 key 多行)。
+    hosts: z.record(z.union([z.string(), z.array(z.string())])).optional(),
+    emit_hosts: z.boolean().default(true),
   })
   .superRefine((p, ctx) => {
     if (p.type === "http" && !p.url) {

@@ -11,6 +11,7 @@ import { uniquifyNodeNames } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
+import { buildClashHosts } from "./hosts.js";
 import { refreshIntervalToSeconds } from "../schemas/common.js";
 
 function downgradeClashPolicy(policy: string): string {
@@ -39,6 +40,8 @@ export interface ClashGenerateInput {
   finalRule?: { policy: string; dns_failed?: boolean };
   geoipFallback?: { policy: string };
   general?: GeneralPreset;
+  // general.hosts + provider.hosts 合并后的结果(由 profile-resolver 计算)。
+  hosts?: Record<string, string | string[]>;
   warnings: string[];
   // proxy-providers 模式所需:启用了 clash_proxy_provider 的 providers 元数据,
   // 以及订阅 base url 与 profile token(用于合成 mihomo 拉取的 URL)。
@@ -216,9 +219,13 @@ export function generateClashConfig(input: ClashGenerateInput): string {
       };
     }
 
-    if (general.hosts && Object.keys(general.hosts).length > 0) {
-      out.hosts = general.hosts;
-    }
+  }
+
+  // hosts 来自 general.hosts + provider.hosts 合并;放在 general 块外,
+  // 因为即使 profile 没配 general_preset,provider host 仍要带出。
+  if (input.hosts && Object.keys(input.hosts).length > 0) {
+    const clashHosts = buildClashHosts(input.hosts, input.warnings);
+    if (Object.keys(clashHosts).length > 0) out.hosts = clashHosts;
   }
 
   if (Object.keys(proxyProviders).length > 0) out["proxy-providers"] = proxyProviders;

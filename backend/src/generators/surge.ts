@@ -9,6 +9,7 @@ import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, escapeSurgeNames } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
+import { buildSurgeHostLines } from "./hosts.js";
 
 export interface SurgeGenerateInput {
   profile: Profile;
@@ -18,6 +19,8 @@ export interface SurgeGenerateInput {
   finalRule?: { policy: string; dns_failed?: boolean };
   geoipFallback?: { policy: string };
   general?: GeneralPreset;
+  // general.hosts + provider.hosts 合并后的结果(由 profile-resolver 计算)。
+  hosts?: Record<string, string | string[]>;
   surgeModules: SurgeModule[];
   managed_config_url?: string;
   warnings: string[];
@@ -59,10 +62,10 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   lines.push("");
 
   // [Host]
-  if ((general?.hosts && Object.keys(general.hosts).length > 0) || hasModuleSection(input.surgeModules, "host")) {
+  if ((input.hosts && Object.keys(input.hosts).length > 0) || hasModuleSection(input.surgeModules, "host")) {
     lines.push("[Host]");
-    if (general?.hosts) {
-      for (const [k, v] of Object.entries(general.hosts)) lines.push(`${k} = ${v}`);
+    if (input.hosts) {
+      lines.push(...buildSurgeHostLines(input.hosts));
     }
     for (const m of input.surgeModules) {
       if (m.content_sections.host) lines.push(...splitNonEmpty(m.content_sections.host));

@@ -115,6 +115,7 @@ async function handleSubInner(
       finalRule: resolved.finalRule,
       geoipFallback: resolved.geoipFallback,
       general: resolved.general,
+      hosts: resolved.hosts,
       warnings: resolved.warnings,
     });
     logSubGenerated(profile.id, "clash", resolved.nodes.length, resolved.warnings, useProxyProviders, text.length, ip);
@@ -132,6 +133,7 @@ async function handleSubInner(
       finalRule: resolved.finalRule,
       geoipFallback: resolved.geoipFallback,
       general: resolved.general,
+      hosts: resolved.hosts,
       surgeModules: resolved.surgeModules,
       managed_config_url: managedConfigUrl,
       warnings: resolved.warnings,

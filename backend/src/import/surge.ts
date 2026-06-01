@@ -158,17 +158,22 @@ function parseHttpApi(kv: Record<string, string>): GeneralPreset["http_api"] | u
   };
 }
 
-function parseHostSection(text: string): Record<string, string> {
+function parseHostSection(text: string): Record<string, string | string[]> {
   const body = extractSection(text, "Host");
   if (!body) return {};
-  const out: Record<string, string> = {};
+  const out: Record<string, string | string[]> = {};
   for (const raw of body.split(/\r?\n/)) {
     const line = stripComment(raw).trim();
     if (!line || !line.includes("=")) continue;
     const idx = line.indexOf("=");
     const k = line.slice(0, idx).trim();
     const v = line.slice(idx + 1).trim();
-    if (k && v) out[k] = v;
+    if (!k || !v) continue;
+    // Surge [Host] 允许同一域名多行(如多个 server: 上游 DNS),累积成数组保真。
+    const existing = out[k];
+    if (existing === undefined) out[k] = v;
+    else if (Array.isArray(existing)) existing.push(v);
+    else out[k] = [existing, v];
   }
   return out;
 }

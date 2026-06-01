@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
+import { HostRowsEditor } from "@/components/host-rows-editor";
 
 export type ProviderType = "http" | "file" | "inline";
 
@@ -59,6 +60,9 @@ export interface ProviderData {
   tags: string[];
   notes?: string;
   clash_proxy_provider: ClashProxyProvider;
+  // 针对该节点源的 DNS 解析覆盖;emit_hosts 控制订阅输出时是否自动带出(默认带出)。
+  hosts?: Record<string, string | string[]>;
+  emit_hosts?: boolean;
 }
 
 export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
@@ -75,6 +79,7 @@ export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
     health_check_url: "http://www.gstatic.com/generate_204",
     health_check_interval: 300,
   },
+  emit_hosts: true,
 };
 
 // 静态节点(inline)默认模板:供 ?new=inline 等深度链接预填表单。
@@ -93,6 +98,7 @@ export const INLINE_PROVIDER_TEMPLATE: Partial<ProviderData> = {
     health_check_url: "http://www.gstatic.com/generate_204",
     health_check_interval: 300,
   },
+  emit_hosts: true,
 };
 
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
@@ -386,6 +392,24 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
               />
             </Field>
           </div>
+        </div>
+      </CollapsibleSection>
+
+      <CollapsibleSection title="节点源 Host (DNS 解析覆盖)">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Switch
+              checked={data.emit_hosts !== false}
+              onCheckedChange={(v) => update({ emit_hosts: v })}
+            />
+            <Label className="text-xs">
+              生成订阅时自动带出以下 host (关闭则不输出此源的 host)
+            </Label>
+          </div>
+          <HostRowsEditor
+            value={data.hosts}
+            onChange={(hosts) => update({ hosts })}
+          />
         </div>
       </CollapsibleSection>
 

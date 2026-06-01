@@ -183,6 +183,7 @@ importRouter.post("/commit", async (c) => {
           health_check_url: "http://www.gstatic.com/generate_204",
           health_check_interval: 300,
         },
+        emit_hosts: true,
       };
       await providerRepo.save(provider);
       stats.providers = 1;

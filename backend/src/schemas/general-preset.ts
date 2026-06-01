@@ -115,7 +115,7 @@ export const generalPresetSchema = z.object({
   geo_update_interval: z.number().int().optional(),
 
   // [CS] both
-  hosts: z.record(z.string()).optional(),
+  hosts: z.record(z.union([z.string(), z.array(z.string())])).optional(),
 
   // [S]
   ssid_rules: z.array(ssidRuleSchema).optional(),
