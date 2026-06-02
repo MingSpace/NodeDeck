@@ -87,3 +87,71 @@ export function mergeHostMaps(
   }
   return out;
 }
+
+/** splitClashHosts 的拆分结果。 */
+export interface ClashHostsSplit {
+  /** 纯 IP / CNAME,进 Clash 顶层 `hosts:`。 */
+  staticHosts: Record<string, HostValue>;
+  /** 含 `server:` 的条目,进 `dns.proxy-server-nameserver-policy`(域名 key -> DoH 列表)。 */
+  serverPolicy: Record<string, string[]>;
+}
+
+/** Surge 通配域名 key -> mihomo DNS policy 通配 key:`*.x` -> `+.x`(域名 + 所有子域),其余原样。 */
+function toClashDomainKey(key: string): string {
+  const k = key.trim();
+  return k.startsWith("*.") ? `+.${k.slice(2)}` : k;
+}
+
+/**
+ * Surge `server:<dns>` 值 -> Clash DNS 服务器写法(目标版本 mihomo Stable):
+ * - `server:system` -> `system`;`server:syslib` -> null(Clash 无等价,跳过 + warning)
+ * - `server:<url/ip>` -> `<url/ip>`
+ * - 与 server: 混用的非 server: 值 -> null(Clash policy 仅接受解析器,跳过 + warning)
+ */
+function serverValueToClashDns(value: string, key: string, warnings: string[]): string | null {
+  const v = value.trim();
+  if (!v.toLowerCase().startsWith("server:")) {
+    warnings.push(
+      `Host "${key}" 的值 "${v}" 与 server: 混用,Clash proxy-server-nameserver-policy 仅接受 DNS 解析器,已忽略该值`,
+    );
+    return null;
+  }
+  const rest = v.slice("server:".length).trim();
+  if (rest.toLowerCase() === "syslib") {
+    warnings.push(`Host "${key}" 的 server:syslib 在 Clash 无等价,已忽略该值`);
+    return null;
+  }
+  return rest;
+}
+
+/**
+ * 把合并后的 hosts 拆成 Clash 两条通路:含 `server:` 的条目投到
+ * `dns.proxy-server-nameserver-policy`(按域名匹配,多机场不串台);其余(纯 IP / CNAME /
+ * `DOMAIN-SET:` / `RULE-SET:`)交给 `buildClashHosts`(后两者无 Clash 等价,跳过 + warning)。
+ */
+export function splitClashHosts(
+  hosts: Record<string, HostValue>,
+  warnings: string[],
+): ClashHostsSplit {
+  const serverPolicy: Record<string, string[]> = {};
+  const rest: Record<string, HostValue> = {};
+  for (const [key, raw] of Object.entries(hosts)) {
+    const values = normalizeHostValue(raw);
+    if (values.length === 0) continue;
+    const upperKey = key.trim().toUpperCase();
+    const isBatch = upperKey.startsWith("DOMAIN-SET:") || upperKey.startsWith("RULE-SET:");
+    const hasServer = values.some((v) => v.trim().toLowerCase().startsWith("server:"));
+    if (!isBatch && hasServer) {
+      const policyKey = toClashDomainKey(key);
+      const list = serverPolicy[policyKey] ?? (serverPolicy[policyKey] = []);
+      for (const v of values) {
+        const dns = serverValueToClashDns(v, key, warnings);
+        if (dns && !list.includes(dns)) list.push(dns);
+      }
+      if (list.length === 0) delete serverPolicy[policyKey];
+      continue;
+    }
+    rest[key] = raw;
+  }
+  return { staticHosts: buildClashHosts(rest, warnings), serverPolicy };
+}

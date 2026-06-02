@@ -49,6 +49,7 @@ export interface GeneralPresetData {
     nameserver?: string[];
     fallback?: string[];
     nameserver_policy?: Record<string, string>;
+    proxy_server_nameserver?: string[];
     server?: string[];
     encrypted_server?: string[];
     hijack?: string[];

@@ -66,10 +66,13 @@ export function HostRowsEditor({ value, onChange }: Props) {
   return (
     <div className="space-y-2">
       <div className="text-[11px] text-muted-foreground leading-relaxed">
-        域名解析覆盖;同一域名可添加多行(如多个 server: 上游 DNS),多个 IP 也可写成多行或逗号分隔。
-        <span className="font-mono">server:</span> /{" "}
+        域名解析覆盖;同一域名可添加多行(如多个 server: 上游 DNS),多个 IP 也可写成多行或逗号分隔。含{" "}
+        <span className="font-mono">server:</span> 的条目:Surge 写入{" "}
+        <span className="font-mono">[Host]</span>,Clash 写入{" "}
+        <span className="font-mono">dns.proxy-server-nameserver-policy</span>(按域名,需在 generals DNS 配{" "}
+        <span className="font-mono">proxy-server-nameserver</span> 才生效);
         <span className="font-mono">DOMAIN-SET:</span> /{" "}
-        <span className="font-mono">RULE-SET:</span> 为 Surge 专属语法,不会写入 Clash 输出。
+        <span className="font-mono">RULE-SET:</span> 为 Surge 专属,Clash 跳过。
       </div>
       {rows.length === 0 && (
         <div className="text-xs text-muted-foreground border border-dashed rounded p-3 text-center">

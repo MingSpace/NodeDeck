@@ -75,8 +75,8 @@ export const nodeSchema = z.object({
   sni: z.string().optional(),
   alpn: z.array(z.string()).optional(),
   skip_cert_verify: z.boolean().optional(),
-  fingerprint: z.string().optional(),
-  client_fingerprint: z.string().optional(), // [CS] clash:`client-fingerprint`, surge:`tls-fingerprint`
+  fingerprint: z.string().optional(), // [CS] 服务器证书 SHA256 锁定; clash:`fingerprint`, surge:`server-cert-fingerprint-sha256`
+  client_fingerprint: z.string().optional(), // [CS] uTLS 客户端指纹; clash:`client-fingerprint`, surge:`tls-fingerprint`
   servername: z.string().optional(), // alias for sni in some clients
 
   // [CS] common knobs

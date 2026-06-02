@@ -12,6 +12,7 @@ const dnsSchema = z
     nameserver: z.array(z.string()).default([]).optional(), // [C]
     fallback: z.array(z.string()).default([]).optional(), // [C]
     nameserver_policy: z.record(z.string()).optional(), // [C]
+    proxy_server_nameserver: z.array(z.string()).default([]).optional(), // [C] 节点域名解析兜底;host 的 server: 派生的 proxy-server-nameserver-policy 生效前提
 
     // [S]
     server: z.array(z.string()).optional(), // surge dns-server

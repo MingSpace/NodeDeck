@@ -11,7 +11,7 @@ import { uniquifyNodeNames } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
-import { buildClashHosts } from "./hosts.js";
+import { splitClashHosts } from "./hosts.js";
 import { refreshIntervalToSeconds } from "../schemas/common.js";
 
 function downgradeClashPolicy(policy: string): string {
@@ -198,6 +198,8 @@ export function generateClashConfig(input: ClashGenerateInput): string {
       if (ns?.length) dns.nameserver = ns;
       if (general.dns.fallback?.length) dns.fallback = general.dns.fallback;
       if (general.dns.nameserver_policy) dns["nameserver-policy"] = general.dns.nameserver_policy;
+      if (general.dns.proxy_server_nameserver?.length)
+        dns["proxy-server-nameserver"] = general.dns.proxy_server_nameserver;
       out.dns = dns;
     }
 
@@ -223,9 +225,21 @@ export function generateClashConfig(input: ClashGenerateInput): string {
 
   // hosts 来自 general.hosts + provider.hosts 合并;放在 general 块外,
   // 因为即使 profile 没配 general_preset,provider host 仍要带出。
+  // server: 条目(指定 DNS 解析器)不进顶层 hosts:,而是投到 dns.proxy-server-nameserver-policy
+  // (按域名匹配,多机场不串台);其生效依赖 proxy-server-nameserver 非空。
   if (input.hosts && Object.keys(input.hosts).length > 0) {
-    const clashHosts = buildClashHosts(input.hosts, input.warnings);
-    if (Object.keys(clashHosts).length > 0) out.hosts = clashHosts;
+    const { staticHosts, serverPolicy } = splitClashHosts(input.hosts, input.warnings);
+    if (Object.keys(staticHosts).length > 0) out.hosts = staticHosts;
+    if (Object.keys(serverPolicy).length > 0) {
+      const dns = (out.dns as Record<string, unknown> | undefined) ?? { enable: true };
+      dns["proxy-server-nameserver-policy"] = serverPolicy;
+      if (!dns["proxy-server-nameserver"]) {
+        input.warnings.push(
+          `generals DNS 的 proxy-server-nameserver 为空,${Object.keys(serverPolicy).length} 条 server: host 的 Clash 解析策略(proxy-server-nameserver-policy)不会生效;请在 generals 的 DNS 配置里填写 proxy-server-nameserver`,
+        );
+      }
+      out.dns = dns;
+    }
   }
 
   if (Object.keys(proxyProviders).length > 0) out["proxy-providers"] = proxyProviders;

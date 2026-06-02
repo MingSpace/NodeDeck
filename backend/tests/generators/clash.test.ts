@@ -5,6 +5,7 @@ import type { Profile } from "../../src/schemas/profile.js";
 import type { Node } from "../../src/schemas/node.js";
 import type { ProxyGroup } from "../../src/schemas/proxy-group.js";
 import type { RuleSet } from "../../src/schemas/ruleset.js";
+import { generalPresetSchema } from "../../src/schemas/general-preset.js";
 
 function baseProfile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -336,5 +337,55 @@ describe("generateClashConfig", () => {
     const parsed = yaml.load(out) as Record<string, unknown>;
     const proxies = parsed.proxies as Record<string, unknown>[];
     expect(proxies[1]["dialer-proxy"]).toBe("WARP");
+  });
+
+  it("routes host server: to dns.proxy-server-nameserver-policy with fallback from general", () => {
+    const warnings: string[] = [];
+    const general = generalPresetSchema.parse({
+      id: "g1",
+      name: "G1",
+      dns: { enable: true, proxy_server_nameserver: ["https://doh.pub/dns-query"] },
+    });
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [],
+      finalRule: { policy: "DIRECT" },
+      general,
+      hosts: {
+        "*.ovalyraa.com": ["server:https://a/dns-query", "server:https://b/dns-query"],
+      },
+      warnings,
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const dns = parsed.dns as Record<string, unknown>;
+    expect(dns["proxy-server-nameserver"]).toEqual(["https://doh.pub/dns-query"]);
+    expect(dns["proxy-server-nameserver-policy"]).toEqual({
+      "+.ovalyraa.com": ["https://a/dns-query", "https://b/dns-query"],
+    });
+    // server: 条目不进顶层 hosts:
+    expect(parsed.hosts).toBeUndefined();
+    expect(warnings.some((w) => w.includes("proxy-server-nameserver"))).toBe(false);
+  });
+
+  it("warns when proxy-server-nameserver fallback is empty (policy would not take effect)", () => {
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [],
+      finalRule: { policy: "DIRECT" },
+      hosts: { "*.ovalyraa.com": "server:https://a/dns-query" },
+      warnings,
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const dns = parsed.dns as Record<string, unknown>;
+    expect(dns["proxy-server-nameserver-policy"]).toEqual({
+      "+.ovalyraa.com": ["https://a/dns-query"],
+    });
+    expect(dns["proxy-server-nameserver"]).toBeUndefined();
+    expect(out).toMatch(/# WARN:.*proxy-server-nameserver/);
   });
 });

@@ -56,6 +56,21 @@ export function DnsSection({ data, update }: Props) {
         onChange={(arr) => setDns({ fallback: arr.length ? arr : undefined })}
         placeholder="https://1.1.1.1/dns-query"
       />
+      <div>
+        <ListField
+          label="proxy-server-nameserver (Clash, 节点域名解析兜底)"
+          items={dns.proxy_server_nameserver ?? []}
+          onChange={(arr) => setDns({ proxy_server_nameserver: arr.length ? arr : undefined })}
+          placeholder="https://doh.pub/dns-query"
+        />
+        {!dns.proxy_server_nameserver?.length && (
+          <div className="text-[11px] text-rose-600 mt-1 leading-relaxed">
+            留空时,host 里 <span className="font-mono">server:</span> 条目(指定 DoH 解析节点域名)在 Clash 端不会生效
+            ——mihomo 要求 <span className="font-mono">proxy-server-nameserver</span> 非空,
+            <span className="font-mono">proxy-server-nameserver-policy</span> 才生效。
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="enhanced_mode (Clash)">

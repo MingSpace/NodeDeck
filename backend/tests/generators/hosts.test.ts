@@ -5,6 +5,7 @@ import {
   buildClashHosts,
   buildSurgeHostLines,
   mergeHostMaps,
+  splitClashHosts,
 } from "../../src/generators/hosts.js";
 
 describe("normalizeHostValue", () => {
@@ -137,5 +138,72 @@ describe("mergeHostMaps", () => {
 
   it("skips undefined/null maps and empty values", () => {
     expect(mergeHostMaps(undefined, { "a.com": "" }, null)).toEqual({});
+  });
+});
+
+describe("splitClashHosts", () => {
+  it("routes server: entries to serverPolicy with *. -> +. and strips the prefix", () => {
+    const { staticHosts, serverPolicy } = splitClashHosts(
+      {
+        "*.ovalyraa.com": [
+          "server:https://hydrogen1693.com:44443/dns-query/abc",
+          "server:https://subprime7404.com:44443/dns-query/abc",
+        ],
+      },
+      [],
+    );
+    expect(staticHosts).toEqual({});
+    expect(serverPolicy).toEqual({
+      "+.ovalyraa.com": [
+        "https://hydrogen1693.com:44443/dns-query/abc",
+        "https://subprime7404.com:44443/dns-query/abc",
+      ],
+    });
+  });
+
+  it("keeps bare-domain key as-is and maps server:system", () => {
+    const { serverPolicy } = splitClashHosts({ "node.example.com": "server:system" }, []);
+    expect(serverPolicy).toEqual({ "node.example.com": ["system"] });
+  });
+
+  it("drops server:syslib with a warning", () => {
+    const warnings: string[] = [];
+    const { serverPolicy } = splitClashHosts({ "*.x.com": "server:syslib" }, warnings);
+    expect(serverPolicy).toEqual({});
+    expect(warnings.some((w) => w.includes("syslib"))).toBe(true);
+  });
+
+  it("routes plain IP / CNAME to staticHosts (single string, multi array, alias)", () => {
+    const { staticHosts, serverPolicy } = splitClashHosts(
+      { "a.com": "1.2.3.4", "b.com": ["1.1.1.1", "2.2.2.2"], "baidu.com": "google.com" },
+      [],
+    );
+    expect(serverPolicy).toEqual({});
+    expect(staticHosts).toEqual({
+      "a.com": "1.2.3.4",
+      "b.com": ["1.1.1.1", "2.2.2.2"],
+      "baidu.com": "google.com",
+    });
+  });
+
+  it("skips DOMAIN-SET: / RULE-SET: keys with warnings (neither static nor policy)", () => {
+    const warnings: string[] = [];
+    const { staticHosts, serverPolicy } = splitClashHosts(
+      { "DOMAIN-SET:https://x/d.txt": "server:1.1.1.1", "RULE-SET:https://x/r.txt": "10.0.0.1" },
+      warnings,
+    );
+    expect(staticHosts).toEqual({});
+    expect(serverPolicy).toEqual({});
+    expect(warnings.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("ignores a non-server value mixed with server: and warns", () => {
+    const warnings: string[] = [];
+    const { serverPolicy } = splitClashHosts(
+      { "*.x.com": ["server:https://doh/dns-query", "1.2.3.4"] },
+      warnings,
+    );
+    expect(serverPolicy).toEqual({ "+.x.com": ["https://doh/dns-query"] });
+    expect(warnings.some((w) => w.includes("混用"))).toBe(true);
   });
 });

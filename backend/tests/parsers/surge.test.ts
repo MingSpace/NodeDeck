@@ -74,6 +74,21 @@ Auto = url-test, A, B
       sni: "www.cloudflare.com",
       client_fingerprint: "chrome",
     });
+    // `tls-fingerprint`(uTLS)不应泄漏进 `fingerprint`(证书锁定)。
+    expect(node?.fingerprint).toBeUndefined();
+  });
+
+  it("parses AnyTLS with server-cert-fingerprint-sha256 (cert pinning)", () => {
+    const node = parseSurgeProxyLine(
+      "🇭🇰 HK = anytls, 8d4a2926.ovalyraa.com, 15026, password=pwd, tfo=true, sni=ixigua.com, server-cert-fingerprint-sha256=fac26f65c034829da42d740d23c4a7202475a3834f0ebaecae5f934adbbfd640",
+    );
+    expect(node).toMatchObject({
+      type: "anytls",
+      sni: "ixigua.com",
+      fingerprint: "fac26f65c034829da42d740d23c4a7202475a3834f0ebaecae5f934adbbfd640",
+    });
+    // 证书锁定指纹不应被当成 uTLS 客户端指纹。
+    expect(node?.client_fingerprint).toBeUndefined();
   });
 
   it("returns empty for [General]-only conf with no proxy lines anywhere", () => {

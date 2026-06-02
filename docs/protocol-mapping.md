@@ -20,8 +20,8 @@
 | `tls` | `tls: bool` | `tls=bool` | [CS] |
 | `sni` | `sni:` | `sni=` | [CS] |
 | `skip_cert_verify` | `skip-cert-verify: bool` | `skip-cert-verify=bool` | [CS] |
-| `fingerprint` | `fingerprint:` | — | [C] |
-| `client_fingerprint` | `client-fingerprint:` | `tls-fingerprint=` | [CS] |
+| `fingerprint` | `fingerprint:` | `server-cert-fingerprint-sha256=` | [CS],服务器证书 SHA256 锁定(替代标准 X.509 校验);**区别于** `client_fingerprint` |
+| `client_fingerprint` | `client-fingerprint:` | `tls-fingerprint=` | [CS],uTLS 客户端指纹(chrome/firefox 等);**区别于** `fingerprint` |
 | `udp` | `udp: bool` | `udp-relay=bool` | [CS] |
 | `tfo` | `tfo: bool` | `tfo=bool` | [CS] |
 | `mptcp` | `mptcp: bool` | — | [C] |
@@ -201,7 +201,7 @@ WireGuard 在两端的**表达结构**完全不同:
 - Surge `Snell` 节点 → 跳过 + warning
 - Surge `RULE-SET,SYSTEM` → 跳过 + warning(含 USER-AGENT/PROCESS-NAME 无 Clash 等价)
 - Surge `RULE-SET,LAN` → 展开为内联 DOMAIN-SUFFIX,local + IP-CIDR 列表
-- Surge 专属 hosts(`server:` / `DOMAIN-SET:` / `RULE-SET:`) → 跳过 + warning
+- Surge hosts `server:`(指定 DNS) → 转 `dns.proxy-server-nameserver-policy`(按域名 `*.`→`+.`,依赖 `proxy-server-nameserver` 非空);`DOMAIN-SET:` / `RULE-SET:` → 跳过 + warning
 
 ### Surge 输出降级
 - Clash `peers:` (WireGuard 多 peer) → 仅取第一个 peer + warning
@@ -264,16 +264,18 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 | 多个 IP / 多上游 | 支持 `domain: [1.1.1.1, 2.2.2.2]` | 同 key 展开多行 `domain = v` |
 | 域名别名(CNAME) | 支持(仅允许单个别名) | 支持 `domain = other.com` |
 | 通配符 | `*` / `+` / `.`(mihomo 语义) | `*` / `?`(Surge 语义,原样透传) |
-| 指定 DNS `server:` | 跳过 + warning | 支持 `domain = server:8.8.8.8`(含 `server:system`/`syslib`) |
+| 指定 DNS `server:` | → `dns.proxy-server-nameserver-policy`(需 `proxy-server-nameserver` 非空) | 支持 `domain = server:8.8.8.8`(含 `server:system`/`syslib`) |
 | `DOMAIN-SET:` / `RULE-SET:` 批量绑定 | 跳过 + warning | 原样输出 |
 
-**自动识别规则**(`isSurgeOnlyHostEntry`):key 以 `DOMAIN-SET:`/`RULE-SET:` 开头,或任一 value 以 `server:` 开头 → 判定为 Surge 专属,Clash 输出跳过该条并发 warning。
+**Clash 拆分**(`splitClashHosts`):value 含 `server:` 的条目 → `dns.proxy-server-nameserver-policy`(key 做 `*.`→`+.`,值剥 `server:` 前缀;`server:system`→`system`,`server:syslib` 无等价跳过);`DOMAIN-SET:`/`RULE-SET:` key → Clash 无等价,跳过 + warning;其余纯 IP / CNAME → 顶层 `hosts:`。
 
-**同 key 多值**:value 含逗号或为数组时,Clash 输出 YAML 数组(mihomo `config.go::parseHosts` / `NewHostValue` 支持);Surge `[Host]` 把每个值**展开成多行** `key = value` —— 支持给同一域名指定多个 `server:` 上游 DNS(机场常借此规避封锁),多 IP 同理。
+**server: → Clash DNS policy**:机场给节点域名指定 DoH(如 `*.ovalyraa.com = server:https://doh/dns-query`)时,Surge 走 `[Host]` 多行、Clash 走 `dns.proxy-server-nameserver-policy`(**按域名匹配,多机场合并不串台**)。mihomo 要求 `proxy-server-nameserver` 非空 policy 才生效,故需在 generals DNS 配 `proxy_server_nameserver`([C],兜底通用解析器);为空时 generator 发 warning 且前端 DNS 表单红色标记。
+
+**同 key 多值**:value 含逗号或为数组时,Clash 顶层 `hosts:` 输出 YAML 数组(mihomo `config.go::parseHosts` / `NewHostValue` 支持);Surge `[Host]` 把每个值**展开成多行** `key = value` —— 支持给同一域名指定多个 `server:` 上游 DNS(机场常借此规避封锁),多 IP 同理。
 
 **provider 级 host**:每个 provider 可配 `hosts` + `emit_hosts`(默认 `true`)。`profile-resolver` 用 `mergeHostMaps` 把 `general.hosts` 与所有启用且 `emit_hosts` 的 provider.hosts 去重合并后交给两端 generator;导入 Surge conf 时 `[Host]` 段同一 key 的多行会保留为数组。
 
-**已知限制**:通配符 `+`/`.` 前缀与特殊值 `lan` 仅 Clash 有等价语义,透传到 Surge 会被当字面域名;Clash 端某条 host 若含 `server:` 值则整条跳过(实际场景多为纯 server:);多 IP 在 Surge 展开多行是否被客户端接受需真机确认,多 server 上游为实证场景。
+**已知限制**:`server:` → Clash 用 `+.` 通配(含裸域,语义略宽于 Surge `*.`),对节点子域场景均可命中,需真机各导入一次确认;`server:syslib` 与混入 `server:` 的非解析器值在 Clash 被忽略 + warning;通配符 `+`/`.` 前缀与特殊值 `lan` 仅 Clash 有等价语义,透传到 Surge 会被当字面域名。
 
 参考(mihomo Stable / Surge 5):mihomo `docs/config.yaml` hosts 段;Surge manual [Local DNS Mapping](https://manual.nssurge.com/dns/local-dns-mapping.html)。
 

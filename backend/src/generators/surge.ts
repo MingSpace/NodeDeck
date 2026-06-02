@@ -450,6 +450,10 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
 
   if (node.sni) params.push(`sni=${node.sni}`);
   if (node.skip_cert_verify) params.push(`skip-cert-verify=${node.skip_cert_verify}`);
+  // 服务器证书指纹锁定(TLS 通用参数,适用 HTTP/SOCKS5-TLS/VMess/Trojan/TUIC/Hysteria2/AnyTLS):
+  // 用固定证书指纹替代标准 X.509 校验,机场常借此配合伪装 SNI 使用。
+  // 区别于下面 client_fingerprint -> tls-fingerprint(uTLS 客户端指纹)。
+  if (node.fingerprint) params.push(`server-cert-fingerprint-sha256=${node.fingerprint}`);
   if (node.client_fingerprint) params.push(`tls-fingerprint=${node.client_fingerprint}`);
   if (node.alpn && node.alpn.length > 0) for (const a of node.alpn) params.push(`alpn=${a}`);
   if (node.tfo) params.push(`tfo=${node.tfo}`);

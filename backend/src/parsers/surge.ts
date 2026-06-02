@@ -95,7 +95,9 @@ export function parseSurgeProxyLine(line: string): Node | null {
     skip_cert_verify: parseBool(params["skip-cert-verify"]),
     udp: parseBool(params["udp-relay"]) ?? true,
     tfo: parseBool(params.tfo),
-    fingerprint: params["tls-fingerprint"],
+    // `fingerprint` = 服务器证书 SHA256 锁定(Surge `server-cert-fingerprint-sha256`);
+    // `client_fingerprint` = uTLS 客户端指纹(Surge `tls-fingerprint`)。两者语义不同,不可混用。
+    fingerprint: params["server-cert-fingerprint-sha256"],
     client_fingerprint: params["tls-fingerprint"],
     alpn: params.alpn ? [params.alpn] : undefined,
     chain_via: params["underlying-proxy"],

@@ -162,4 +162,22 @@ export const protocolFixtures: { name: string; node: Node }[] = [
       tags: [],
     },
   },
+  {
+    // 机场常见形态:伪装 SNI(ixigua.com)+ 服务器证书 SHA256 锁定。
+    // 验证 fingerprint -> clash `fingerprint:` / surge `server-cert-fingerprint-sha256=`。
+    name: "anytls-cert-pinning",
+    node: {
+      name: "🇭🇰 HK-AnyTLS",
+      type: "anytls",
+      server: "8d4a2926.example.com",
+      port: 15026,
+      password: "anytls-pwd",
+      tls: true,
+      sni: "ixigua.com",
+      fingerprint: "fac26f65c034829da42d740d23c4a7202475a3834f0ebaecae5f934adbbfd640",
+      tfo: true,
+      udp: true,
+      tags: [],
+    },
+  },
 ];
