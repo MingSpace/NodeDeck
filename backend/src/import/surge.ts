@@ -158,7 +158,7 @@ function parseHttpApi(kv: Record<string, string>): GeneralPreset["http_api"] | u
   };
 }
 
-function parseHostSection(text: string): Record<string, string | string[]> {
+export function parseHostSection(text: string): Record<string, string | string[]> {
   const body = extractSection(text, "Host");
   if (!body) return {};
   const out: Record<string, string | string[]> = {};

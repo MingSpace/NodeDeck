@@ -41,9 +41,15 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
     // 解析出 0 节点 ≠ "ok"——这是用户最容易踩的坑(尤其 inline 类型 content 为空 / 格式错配)。
     // 直接写 error 状态 + 具体原因,让前端能给出有用反馈,而不是绿色徽标"0 个节点"装作成功。
     if (nodes.length === 0) {
+      const emptyReason =
+        provider.type === "inline"
+          ? "请在编辑器中填写节点文本"
+          : provider.type === "file"
+            ? "文件为空"
+            : "已尝试多个 User-Agent 上游仍返回空 body;该订阅可能已失效,或需要特定 UA——可在节点源里手动指定 User-Agent";
       const reason =
         result.text.trim().length === 0
-          ? `content 为空(${provider.type === "inline" ? "请在编辑器中填写节点文本" : "上游返回了空响应"})`
+          ? `content 为空(${emptyReason})`
           : `未识别到任何节点(parser_hint=${provider.parser_hint})。支持: Clash YAML(含 proxies: 数组) / Surge .conf / 节点 URI 列表 / v2ray base64;direct 节点会被跳过。可尝试手动指定 parser_hint`;
       const cache: ProviderCache = {
         provider_id: provider.id,

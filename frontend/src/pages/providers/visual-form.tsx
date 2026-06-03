@@ -1,5 +1,7 @@
 import { useRef, type ChangeEvent } from "react";
-import { Upload } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Upload, Download } from "lucide-react";
+import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -69,7 +71,7 @@ export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
   name: "new provider",
   type: "http",
   url: "https://example.com/subscribe?token=xxx",
-  user_agent: "Surge/2400",
+  user_agent: "",
   refresh: { interval: "12h" },
   parser_hint: "auto",
   enabled: true,
@@ -88,7 +90,7 @@ export const INLINE_PROVIDER_TEMPLATE: Partial<ProviderData> = {
   name: "static nodes",
   type: "inline",
   content: "",
-  user_agent: "Surge/2400",
+  user_agent: "",
   refresh: { interval: "12h" },
   parser_hint: "auto",
   enabled: true,
@@ -102,6 +104,28 @@ export const INLINE_PROVIDER_TEMPLATE: Partial<ProviderData> = {
 };
 
 const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
+
+type HostMap = Record<string, string | string[]>;
+
+interface ExtractHostsResp {
+  format: "clash" | "surge" | "none";
+  count: number;
+  hosts: HostMap;
+}
+
+// 把抽取到的 hosts 并入现有 hosts:同 key 的值并集去重,单值塌成字符串。现有条目不被覆盖。
+function mergeHostDrafts(current: HostMap | undefined, incoming: HostMap): HostMap {
+  const norm = (v: string | string[]) => (Array.isArray(v) ? v : [v]);
+  const acc: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(current ?? {})) acc[k] = [...norm(v)];
+  for (const [k, v] of Object.entries(incoming)) {
+    const list = acc[k] ?? (acc[k] = []);
+    for (const item of norm(v)) if (!list.includes(item)) list.push(item);
+  }
+  const out: HostMap = {};
+  for (const [k, list] of Object.entries(acc)) out[k] = list.length === 1 ? list[0] : list;
+  return out;
+}
 
 interface Props {
   data: ProviderData;
@@ -121,6 +145,35 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
   const tabValue =
     data.type === "http" ? "http" : data.type === "inline" ? "inline" : "";
 
+  // 从订阅抽取上游自带的 hosts 段(Clash 顶层 hosts: / Surge [Host])并入当前 host 列表。
+  const canExtractHosts =
+    data.type === "http"
+      ? !!data.url?.trim()
+      : data.type === "file"
+        ? !!data.path?.trim()
+        : !!data.content?.trim();
+  const extractHosts = useMutation({
+    mutationFn: () =>
+      api.post<ExtractHostsResp>("/api/providers/extract-hosts", {
+        type: data.type,
+        url: data.url,
+        path: data.path,
+        content: data.content,
+        user_agent: data.user_agent,
+      }),
+    onSuccess: (res) => {
+      if (res.count === 0) {
+        toast({ title: "未在订阅中发现 hosts 段", variant: "info" });
+        return;
+      }
+      update({ hosts: mergeHostDrafts(data.hosts, res.hosts) });
+      toast({ title: `已抽取 ${res.count} 条 host`, description: `来源:${res.format}`, variant: "success" });
+    },
+    onError: (err) => {
+      toast({ title: "抽取 hosts 失败", description: err instanceof Error ? err.message : String(err), variant: "error" });
+    },
+  });
+
   // @business_rule: tab 切换只改 type,另一边字段(url / content)保留为"草稿"。
   // 之前主动把对侧字段置 undefined 会让用户在 URL 订阅 / 静态节点之间来回切换时丢内容,
   // 例如在静态节点粘了大段 content → 切到 URL 订阅 → 切回静态节点,content 就空了。
@@ -131,7 +184,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
       update({
         type: "http",
         url: data.url ?? "",
-        user_agent: data.user_agent || "Surge/2400",
+        user_agent: data.user_agent ?? "",
         path: undefined,
       });
     } else {
@@ -230,8 +283,12 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
             <Input
               value={data.user_agent ?? ""}
               onChange={(e) => update({ user_agent: e.target.value })}
-              placeholder="Surge/2400"
+              placeholder="留空 = 自动尝试多种 UA"
             />
+            <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+              留空即可。机场常按 UA 网关:某些 UA(尤其 Surge 系)会返回 200 但空 body,
+              此时后端会自动换 clash-verge / mihomo 等 UA 重试,直到拿到内容。需要钉死某个 UA 再手动填。
+            </p>
           </Field>
         </TabsContent>
         <TabsContent value="inline" className="space-y-2 pt-3">
@@ -405,6 +462,21 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
             <Label className="text-xs">
               生成订阅时自动带出以下 host (关闭则不输出此源的 host)
             </Label>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!canExtractHosts || extractHosts.isPending}
+              onClick={() => extractHosts.mutate()}
+            >
+              <Download className="h-3.5 w-3.5" />
+              {extractHosts.isPending ? "抽取中…" : "从订阅抽取 hosts"}
+            </Button>
+            <span className="text-[11px] text-muted-foreground">
+              拉取上游配置自带的 hosts 段(Clash 顶层 hosts: / Surge [Host])并入下方;无则提示未发现
+            </span>
           </div>
           <HostRowsEditor
             value={data.hosts}

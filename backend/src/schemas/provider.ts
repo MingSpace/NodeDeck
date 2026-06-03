@@ -32,7 +32,9 @@ export const providerSchema = z
     url: z.string().url().optional(),
     path: z.string().optional(),
     content: z.string().optional(),
-    user_agent: z.string().default("Surge/2400"),
+    // 默认留空:很多机场按 UA 网关,Surge 系会被吐空 body。空 UA 先试,拿到空响应时
+    // fetcher 会自动回退到 Clash 系等候选 UA(见 providers/fetcher.ts FALLBACK_USER_AGENTS)。
+    user_agent: z.string().default(""),
     refresh: refreshSchema.default({ interval: "12h" }),
     parser_hint: parserHintSchema.default("auto"),
     enabled: z.boolean().default(true),
