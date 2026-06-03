@@ -46,6 +46,12 @@ async function bootstrap() {
       "/assets/*",
       serveStatic({ root: relativizeForHono(staticDir) }),
     );
+    // 根级静态资源(favicon.svg / robots.txt / manifest.json 等),
+    // 必须在 SPA fallback 之前命中,否则会被兜底返回成 index.html。
+    app.use(
+      "/favicon.svg",
+      serveStatic({ root: relativizeForHono(staticDir) }),
+    );
     app.get("/", (c) => c.html(indexHtml));
     app.get("*", (c) => {
       // SPA fallback for client routes
