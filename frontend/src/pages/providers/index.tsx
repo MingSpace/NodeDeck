@@ -439,7 +439,11 @@ export function ProvidersPage() {
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="flex items-center gap-1.5 flex-wrap justify-end">
                     <Badge variant="outline" className="text-xs">
-                      {isInline ? "本地" : p.type}
+                      {p.type === "inline"
+                        ? "静态节点"
+                        : p.type === "file"
+                          ? "服务器本地路径"
+                          : "URL 订阅"}
                     </Badge>
                     {!p.enabled && (
                       <Badge
