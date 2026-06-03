@@ -308,7 +308,8 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 | 改 yaml 后没生效 | chokidar 没触发(挂载文件系统问题) | 重启容器或在 Web UI Admin 触发刷新;Docker on macOS 的 NFS 挂载已知有延迟 |
 | Hysteria2 obfs 不工作 | obfs-password 没设(salamander 必填) | schema 加联动校验;客户端日志会写明缺哪个字段 |
 | host 的 `server:` 在 Clash 不生效 | generals DNS 的 `proxy-server-nameserver` 为空,而 `proxy-server-nameserver-policy` 需它非空才生效 | 在 generals DNS 填 `proxy-server-nameserver`(通用 DoH);`server:` 由 `splitClashHosts` 投到 `dns.proxy-server-nameserver-policy`(`*.`→`+.`),`DOMAIN-SET:`/`RULE-SET:` 仍跳过 + warning(`backend/src/generators/hosts.ts`) |
-| provider 的 host 没出现在订阅里 | provider `emit_hosts` 关了,或该 provider 被禁用 | 打开节点源编辑页「节点源 Host」区的 emit_hosts 开关;`general.hosts` 与启用 provider.hosts 由 `mergeHostMaps` 去重合并;上游自带 hosts 段可在该区点「从订阅抽取 hosts」一键拉入(`POST /api/providers/extract-hosts` + `import/extract-hosts.ts`,仅 Clash YAML 顶层 `hosts:` / Surge `[Host]` 有,base64/uri 列表无) |
+| provider 的 host 没出现在订阅里 | provider `emit_hosts` 关了,或该 provider 被禁用 | 打开节点源编辑页「节点源 Host」区的 emit_hosts 开关;输出 hosts = `general.hosts` + 各启用源手动 `provider.hosts` + 各源**上游自动解析**的 `cache.extracted_hosts`,由 `mergeHostMaps` 去重合并 |
+| 机场 `[Host]`/`hosts:` 段(给节点域名配 DoH 防污染)没带进订阅 | 旧版只合并手动 `provider.hosts`,不解析上游自带 hosts | 上游 Clash 顶层 `hosts:` / Surge `[Host]` 段在**每次刷新**时由 `import/extract-hosts.ts` 解析并存入 provider cache(`extracted_hosts`),`profile-resolver` 生成订阅时按 `emit_hosts` 自动并入(编辑页「节点源 Host」区有只读预览,`GET /api/providers/:id/extracted-hosts`);base64/uri 列表订阅无 hosts 段,解析为空属正常 |
 | 节点源报「content 为空(…上游仍返回空 body)」 | 机场按 User-Agent 网关,Surge 系 UA 返回 200 + 空 body(实测 sparkcloud 即此) | 默认 `user_agent` 已改空字符串,fetcher 拿到空 body 会自动回退 `clash-verge`/`ClashMeta`/`mihomo` 等 UA 重试(`providers/fetcher.ts` 的 `FALLBACK_USER_AGENTS`);仍全空则订阅多半失效或需特定 UA,可在节点源手动指定 User-Agent |
 
 

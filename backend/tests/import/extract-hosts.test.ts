@@ -54,4 +54,30 @@ proxies:
     expect(extractHostsFromText("").format).toBe("none");
     expect(extractHostsFromText("c3M6Ly9hYmM=").format).toBe("none");
   });
+
+  it("真实 Surge 订阅(含 #!MANAGED-CONFIG 头 + 多段)正确落到 [Host]", () => {
+    const text = `#!MANAGED-CONFIG https://resourcemap.lol/sub?token=x&type=surge interval=43200
+[General]
+loglevel = notify
+ipv6 = true
+
+[Proxy]
+🇭🇰 Hong Kong 01 = anytls, 8d4a2926.ovalyraa.com, 15026, password=p, sni=ixigua.com
+
+[Rule]
+FINAL,Kuromis,dns-failed
+
+[Host]
+*.ovalyraa.com = server:https://hydrogen1693.com:44443/dns-query/abc
+*.ovalyraa.com = server:https://subprime7404.com:44443/dns-query/abc
+*.ovalyraa.com = server:https://tribunal2944.com/dns-query/abc
+`;
+    const res = extractHostsFromText(text);
+    expect(res.format).toBe("surge");
+    expect(res.hosts["*.ovalyraa.com"]).toEqual([
+      "server:https://hydrogen1693.com:44443/dns-query/abc",
+      "server:https://subprime7404.com:44443/dns-query/abc",
+      "server:https://tribunal2944.com/dns-query/abc",
+    ]);
+  });
 });

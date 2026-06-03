@@ -5,6 +5,7 @@ import { readProviderCache, writeProviderCache, type ProviderCache } from "./cac
 import { parseSubscription } from "../parsers/index.js";
 import { annotateNodes } from "../parsers/normalize.js";
 import { filterInfoNodes } from "../parsers/info-node-filter.js";
+import { extractHostsFromText } from "../import/extract-hosts.js";
 import { parseUserInfoHeader } from "../schemas/userinfo.js";
 import { providerRepo } from "../storage/repos.js";
 import { REFRESH_INTERVAL_MINUTES } from "../schemas/common.js";
@@ -38,6 +39,10 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
     const rawNodes = parseSubscription(result.text, provider.parser_hint);
     const nodes = annotateNodes(rawNodes).map((n) => ({ ...n, source_provider_id: provider.id }));
     const userinfo = parseUserInfoHeader(result.userinfo_header) ?? undefined;
+    // 上游自带的 hosts 段(Clash 顶层 hosts: / Surge [Host])随刷新解析存入 cache;
+    // 生成订阅时由 profile-resolver 按 emit_hosts 自动并入,故"每次更新自动解析"。
+    const extractedMap = extractHostsFromText(result.text).hosts;
+    const extracted_hosts = Object.keys(extractedMap).length > 0 ? extractedMap : undefined;
     // 解析出 0 节点 ≠ "ok"——这是用户最容易踩的坑(尤其 inline 类型 content 为空 / 格式错配)。
     // 直接写 error 状态 + 具体原因,让前端能给出有用反馈,而不是绿色徽标"0 个节点"装作成功。
     if (nodes.length === 0) {
@@ -59,6 +64,7 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
         raw_userinfo_header: result.userinfo_header ?? undefined,
         userinfo,
         nodes: [],
+        extracted_hosts,
       };
       await writeProviderCache(cache);
       logger.warn({ providerId: provider.id, reason }, "Provider parsed 0 nodes");
@@ -71,9 +77,13 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
       raw_userinfo_header: result.userinfo_header ?? undefined,
       userinfo,
       nodes,
+      extracted_hosts,
     };
     await writeProviderCache(cache);
-    logger.info({ providerId: provider.id, nodeCount: nodes.length }, "Provider refreshed");
+    logger.info(
+      { providerId: provider.id, nodeCount: nodes.length, extractedHostCount: Object.keys(extracted_hosts ?? {}).length },
+      "Provider refreshed",
+    );
     return cache;
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,6 @@
-import { useRef, type ChangeEvent } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { Upload, Download } from "lucide-react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -107,24 +107,20 @@ const MAX_IMPORT_BYTES = 5 * 1024 * 1024;
 
 type HostMap = Record<string, string | string[]>;
 
-interface ExtractHostsResp {
-  format: "clash" | "surge" | "none";
+interface ExtractedHostsResp {
   count: number;
+  fetched_at?: number;
   hosts: HostMap;
 }
 
-// 把抽取到的 hosts 并入现有 hosts:同 key 的值并集去重,单值塌成字符串。现有条目不被覆盖。
-function mergeHostDrafts(current: HostMap | undefined, incoming: HostMap): HostMap {
-  const norm = (v: string | string[]) => (Array.isArray(v) ? v : [v]);
-  const acc: Record<string, string[]> = {};
-  for (const [k, v] of Object.entries(current ?? {})) acc[k] = [...norm(v)];
-  for (const [k, v] of Object.entries(incoming)) {
-    const list = acc[k] ?? (acc[k] = []);
-    for (const item of norm(v)) if (!list.includes(item)) list.push(item);
+// 把 host map 摊平成 [key, value] 行(同 key 多值各占一行),用于只读预览。
+function flattenHostRows(map: HostMap | undefined): Array<{ key: string; value: string }> {
+  if (!map) return [];
+  const rows: Array<{ key: string; value: string }> = [];
+  for (const [key, v] of Object.entries(map)) {
+    for (const value of Array.isArray(v) ? v : [v]) rows.push({ key, value });
   }
-  const out: HostMap = {};
-  for (const [k, list] of Object.entries(acc)) out[k] = list.length === 1 ? list[0] : list;
-  return out;
+  return rows;
 }
 
 interface Props {
@@ -145,34 +141,15 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
   const tabValue =
     data.type === "http" ? "http" : data.type === "inline" ? "inline" : "";
 
-  // 从订阅抽取上游自带的 hosts 段(Clash 顶层 hosts: / Surge [Host])并入当前 host 列表。
-  const canExtractHosts =
-    data.type === "http"
-      ? !!data.url?.trim()
-      : data.type === "file"
-        ? !!data.path?.trim()
-        : !!data.content?.trim();
-  const extractHosts = useMutation({
-    mutationFn: () =>
-      api.post<ExtractHostsResp>("/api/providers/extract-hosts", {
-        type: data.type,
-        url: data.url,
-        path: data.path,
-        content: data.content,
-        user_agent: data.user_agent,
-      }),
-    onSuccess: (res) => {
-      if (res.count === 0) {
-        toast({ title: "未在订阅中发现 hosts 段", variant: "info" });
-        return;
-      }
-      update({ hosts: mergeHostDrafts(data.hosts, res.hosts) });
-      toast({ title: `已抽取 ${res.count} 条 host`, description: `来源:${res.format}`, variant: "success" });
-    },
-    onError: (err) => {
-      toast({ title: "抽取 hosts 失败", description: err instanceof Error ? err.message : String(err), variant: "error" });
-    },
+  // 该节点源上游自带、刷新时自动解析到的 hosts(只读预览)。emit_hosts 开启时这些会随订阅自动带出。
+  // 仅对已保存的源查询(新建源还没 cache);切到 YAML 模式或刷新后自动重取。
+  const autoHostsQuery = useQuery<ExtractedHostsResp>({
+    queryKey: ["providers", data.id, "extracted-hosts"],
+    queryFn: () => api.get(`/api/providers/${data.id}/extracted-hosts`),
+    enabled: !isNew && !!data.id,
+    staleTime: 30_000,
   });
+  const autoHostRows = flattenHostRows(autoHostsQuery.data?.hosts);
 
   // @business_rule: tab 切换只改 type,另一边字段(url / content)保留为"草稿"。
   // 之前主动把对侧字段置 undefined 会让用户在 URL 订阅 / 静态节点之间来回切换时丢内容,
@@ -228,6 +205,12 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
   };
 
   const tagsText = (data.tags ?? []).join(", ");
+
+  // 各折叠模块「有数据则默认展开」的判定:让用户一打开节点源就看到已配置的内容,无需逐个点开。
+  const hasClashProvider = cpp.enabled === true;
+  const hasHosts = !!data.hosts && Object.keys(data.hosts).length > 0;
+  const hasTagsOrNotes =
+    (data.tags?.length ?? 0) > 0 || !!data.notes?.trim();
 
   return (
     <div className="space-y-4">
@@ -359,7 +342,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
       </Field>
 
       {data.type !== "inline" && (
-        <CollapsibleSection title="刷新策略" defaultOpen>
+        <CollapsibleSection title="刷新策略" autoOpen>
           <Field label="刷新周期">
             <Select
               value={refresh.interval}
@@ -397,7 +380,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
         </CollapsibleSection>
       )}
 
-      <CollapsibleSection title="Clash proxy-providers 暴露 (mihomo)">
+      <CollapsibleSection title="Clash proxy-providers 暴露 (mihomo)" autoOpen={hasClashProvider}>
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Switch
@@ -452,7 +435,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection title="节点源 Host (DNS 解析覆盖)">
+      <CollapsibleSection title="节点源 Host (DNS 解析覆盖)" autoOpen={hasHosts}>
         <div className="space-y-3">
           <div className="flex items-center gap-2">
             <Switch
@@ -463,20 +446,42 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
               生成订阅时自动带出以下 host (关闭则不输出此源的 host)
             </Label>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={!canExtractHosts || extractHosts.isPending}
-              onClick={() => extractHosts.mutate()}
-            >
-              <Download className="h-3.5 w-3.5" />
-              {extractHosts.isPending ? "抽取中…" : "从订阅抽取 hosts"}
-            </Button>
-            <span className="text-[11px] text-muted-foreground">
-              拉取上游配置自带的 hosts 段(Clash 顶层 hosts: / Surge [Host])并入下方;无则提示未发现
-            </span>
+
+          {!isNew && (
+            <div className="rounded-md border bg-muted/30 p-2.5 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium">自动从订阅解析到的 host</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {data.emit_hosts !== false ? "随订阅自动带出 · 每次刷新更新" : "emit_hosts 已关闭,不带出"}
+                </span>
+              </div>
+              {autoHostsQuery.isLoading ? (
+                <div className="text-[11px] text-muted-foreground">加载中…</div>
+              ) : autoHostRows.length === 0 ? (
+                <div className="text-[11px] text-muted-foreground">
+                  未从该订阅解析到 host(上游配置无 Clash <span className="font-mono">hosts:</span> / Surge{" "}
+                  <span className="font-mono">[Host]</span> 段;刷新后仍为空则确属没有)
+                </div>
+              ) : (
+                <div className="space-y-0.5">
+                  {autoHostRows.map((r, i) => (
+                    <div key={i} className="flex gap-2 text-[11px] font-mono">
+                      <span className="shrink-0 max-w-[40%] truncate" title={r.key}>
+                        {r.key}
+                      </span>
+                      <span className="text-muted-foreground">=</span>
+                      <span className="truncate text-muted-foreground" title={r.value}>
+                        {r.value}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="text-[11px] text-muted-foreground">
+            下面是额外手动追加的 host(与上面自动解析到的一并去重带出),一般无需填写:
           </div>
           <HostRowsEditor
             value={data.hosts}
@@ -485,7 +490,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
         </div>
       </CollapsibleSection>
 
-      <CollapsibleSection title="标签 / 备注">
+      <CollapsibleSection title="标签 / 备注" autoOpen={hasTagsOrNotes}>
         <div className="space-y-3">
           <Field label="Tags (逗号分隔)">
             <Input
@@ -534,15 +539,25 @@ function Field({
 
 function CollapsibleSection({
   title,
-  defaultOpen,
+  autoOpen,
   children,
 }: {
   title: string;
-  defaultOpen?: boolean;
+  // 该模块当前是否"有数据"。由无变有(或切换节点源后修正初始挂载时的陈旧判断)时自动展开,
+  // 由有变无时收起;autoOpen 不变则不干预,用户手动开合得以保留。
+  autoOpen?: boolean;
   children: React.ReactNode;
 }) {
+  const [open, setOpen] = useState(!!autoOpen);
+  useEffect(() => {
+    setOpen(!!autoOpen);
+  }, [autoOpen]);
   return (
-    <details open={defaultOpen} className="border rounded-md">
+    <details
+      open={open}
+      onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}
+      className="border rounded-md"
+    >
       <summary className="px-3 py-2 cursor-pointer text-sm font-medium bg-muted/30 hover:bg-muted/50 rounded-md">
         {title}
       </summary>

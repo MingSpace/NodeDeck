@@ -252,6 +252,46 @@ describe("refreshProvider - 解析出 0 节点时写 error 状态", () => {
   });
 });
 
+describe("refreshProvider - 解析并缓存上游 hosts 段(emit_hosts 自动带出的数据源)", () => {
+  it("Clash 顶层 hosts: 段被解析进 cache.extracted_hosts", async () => {
+    const provider = fakeProvider({ interval: "12h" });
+    mockedReadCache.mockResolvedValue(null);
+    mockedFetch.mockResolvedValue({
+      text: [
+        "proxies:",
+        "  - { name: HK, type: ss, server: 1.2.3.4, port: 8388, cipher: aes-128-gcm, password: pass }",
+        "hosts:",
+        "  '*.ovalyraa.com': server:https://doh.example/dns-query",
+        "",
+      ].join("\n"),
+      userinfo_header: null,
+      fetched_at: Date.now(),
+    });
+
+    const result = await refreshProvider(provider, { force: true });
+
+    expect(result.status).toBe("ok");
+    expect(result.extracted_hosts).toEqual({
+      "*.ovalyraa.com": "server:https://doh.example/dns-query",
+    });
+  });
+
+  it("上游无 hosts 段时 extracted_hosts 为 undefined", async () => {
+    const provider = fakeProvider({ interval: "12h" });
+    mockedReadCache.mockResolvedValue(null);
+    mockedFetch.mockResolvedValue({
+      text: "ss://YWVzLTEyOC1nY206cGFzc0AyLjIuMi4yOjIwODA=#t",
+      userinfo_header: null,
+      fetched_at: Date.now(),
+    });
+
+    const result = await refreshProvider(provider, { force: true });
+
+    expect(result.status).toBe("ok");
+    expect(result.extracted_hosts).toBeUndefined();
+  });
+});
+
 describe("refreshAllProviders - never(手动刷新)与 force 交互", () => {
   it("force=true(手动「刷新全部」)时,never 也一起拉,skippedLocked 为空", async () => {
     const manualProvider = fakeProvider({ interval: "never" });

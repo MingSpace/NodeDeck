@@ -7,6 +7,7 @@ import type { Node } from "../schemas/node.js";
 import type { Provider } from "../schemas/provider.js";
 import { providerRepo, proxyGroupRepo, rulesetRepo, generalPresetRepo, surgeModuleRepo } from "../storage/repos.js";
 import { buildNodePool } from "../providers/pool.js";
+import { readProviderCache } from "../providers/cache-store.js";
 import { mergeHostMaps } from "./hosts.js";
 
 export interface ResolvedProfile {
@@ -100,10 +101,18 @@ export async function resolveProfile(profile: Profile): Promise<ResolvedProfile>
     else warnings.push(`surge_module "${id}" not found`);
   });
 
-  // general.hosts + 启用且 emit_hosts 的 provider.hosts 去重合并;同 key 多值会在 Surge 端展开多行。
+  // hosts 合并:general.hosts → 各启用 provider 的手动 hosts → 各 provider 上游自动解析的 hosts。
+  // emit_hosts 关闭的 provider 两类都不带出。自动解析结果随刷新写入 provider cache
+  // (buildNodePool 上面已跑过,on_request 源此刻 cache 是最新的),故"每次更新自动解析并应用"。
+  // 同 key 多值会在 Surge 端展开多行 / Clash 端走 proxy-server-nameserver-policy。
+  const providerCaches = await Promise.all(providers.map((p) => readProviderCache(p.id)));
+  const emitProviders = providers
+    .map((p, i) => ({ provider: p, cache: providerCaches[i] }))
+    .filter(({ provider }) => provider.emit_hosts !== false);
   const mergedHosts = mergeHostMaps(
     general?.hosts,
-    ...providers.filter((p) => p.emit_hosts !== false && p.hosts).map((p) => p.hosts),
+    ...emitProviders.map(({ provider }) => provider.hosts),
+    ...emitProviders.map(({ cache }) => cache?.extracted_hosts),
   );
   const hosts = Object.keys(mergedHosts).length > 0 ? mergedHosts : undefined;
 
