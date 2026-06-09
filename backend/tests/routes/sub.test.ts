@@ -292,7 +292,7 @@ describe("/sub/provider/:id/clash.yaml route", () => {
         },
       }),
     });
-    mockedLoadProviderNodes.mockResolvedValue([sampleNode]);
+    mockedLoadProviderNodes.mockResolvedValue({ nodes: [sampleNode], revalidating: false });
 
     const app = buildApp();
     const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");

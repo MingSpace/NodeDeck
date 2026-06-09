@@ -23,23 +23,32 @@ export interface NodePoolItem {
  */
 export async function buildNodePool(opts: {
   providerIds?: string[]; // restrict to these provider ids; if undefined, all enabled
-} = {}): Promise<{ nodes: Node[]; byProvider: Map<string, Node[]> }> {
+  // true = 预览路径:无 cache 的机场不同步拉,后台刷新并把 id 计入 revalidating,先返回空。
+  staleWhileRevalidate?: boolean;
+} = {}): Promise<{ nodes: Node[]; byProvider: Map<string, Node[]>; revalidating: string[] }> {
   const all = await providerRepo.list();
   const targets = all.filter(
     (entry) =>
       entry.data.enabled && (!opts.providerIds || opts.providerIds.includes(entry.data.id)),
   );
 
-  const nodesByProvider = await Promise.all(targets.map((entry) => loadProviderNodes(entry.data)));
+  const loaded = await Promise.all(
+    targets.map((entry) =>
+      loadProviderNodes(entry.data, { staleWhileRevalidate: opts.staleWhileRevalidate }),
+    ),
+  );
 
   const byProvider = new Map<string, Node[]>();
   const collected: Node[] = [];
+  const revalidating: string[] = [];
   targets.forEach((entry, i) => {
-    byProvider.set(entry.data.id, nodesByProvider[i]);
-    for (const n of nodesByProvider[i]) collected.push(n);
+    const { nodes, revalidating: pending } = loaded[i];
+    byProvider.set(entry.data.id, nodes);
+    for (const n of nodes) collected.push(n);
+    if (pending) revalidating.push(entry.data.id);
   });
 
-  return { nodes: dedupeNodes(collected, { strategy: "keep-first" }), byProvider };
+  return { nodes: dedupeNodes(collected, { strategy: "keep-first" }), byProvider, revalidating };
 }
 
 export interface ProviderSummary {

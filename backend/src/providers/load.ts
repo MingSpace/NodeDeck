@@ -104,18 +104,64 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
   }
 }
 
-export async function loadProviderNodes(provider: Provider): Promise<Node[]> {
+/**
+ * 后台刷新去重(singleflight)。SWR 预览路径在 cache miss 时 fire-and-forget 调用,
+ * 同一 provider 的并发预览请求(preview + node-pool-preview + 前端轮询)只触发一次真实 fetch,
+ * 避免冷启动瞬间把同一机场拉爆 / 浪费机场配额。
+ */
+const backgroundRevalidations = new Map<string, Promise<ProviderCache>>();
+
+export function revalidateProviderInBackground(provider: Provider): Promise<ProviderCache> {
+  const existing = backgroundRevalidations.get(provider.id);
+  if (existing) return existing;
+  // force=true:预览只在"无可用 cache"时才走到这里,直接穿透去机场拉种子。
+  const task = refreshProvider(provider, { force: true });
+  backgroundRevalidations.set(provider.id, task);
+  // 附加 catch 防 unhandledRejection(refreshProvider 内部通常已 swallow,这里兜底)。
+  task
+    .catch((err) => logger.warn({ err, providerId: provider.id }, "Background revalidation failed"))
+    .finally(() => backgroundRevalidations.delete(provider.id));
+  return task;
+}
+
+export interface LoadedProviderNodes {
+  nodes: Node[];
+  /**
+   * true = 该 provider 当前没有可用 cache,已在后台触发刷新,结果稍后可用。
+   * 仅 SWR 预览路径会出现;真实下发(/sub)路径同步等到结果,恒为 false。
+   */
+  revalidating: boolean;
+}
+
+export async function loadProviderNodes(
+  provider: Provider,
+  opts: { staleWhileRevalidate?: boolean } = {},
+): Promise<LoadedProviderNodes> {
+  // 预览路径(SWR):绝不同步等机场网络。有 cache(含 stale)立即用;无 cache 则后台拉一次(去重)、
+  // 先返回空,让首屏永远不卡在网络拉取上(冷启动体验的关键)。
+  if (opts.staleWhileRevalidate) {
+    const cache = await readProviderCache(provider.id);
+    if (cache?.nodes && cache.nodes.length > 0) {
+      return { nodes: filterInfoNodes(cache.nodes), revalidating: false };
+    }
+    void revalidateProviderInBackground(provider);
+    return { nodes: [], revalidating: true };
+  }
+
+  // 真实下发路径(/sub):保持原行为,cache miss 时同步拉,保证客户端永远拿到完整节点。
   // on_request: /sub 请求路径每次都同步去机场拉一次(失败回退 stale cache 由 refreshProvider 处理)。
   if (provider.refresh.interval === "on_request") {
     const refreshed = await refreshProvider(provider);
-    return filterInfoNodes(refreshed.nodes);
+    return { nodes: filterInfoNodes(refreshed.nodes), revalidating: false };
   }
   const cache = await readProviderCache(provider.id);
   // 保底:旧 cache 可能是过滤规则上线前写入的,里面还残留 Traffic/Expire 信息节点。
   // 这里再过滤一次,保证下游消费(策略组、profile、订阅生成)永远拿到干净集合。
-  if (cache?.nodes && cache.nodes.length > 0) return filterInfoNodes(cache.nodes);
+  if (cache?.nodes && cache.nodes.length > 0) {
+    return { nodes: filterInfoNodes(cache.nodes), revalidating: false };
+  }
   const refreshed = await refreshProvider(provider);
-  return filterInfoNodes(refreshed.nodes);
+  return { nodes: filterInfoNodes(refreshed.nodes), revalidating: false };
 }
 
 export interface RefreshAllResult {

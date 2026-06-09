@@ -108,6 +108,9 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
     // 关键反闪烁:queryKey 变化时保留上一次的 data,让"先变灰再复原"动画期间下方仍展示旧节点列表,
     // 避免瞬间出现"加载节点池中..."文案;isFetching 仍能驱动 opacity 渐隐。
     placeholderData: keepPreviousData,
+    // SWR:某些机场首次无 cache、正在后台拉取时,后端回 revalidating=true,
+    // 这里短轮询直到 cache 就绪(返回 false 停止),让冷启动的节点池自动补全。
+    refetchInterval: (query) => (query.state.data?.revalidating ? 2000 : false),
   });
   return Object.assign(query, { isStaleInput });
 }
@@ -119,7 +122,7 @@ export function useGeneratedPreview(
   enabled: boolean,
 ) {
   const debouncedDraft = useDebounced(draft, 500);
-  return useQuery<{ target: string; text: string; warnings: string[]; node_count: number }>({
+  return useQuery<{ target: string; text: string; warnings: string[]; node_count: number; revalidating?: boolean }>({
     // queryKey 直接用 debouncedDraft 对象,react-query 内部 hashFn 自己做 stable hash,
     // 不必每次 render 都 JSON.stringify 一遍。
     queryKey: ["preview", id, target, debouncedDraft],
@@ -138,6 +141,9 @@ export function useGeneratedPreview(
     staleTime: 30_000,
     // 个人自用,不需要 windowFocus 自动刷新。
     refetchOnWindowFocus: false,
+    // SWR:首屏命中"机场首次无 cache"时后端回 revalidating=true,这里短轮询直到 cache 就绪。
+    // 注意 staleTime=30s 不会阻塞 refetchInterval(后者独立调度),冷启动几秒内即可自动补全。
+    refetchInterval: (query) => (query.state.data?.revalidating ? 2000 : false),
   });
 }
 

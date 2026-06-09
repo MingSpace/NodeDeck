@@ -33,9 +33,14 @@ export interface ResolvedProfile {
   hosts?: Record<string, string[]>;
   surgeModules: SurgeModule[];
   warnings: string[];
+  // SWR 预览路径下,当前没有可用 cache、正在后台刷新的 provider id 列表(真实下发路径恒为空)。
+  revalidating: string[];
 }
 
-export async function resolveProfile(profile: Profile): Promise<ResolvedProfile> {
+export async function resolveProfile(
+  profile: Profile,
+  opts: { staleWhileRevalidate?: boolean } = {},
+): Promise<ResolvedProfile> {
   const warnings: string[] = [];
 
   // 把所有 IO(节点池 / providers / groups / rulesets / general / surge modules / 全 group 列表)
@@ -46,7 +51,7 @@ export async function resolveProfile(profile: Profile): Promise<ResolvedProfile>
 
   const [pool, providerEntries, groupEntries, ruleEntries, generalEntry, surgeModuleEntries, allGroupEntries] =
     await Promise.all([
-      buildNodePool({ providerIds: profile.providers }),
+      buildNodePool({ providerIds: profile.providers, staleWhileRevalidate: opts.staleWhileRevalidate }),
       Promise.all(profile.providers.map((id) => providerRepo.get(id))),
       Promise.all(profile.proxy_groups.map((id) => proxyGroupRepo.get(id))),
       Promise.all(ruleRefs.map((ref) => rulesetRepo.get(ref))),
@@ -129,5 +134,7 @@ export async function resolveProfile(profile: Profile): Promise<ResolvedProfile>
     hosts,
     surgeModules,
     warnings,
+    // mock 测试可能不返回该字段,容错为空数组。
+    revalidating: pool.revalidating ?? [],
   };
 }

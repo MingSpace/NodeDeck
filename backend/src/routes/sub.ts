@@ -226,7 +226,8 @@ async function handleProviderClashYaml(c: import("hono").Context) {
 
   // 仅取该 provider 的节点(不混入其他机场,也不混入手动节点),
   // 但仍走该 profile 的 node_filter 让用户能过滤/重命名。
-  const allNodes = await loadProviderNodes(provider);
+  // 真实下发:不传 staleWhileRevalidate,cache miss 时同步拉,保证客户端拿到完整节点。
+  const { nodes: allNodes } = await loadProviderNodes(provider);
   const filtered = applyNodeFilter(allNodes, profile.node_filter);
   const warnings: string[] = [];
   const text = generateProxyProviderYaml(filtered, warnings);

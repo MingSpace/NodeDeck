@@ -68,6 +68,8 @@ export interface NodePoolPreviewResp {
   count: number;
   raw_count: number;
   by_provider: Record<string, number>;
+  // true = 有机场当前无 cache、正在后台首次拉取,结果稍后可用(前端据此短轮询)。
+  revalidating?: boolean;
 }
 
 export function isFinalRule(r: RuleModuleRef): r is { final: string; dns_failed?: boolean } {

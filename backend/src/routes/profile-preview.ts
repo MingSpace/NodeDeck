@@ -108,8 +108,10 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
   }
   const { profile, validationWarnings } = resolution.result;
 
-  const resolved = await resolveProfile(profile);
+  // 预览走 stale-while-revalidate:有 cache(含 stale)立即返回,无 cache 的机场后台刷新、不同步等网络。
+  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true });
   const allWarnings = [...validationWarnings, ...resolved.warnings];
+  const revalidating = (resolved.revalidating?.length ?? 0) > 0;
 
   if (target === "clash") {
     const text = generateClashConfig({
@@ -132,7 +134,7 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
       },
       "Profile preview",
     );
-    return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length });
+    return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length, revalidating });
   }
   const cfg = await loadConfig();
   const baseUrl = cfg.public_base_url ?? env.PUBLIC_BASE_URL ?? new URL(c.req.url).origin;
@@ -164,7 +166,7 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
     },
     "Profile preview",
   );
-  return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length });
+  return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length, revalidating });
 });
 
 profilePreviewRouter.get("/:id/url", async (c) => {
@@ -188,8 +190,10 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
   // The :id path is used for namespacing only; profile data not required for preview.
   // Caller may still pass an existing profile id for context, but providers/node_filter override it.
   void id;
+  // 同 preview:节点池预览也走 SWR,无 cache 的机场后台刷新、不卡首屏。
   const pool = await buildNodePool({
     providerIds: parsed.data.providers,
+    staleWhileRevalidate: true,
   });
   const filter = parsed.data.node_filter ?? {
     rename_rules: [],
@@ -224,6 +228,7 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
     count: filtered.length,
     raw_count: pool.nodes.length,
     by_provider: byProvider,
+    revalidating: (pool.revalidating?.length ?? 0) > 0,
   });
 });
 

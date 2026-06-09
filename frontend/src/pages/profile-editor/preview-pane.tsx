@@ -189,6 +189,16 @@ export function PreviewPane({ profileId, draft, enabled }: Props) {
                 {diffStats.removed > 0 && <span className="text-rose-600">-{diffStats.removed}</span>}
               </Badge>
             )}
+            {preview.data?.revalidating && (
+              <Badge
+                variant="outline"
+                className="text-xs gap-1 border-amber-300 text-amber-700 bg-amber-50"
+                title="部分机场首次无缓存,正在后台拉取节点,完成后会自动刷新预览"
+              >
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                首次拉取节点中…
+              </Badge>
+            )}
             {preview.data && (
               <Badge variant="outline" className="text-xs">
                 {preview.data.node_count} 个节点

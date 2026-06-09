@@ -75,7 +75,8 @@ interface Props {
   update: (patch: Partial<ProxyGroupData>) => void;
 }
 
-const NEEDS_TEST = (t: ProxyGroupData["type"]) => t === "url-test" || t === "fallback" || t === "load-balance";
+const NEEDS_TEST = (t: ProxyGroupData["type"]) =>
+  t === "url-test" || t === "fallback" || t === "load-balance" || t === "smart";
 
 export function ProxyGroupVisualForm({ data, update }: Props) {
   const providers = useEntityList<NamedItem>("providers");
@@ -238,7 +239,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
             <SelectItem value="url-test">url-test (自动选择最快)</SelectItem>
             <SelectItem value="fallback">fallback (按顺序故障转移)</SelectItem>
             <SelectItem value="load-balance">load-balance (负载均衡)</SelectItem>
-            <SelectItem value="smart">smart [Surge]</SelectItem>
+            <SelectItem value="smart">smart [Surge] (Clash 等价 url-test)</SelectItem>
             <SelectItem value="ssid">ssid (按 WiFi) [Surge]</SelectItem>
             <SelectItem value="external">external [Surge]</SelectItem>
           </SelectContent>
@@ -247,7 +248,12 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
 
       {NEEDS_TEST(data.type) && (
         <fieldset className="border rounded-md p-3">
-          <legend className="text-xs font-medium px-1">测速参数</legend>
+          <legend className="text-xs font-medium px-1">
+            测速参数
+            {data.type === "smart" && (
+              <span className="font-normal text-muted-foreground"> · 仅 Clash 需要填(降级为 url-test;Surge smart 用不到)</span>
+            )}
+          </legend>
           <div className="grid grid-cols-2 gap-3">
             <Field label="测试 URL">
               <Input
