@@ -52,7 +52,7 @@ export function SettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle>关于</CardTitle>
-          <CardDescription>NodeDeck v0.1.0</CardDescription>
+          <CardDescription>NodeDeck v1.0.0</CardDescription>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-1">
           <p>所有配置存储在 <code>data/</code> 目录,改完即生效,无需重启 docker 容器。</p>
