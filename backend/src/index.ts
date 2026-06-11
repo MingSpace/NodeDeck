@@ -11,6 +11,7 @@ import { startWatcher } from "./storage/watcher.js";
 import { startProviderScheduler } from "./providers/scheduler.js";
 import { mountApiRoutes } from "./routes/api.js";
 import { mountSubRoute } from "./routes/sub.js";
+import { notifySubError } from "./notifications/service.js";
 import { ensureSessionSecret } from "./auth/secret.js";
 import {
   providerRepo,
@@ -32,6 +33,15 @@ async function bootstrap() {
 
   // Access log 走独立 logger:只到终端,不进 ring buffer,避免淹没 Web UI 的业务日志。
   app.use("*", honoLogger((message: string) => accessLogger.info(message)));
+
+  // 未捕获异常:保持 500 行为不变,但 /sub 路径额外发 Bark 通知(订阅生成失败客户端只会静默拿到 5xx)。
+  app.onError((err, c) => {
+    logger.error({ err, path: c.req.path }, "Unhandled error");
+    if (c.req.path.startsWith("/sub")) {
+      void notifySubError(c.req.path, err instanceof Error ? err.message : String(err));
+    }
+    return c.text("internal server error", 500);
+  });
 
   app.get("/health", (c) => c.json({ ok: true, time: new Date().toISOString() }));
 

@@ -6,6 +6,7 @@ import { dashboardRouter } from "./dashboard.js";
 import { importRouter } from "./import.js";
 import { profilePreviewRouter } from "./profile-preview.js";
 import { configRouter } from "./config.js";
+import { notificationRouter } from "./notification.js";
 import { logsRouter } from "./logs.js";
 import { requireSession, ipAllowlist } from "../auth/middleware.js";
 
@@ -24,6 +25,8 @@ export function mountApiRoutes(app: Hono): void {
   app.use("/api/profiles/*", ipAllowlist, requireSession);
   app.use("/api/config/*", ipAllowlist, requireSession);
   app.use("/api/config", ipAllowlist, requireSession);
+  app.use("/api/notification/*", ipAllowlist, requireSession);
+  app.use("/api/notification", ipAllowlist, requireSession);
   app.use("/api/logs/*", ipAllowlist, requireSession);
 
   app.route("/api/entities", entitiesRouter);
@@ -32,5 +35,6 @@ export function mountApiRoutes(app: Hono): void {
   app.route("/api/import", importRouter);
   app.route("/api/profiles", profilePreviewRouter);
   app.route("/api/config", configRouter);
+  app.route("/api/notification", notificationRouter);
   app.route("/api/logs", logsRouter);
 }

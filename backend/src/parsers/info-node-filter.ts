@@ -42,6 +42,7 @@ const KEYWORDS: readonly string[] = [
   "流量重置",
   "总流量",
   "流量",
+  "Traffic Reset",
   "Traffic",
   "Data Usage",
   "Used",

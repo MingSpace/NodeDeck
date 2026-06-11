@@ -41,6 +41,8 @@ describe("isInfoNode", () => {
       "下次重置: 2026-06-01",
       "Reset In: 25 days",
       "流量重置日 - 1 号",
+      "Traffic Reset： 19 Days Left", // "Traffic" 后跟 "Reset" 而非分隔符,需要组合关键字才能命中
+      "Traffic Reset: 19 Days Left",
       // 公告 / 套餐
       "公告:本周维护",
       "📢 公告:本周维护",

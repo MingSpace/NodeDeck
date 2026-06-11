@@ -9,6 +9,11 @@ import { extractHostsFromText } from "../import/extract-hosts.js";
 import { parseUserInfoHeader } from "../schemas/userinfo.js";
 import { providerRepo } from "../storage/repos.js";
 import { REFRESH_INTERVAL_MINUTES } from "../schemas/common.js";
+import {
+  notifyProviderRefreshFailed,
+  notifyProviderZeroNodes,
+  onProviderRefreshSucceeded,
+} from "../notifications/service.js";
 import { logger } from "../logger.js";
 
 export interface RefreshOptions {
@@ -68,6 +73,8 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
       };
       await writeProviderCache(cache);
       logger.warn({ providerId: provider.id, reason }, "Provider parsed 0 nodes");
+      // 通知是旁路:fire-and-forget,service 内部自行处理开关/冷却/异常
+      void notifyProviderZeroNodes(provider, reason);
       return cache;
     }
     const cache: ProviderCache = {
@@ -84,9 +91,12 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
       { providerId: provider.id, nodeCount: nodes.length, extractedHostCount: Object.keys(extracted_hosts ?? {}).length },
       "Provider refreshed",
     );
+    // 成功后清失败冷却状态 + 检查剩余流量/到期时间(旁路,绝不影响刷新结果)
+    void onProviderRefreshSucceeded(provider, userinfo);
     return cache;
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
+    void notifyProviderRefreshFailed(provider, errorMsg);
     if (cached) {
       const stale: ProviderCache = { ...cached, status: "stale", error: errorMsg };
       await writeProviderCache(stale);

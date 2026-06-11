@@ -29,6 +29,10 @@ export function configPath(): string {
   return dataPath("config.yaml");
 }
 
+export function notificationConfigPath(): string {
+  return dataPath("notification.yaml");
+}
+
 export function entityDir(sub: SubDir): string {
   return dataPath(sub);
 }

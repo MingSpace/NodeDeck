@@ -89,6 +89,7 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
       include_regex: draft?.node_filter.include_regex ?? "",
       exclude_regex: draft?.node_filter.exclude_regex ?? "",
       exclude_types: draft?.node_filter.exclude_types ?? [],
+      sort_by_region: draft?.node_filter.sort_by_region ?? false,
     },
     300,
   );
@@ -102,6 +103,7 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
           exclude_regex: debouncedKey.exclude_regex || undefined,
           exclude_types: debouncedKey.exclude_types,
           rename_rules: [],
+          sort_by_region: debouncedKey.sort_by_region,
         },
       }),
     enabled: !!id && !!draft,

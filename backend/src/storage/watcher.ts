@@ -26,6 +26,9 @@ function classifyPath(path: string): { ns: string; key?: string } | null {
   if (parts.length === 1 && parts[0] === "config.yaml") {
     return { ns: "app-config" };
   }
+  if (parts.length === 1 && parts[0] === "notification.yaml") {
+    return { ns: "notification-config" };
+  }
   if (parts.length === 2) {
     const [sub, file] = parts;
     if (SUBDIR_SET.has(sub) && sub !== "cache") {

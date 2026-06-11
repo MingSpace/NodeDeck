@@ -26,6 +26,9 @@ const SettingsPage = lazy(() =>
   import("@/pages/settings").then((m) => ({ default: m.SettingsPage })),
 );
 const ImportPage = lazy(() => import("@/pages/import").then((m) => ({ default: m.ImportPage })));
+const NotificationsPage = lazy(() =>
+  import("@/pages/notifications").then((m) => ({ default: m.NotificationsPage })),
+);
 const LogsPage = lazy(() => import("@/pages/logs").then((m) => ({ default: m.LogsPage })));
 
 function RouteFallback() {
@@ -120,6 +123,14 @@ export default function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <ImportPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="notifications"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <NotificationsPage />
             </Suspense>
           }
         />

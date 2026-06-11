@@ -4,9 +4,11 @@ import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { RuleSet } from "../schemas/ruleset.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
 import type { SurgeModule } from "../schemas/surge-module.js";
+import type { Provider } from "../schemas/provider.js";
 import { applyNodeFilter } from "./node-filter.js";
+import { sortNodesByRegion } from "./node-sort.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
-import { uniquifyNodeNames, escapeSurgeNames } from "./node-naming.js";
+import { uniquifyNodeNames, buildProviderLabels, escapeSurgeNames } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { buildSurgeHostLines } from "./hosts.js";
@@ -23,6 +25,8 @@ export interface SurgeGenerateInput {
   hosts?: Record<string, string | string[]>;
   surgeModules: SurgeModule[];
   managed_config_url?: string;
+  // providers 元数据,用于同名节点改名时计算来源前缀 `【标识】`(见 node-naming.ts)。
+  providers?: Provider[];
   warnings: string[];
   // 系统中所有 group 的 name 集合,仅供 validateGroupRefs 做"组未引入"诊断;
   // 不传则退化为旧行为(所有未知引用都归入 nodeDangling)。
@@ -31,10 +35,15 @@ export interface SurgeGenerateInput {
 
 export function generateSurgeConfig(input: SurgeGenerateInput): string {
   const { profile, general } = input;
-  const filtered = applyNodeFilter(input.nodes, profile.node_filter);
-  const uniqued = uniquifyNodeNames(filtered, input.warnings);
+  const filteredRaw = applyNodeFilter(input.nodes, profile.node_filter);
+  // 排在 uniquify 之前:组 selector 动态追加成员时遍历的就是已排序节点池,组成员自动跟着聚类
+  const filtered = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
+  const uniqued = uniquifyNodeNames(filtered, input.warnings, {
+    providerLabels: buildProviderLabels(input.providers ?? []),
+    groups: input.groups,
+  });
   // Surge 专属:把 = , " 等会破坏 INI 行解析的字符替换掉,且同步改写所有引用。
-  const escaped = escapeSurgeNames(uniqued, input.groups, input.warnings);
+  const escaped = escapeSurgeNames(uniqued.nodes, uniqued.groups, input.warnings);
   const chained = applyChainRules(escaped.nodes, profile);
   const groupNames = new Set(escaped.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });

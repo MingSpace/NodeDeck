@@ -20,7 +20,7 @@ function profile(rules: Profile["chain_rules"]): Profile {
     name: "test",
     token: "abcdefgh",
     providers: [],
-    node_filter: { rename_rules: [], exclude_types: [] },
+    node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false },
     chain_rules: rules,
     proxy_groups: [],
     rule_modules: [],

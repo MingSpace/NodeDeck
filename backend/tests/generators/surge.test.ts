@@ -12,7 +12,7 @@ function baseProfile(overrides: Partial<Profile> = {}): Profile {
     name: "Home",
     token: "abcdefghij12",
     providers: [],
-    node_filter: { rename_rules: [], exclude_types: [] },
+    node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false },
     chain_rules: [],
     proxy_groups: [],
     rule_modules: [],
@@ -194,7 +194,7 @@ describe("generateSurgeConfig", () => {
     const out = generateSurgeConfig({
       profile: baseProfile({
         proxy_groups: ["Proxys", "Manual"],
-        node_filter: { rename_rules: [], exclude_types: [], exclude_regex: "^AD-" },
+        node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false, exclude_regex: "^AD-" },
       }),
       nodes,
       groups,

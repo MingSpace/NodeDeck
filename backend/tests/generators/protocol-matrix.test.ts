@@ -3,6 +3,12 @@ import { generateClashConfig } from "../../src/generators/clash.js";
 import { generateSurgeConfig } from "../../src/generators/surge.js";
 import { emptyProfile, protocolFixtures } from "./__fixtures__/protocol-matrix.js";
 import type { Node } from "../../src/schemas/node.js";
+import type { ProxyGroup } from "../../src/schemas/proxy-group.js";
+import { providerSchema, type Provider } from "../../src/schemas/provider.js";
+
+function makeProvider(id: string, name: string, tags: string[] = []): Provider {
+  return providerSchema.parse({ id, name, type: "http", url: "https://example.com/sub", tags });
+}
 
 function normalize(text: string): string {
   return text.replace(/Generated at: [^\n]+/g, "Generated at: [TIMESTAMP]");
@@ -76,7 +82,7 @@ describe("protocol matrix snapshot", () => {
     expect(surge).toMatch(/underlying-proxy=WARP/);
   });
 
-  it("重名节点自动加 #2 后缀,warning 一致", () => {
+  it("重名节点(无 provider 信息)回退 #2 后缀,warning 一致", () => {
     const nodes: Node[] = [
       { name: "🇭🇰 HK-01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", tags: [] },
       { name: "🇭🇰 HK-01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, tags: [] },
@@ -94,6 +100,70 @@ describe("protocol matrix snapshot", () => {
     expect(out).toContain("🇭🇰 HK-01 #2");
     expect(out).toContain("🇭🇰 HK-01 #3");
     expect(warnings.filter((w) => w.includes("renamed to")).length).toBe(2);
+  });
+
+  it("跨 provider 重名 → 所有撞名节点加来源首字母前缀(两端一致)", () => {
+    const providers = [makeProvider("kona", "Kona"), makeProvider("apex", "Apex")];
+    const nodes: Node[] = [
+      { name: "Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
+      { name: "Hong Kong 01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, source_provider_id: "apex", tags: [] },
+      { name: "Tokyo 01", type: "ss", server: "c.example.com", port: 8388, cipher: "aes-128-gcm", password: "p3", source_provider_id: "kona", tags: [] },
+    ];
+    const warnings: string[] = [];
+    const clash = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], warnings });
+    expect(clash).toContain("【K】Hong Kong 01");
+    expect(clash).toContain("【A】Hong Kong 01");
+    expect(clash).not.toMatch(/name: Hong Kong 01\n/);
+    // 不撞名的节点不加前缀
+    expect(clash).toContain("name: Tokyo 01");
+    expect(clash).not.toContain("【K】Tokyo 01");
+    expect(warnings.filter((w) => w.includes("renamed to")).length).toBe(2);
+
+    const surge = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings: [] });
+    expect(surge).toMatch(/^【K】Hong Kong 01 = ss,/m);
+    expect(surge).toMatch(/^【A】Hong Kong 01 = trojan,/m);
+    expect(surge).toMatch(/^Tokyo 01 = ss,/m);
+  });
+
+  it("provider 有 tag → 前缀用第一个 tag 的完整文本", () => {
+    const providers = [makeProvider("kona", "Kona", ["主力", "高速"]), makeProvider("apex", "Apex")];
+    const nodes: Node[] = [
+      { name: "Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
+      { name: "Hong Kong 01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, source_provider_id: "apex", tags: [] },
+    ];
+    const out = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], warnings: [] });
+    expect(out).toContain("【主力】Hong Kong 01");
+    expect(out).toContain("【A】Hong Kong 01");
+  });
+
+  it("加前缀后仍撞名(同一 provider 内同名)→ 继续追加 #2 兜底", () => {
+    const providers = [makeProvider("kona", "Kona")];
+    const nodes: Node[] = [
+      { name: "Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
+      { name: "Hong Kong 01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, source_provider_id: "kona", tags: [] },
+    ];
+    const out = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], warnings: [] });
+    expect(out).toContain("【K】Hong Kong 01");
+    expect(out).toContain("【K】Hong Kong 01 #2");
+  });
+
+  it("group.proxies 显式引用撞名原名 → 重映射到第一个同名节点的新名", () => {
+    const providers = [makeProvider("kona", "Kona"), makeProvider("apex", "Apex")];
+    const nodes: Node[] = [
+      { name: "Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
+      { name: "Hong Kong 01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, source_provider_id: "apex", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      { id: "Manual", name: "Manual", type: "select", proxies: ["Hong Kong 01", "DIRECT"], nested_groups: [] },
+    ];
+    const warnings: string[] = [];
+    const clash = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups, rules: [], warnings });
+    expect(clash).toContain("proxies: [【K】Hong Kong 01, DIRECT]");
+    // 引用被重映射,不应触发悬空剔除 warning
+    expect(warnings.some((w) => w.includes("not found") && w.includes("Hong Kong 01"))).toBe(false);
+
+    const surge = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups, rules: [], surgeModules: [], warnings: [] });
+    expect(surge).toMatch(/^Manual = select,【K】Hong Kong 01,DIRECT/m);
   });
 
   it("chain_via 指向不存在节点 → 降级 + warning", () => {

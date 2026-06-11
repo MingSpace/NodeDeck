@@ -9,6 +9,9 @@ export const nodeFilterSchema = z.object({
   exclude_regex: z.string().optional(),
   rename_rules: z.array(renameRuleSchema).default([]),
   exclude_types: z.array(z.string()).default([]),
+  // 开启后输出节点按地区聚类:HK→TW→JP→SG→US→其他地区字母序→未识别地区,
+  // 同地区内保持原始顺序(见 generators/node-sort.ts)
+  sort_by_region: z.boolean().default(false),
 });
 
 export const ruleModuleRefSchema = z.union([

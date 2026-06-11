@@ -9,7 +9,7 @@ export const profile: Profile = {
   name: "Example",
   token: "fixturetoken",
   providers: [],
-  node_filter: { rename_rules: [], exclude_types: [] },
+  node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false },
   chain_rules: [],
   proxy_groups: ["Proxys", "Manual"],
   rule_modules: [

@@ -1,39 +1,111 @@
 import type { Node } from "../schemas/node.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
+import type { Provider } from "../schemas/provider.js";
+
+/**
+ * 计算每个 provider 的"来源标识"(用于同名节点改名时的 `【标识】` 前缀):
+ * - 优先取第一个非空 tag 的完整文本(如 `【主力】`)
+ * - 无 tag 时取 provider 名称首字符(ASCII 字母转大写,如 Kona → `【K】`)
+ */
+export function buildProviderLabels(providers: Provider[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const p of providers) {
+    const tag = p.tags?.find((t) => t.trim().length > 0)?.trim();
+    const label = tag ?? p.name.trim().charAt(0).toUpperCase();
+    if (label) map.set(p.id, label);
+  }
+  return map;
+}
+
+export interface UniquifyOptions {
+  /** provider id → 来源标识(见 buildProviderLabels);缺省时退化为纯 ` #2` 后缀策略 */
+  providerLabels?: Map<string, string>;
+  /** 一并改写引用的策略组(group.proxies / nested_groups / include_other_group) */
+  groups?: ProxyGroup[];
+}
 
 /**
  * 在多机场节点池融合后,节点名很容易撞车(两家机场都叫 "🇭🇰 香港 01")。
  * Clash/Surge 都把节点名当作主键,重名会让客户端加载报错或行为未定义。
  *
- * 策略:第一个出现的节点保留原名;后续重名按出现顺序追加 ` #2` / ` #3` 后缀。
+ * 策略:撞名的所有节点统一加来源前缀 `【标识】`(标识由 buildProviderLabels 给出),
+ * 如 `【K】Hong Kong 01` / `【主力】Hong Kong 01`,让用户在客户端一眼看出节点来源。
+ * 节点无 source_provider_id / 查不到标识,或加前缀后仍撞名(同一机场内同名、
+ * 两机场标识相同)时,回退追加 ` #2` / ` #3` 后缀兜底。
  *
- * 注意我们故意 *不* 改写 chain_via / proxy_groups.proxies 中的引用:
- * - 原名永远指向"第一个"同名节点(被保留原名的那个),引用语义稳定
- * - chain_via 指向被改名节点(意图模糊)的场景,由 chain validation 阶段处理
+ * 引用语义:旧实现"第一个同名节点保留原名",chain_via / group.proxies 对原名的引用
+ * 天然有效;现在所有撞名节点都会改名,因此把「原名 → 第一个出现节点的新名」记入
+ * renameMap 并同步改写 node.chain_via 与 group 的成员/嵌套引用,保持"原名指向第一个
+ * 同名节点"的语义不变。
  *
  * 重命名信息记入 warnings,方便用户在订阅响应注释中看到。
  */
-export function uniquifyNodeNames(nodes: Node[], warnings: string[]): Node[] {
+export function uniquifyNodeNames(
+  nodes: Node[],
+  warnings: string[],
+  opts: UniquifyOptions = {},
+): { nodes: Node[]; groups: ProxyGroup[] } {
+  const counts = new Map<string, number>();
+  for (const n of nodes) counts.set(n.name, (counts.get(n.name) ?? 0) + 1);
+
   const seen = new Set<string>();
+  // 原名 → 第一个同名节点改名后的新名(仅当确实改名时记录)
+  const renameMap = new Map<string, string>();
   const out: Node[] = [];
   for (const n of nodes) {
-    if (!seen.has(n.name)) {
-      seen.add(n.name);
+    const conflict = (counts.get(n.name) ?? 0) > 1;
+    const label = conflict && n.source_provider_id ? opts.providerLabels?.get(n.source_provider_id) : undefined;
+    const base = label ? `【${label}】${n.name}` : n.name;
+
+    let candidate = base;
+    let suffix = 2;
+    while (seen.has(candidate)) {
+      candidate = `${base} #${suffix}`;
+      suffix++;
+    }
+    seen.add(candidate);
+
+    if (candidate === n.name) {
       out.push(n);
       continue;
     }
-    let suffix = 2;
-    let candidate = `${n.name} #${suffix}`;
-    while (seen.has(candidate)) {
-      suffix++;
-      candidate = `${n.name} #${suffix}`;
-    }
-    seen.add(candidate);
+    if (!renameMap.has(n.name)) renameMap.set(n.name, candidate);
     const fromProvider = n.source_provider_id ? ` (from provider "${n.source_provider_id}")` : "";
     warnings.push(`Node name conflict: "${n.name}" renamed to "${candidate}"${fromProvider}`);
     out.push({ ...n, name: candidate });
   }
-  return out;
+
+  const groups = opts.groups ?? [];
+  if (renameMap.size === 0) return { nodes: out, groups };
+
+  const remap = (s: string | undefined): string | undefined => (s !== undefined ? renameMap.get(s) ?? s : undefined);
+  const finalNodes = out.map((n) => {
+    const newVia = remap(n.chain_via);
+    return newVia !== n.chain_via ? { ...n, chain_via: newVia } : n;
+  });
+  const finalGroups = groups.map((g) => {
+    const newProxies = g.proxies.map((p) => renameMap.get(p) ?? p);
+    const newIncludeOther = remap(g.include_other_group);
+    const currentNested = g.nested_groups ?? [];
+    const newNestedGroups = currentNested.map((p) => renameMap.get(p) ?? p);
+    const updated: ProxyGroup = { ...g };
+    let touched = false;
+    if (newProxies.some((p, i) => p !== g.proxies[i])) {
+      updated.proxies = newProxies;
+      touched = true;
+    }
+    if (newIncludeOther !== g.include_other_group) {
+      updated.include_other_group = newIncludeOther;
+      touched = true;
+    }
+    if (newNestedGroups.some((p, i) => p !== currentNested[i])) {
+      updated.nested_groups = newNestedGroups;
+      touched = true;
+    }
+    return touched ? updated : g;
+  });
+
+  return { nodes: finalNodes, groups: finalGroups };
 }
 
 /**

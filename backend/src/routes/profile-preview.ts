@@ -8,6 +8,7 @@ import { env } from "../env.js";
 import { loadConfig } from "../storage/config-store.js";
 import { buildNodePool } from "../providers/pool.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
+import { sortNodesByRegion } from "../generators/node-sort.js";
 import { nodeFilterSchema, profileSchema, type Profile } from "../schemas/profile.js";
 import { logger } from "../logger.js";
 
@@ -117,6 +118,7 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
     const text = generateClashConfig({
       profile,
       nodes: resolved.nodes,
+      providers: resolved.providers,
       groups: resolved.groups,
       allKnownGroupNames: resolved.allKnownGroupNames,
       rules: resolved.rules,
@@ -147,6 +149,7 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
   const text = generateSurgeConfig({
     profile,
     nodes: resolved.nodes,
+    providers: resolved.providers,
     groups: resolved.groups,
     allKnownGroupNames: resolved.allKnownGroupNames,
     rules: resolved.rules,
@@ -198,8 +201,10 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
   const filter = parsed.data.node_filter ?? {
     rename_rules: [],
     exclude_types: [],
+    sort_by_region: false,
   };
-  const filtered = applyNodeFilter(pool.nodes, filter);
+  const filteredRaw = applyNodeFilter(pool.nodes, filter);
+  const filtered = filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const byProvider: Record<string, number> = {};
   for (const [provId, nodes] of pool.byProvider) {
     byProvider[provId] = nodes.length;

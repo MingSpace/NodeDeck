@@ -28,7 +28,7 @@ function profile(overrides: Partial<Profile> = {}): Profile {
     name: "p",
     token: "abcdefgh",
     providers: ["aaa", "bbb"],
-    node_filter: { rename_rules: [], exclude_types: [] },
+    node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false },
     chain_rules: [],
     proxy_groups: [],
     rule_modules: [],

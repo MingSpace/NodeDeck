@@ -5,12 +5,14 @@ import { generateClashConfig, generateProxyProviderYaml } from "../generators/cl
 import { generateSurgeConfig } from "../generators/surge.js";
 import { aggregateUserInfo } from "../userinfo/aggregate.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
+import { sortNodesByRegion } from "../generators/node-sort.js";
 import { env } from "../env.js";
 import { loadConfig } from "../storage/config-store.js";
 import { loadProviderNodes } from "../providers/load.js";
 import { refreshIntervalToSeconds } from "../schemas/common.js";
 import { logger } from "../logger.js";
 import { getClientIp } from "../auth/middleware.js";
+import { notifySubWarnings } from "../notifications/service.js";
 
 export function mountSubRoute(app: Hono): void {
   app.get("/sub", async (c) => handleSub(c));
@@ -127,6 +129,7 @@ async function handleSubInner(
     const text = generateSurgeConfig({
       profile,
       nodes: resolved.nodes,
+      providers: resolved.providers,
       groups: resolved.groups,
       allKnownGroupNames: resolved.allKnownGroupNames,
       rules: resolved.rules,
@@ -177,6 +180,8 @@ function logSubGenerated(
       { profileId, target, count: warnings.length, warnings },
       "Generator produced warnings",
     );
+    // Bark 通知(可选配,service 内部按内容 hash 冷却,避免客户端轮询刷屏)
+    void notifySubWarnings(profileId, target, warnings);
   }
 }
 
@@ -228,7 +233,8 @@ async function handleProviderClashYaml(c: import("hono").Context) {
   // 但仍走该 profile 的 node_filter 让用户能过滤/重命名。
   // 真实下发:不传 staleWhileRevalidate,cache miss 时同步拉,保证客户端拿到完整节点。
   const { nodes: allNodes } = await loadProviderNodes(provider);
-  const filtered = applyNodeFilter(allNodes, profile.node_filter);
+  const filteredRaw = applyNodeFilter(allNodes, profile.node_filter);
+  const filtered = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const warnings: string[] = [];
   const text = generateProxyProviderYaml(filtered, warnings);
 
@@ -248,6 +254,7 @@ async function handleProviderClashYaml(c: import("hono").Context) {
       { providerId, profileId, count: warnings.length, warnings },
       "Provider sub generator produced warnings",
     );
+    void notifySubWarnings(profileId, `provider:${providerId}`, warnings);
   }
 
   c.header("Content-Type", "text/yaml; charset=utf-8");

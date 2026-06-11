@@ -13,7 +13,7 @@ function baseProfile(overrides: Partial<Profile> = {}): Profile {
     name: "Home",
     token: "abcdefghij12",
     providers: [],
-    node_filter: { rename_rules: [], exclude_types: [] },
+    node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false },
     chain_rules: [],
     proxy_groups: [],
     rule_modules: [],
@@ -194,7 +194,7 @@ describe("generateClashConfig", () => {
       profile: baseProfile({
         proxy_groups: ["Proxys", "Manual"],
         // 把"广告测试"开头的节点过滤掉
-        node_filter: { rename_rules: [], exclude_types: [], exclude_regex: "^广告测试" },
+        node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false, exclude_regex: "^广告测试" },
       }),
       nodes,
       groups,

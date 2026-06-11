@@ -55,7 +55,7 @@ function fakeProfile(overrides: Partial<Profile> = {}): Profile {
     name: "Home",
     token: "GOODtoken123",
     providers: ["airport-a"],
-    node_filter: { rename_rules: [], exclude_types: [] },
+    node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false },
     chain_rules: [],
     proxy_groups: [],
     rule_modules: [],

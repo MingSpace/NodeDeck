@@ -3,6 +3,7 @@ export interface NodeFilter {
   exclude_regex?: string;
   rename_rules: { pattern: string; replace: string; flags?: string }[];
   exclude_types: string[];
+  sort_by_region?: boolean;
 }
 
 export interface ChainRule {

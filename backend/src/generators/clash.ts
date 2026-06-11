@@ -6,8 +6,9 @@ import type { RuleSet } from "../schemas/ruleset.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
 import type { Provider } from "../schemas/provider.js";
 import { applyNodeFilter } from "./node-filter.js";
+import { sortNodesByRegion } from "./node-sort.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
-import { uniquifyNodeNames } from "./node-naming.js";
+import { uniquifyNodeNames, buildProviderLabels } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
@@ -43,9 +44,10 @@ export interface ClashGenerateInput {
   // general.hosts + provider.hosts 合并后的结果(由 profile-resolver 计算)。
   hosts?: Record<string, string | string[]>;
   warnings: string[];
-  // proxy-providers 模式所需:启用了 clash_proxy_provider 的 providers 元数据,
-  // 以及订阅 base url 与 profile token(用于合成 mihomo 拉取的 URL)。
-  // 仅在 profile.clash_options.use_proxy_providers === true 时生效。
+  // providers 元数据,两个用途:
+  // 1. 同名节点改名时计算来源前缀 `【标识】`(见 node-naming.ts buildProviderLabels)
+  // 2. proxy-providers 模式合成 mihomo 拉取 URL(配合 baseUrl + profileToken,
+  //    仅在 profile.clash_options.use_proxy_providers === true 时生效)
   providers?: Provider[];
   baseUrl?: string;
   profileToken?: string;
@@ -56,12 +58,17 @@ export interface ClashGenerateInput {
 
 export function generateClashConfig(input: ClashGenerateInput): string {
   const { profile, general } = input;
-  const filtered = applyNodeFilter(input.nodes, profile.node_filter);
-  const uniqued = uniquifyNodeNames(filtered, input.warnings);
-  const chained = applyChainRules(uniqued, profile);
-  const groupNames = new Set(input.groups.map((g) => g.name));
+  const filteredRaw = applyNodeFilter(input.nodes, profile.node_filter);
+  // 排在 uniquify 之前:组 selector 动态追加成员时遍历的就是已排序节点池,组成员自动跟着聚类
+  const filtered = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
+  const uniqued = uniquifyNodeNames(filtered, input.warnings, {
+    providerLabels: buildProviderLabels(input.providers ?? []),
+    groups: input.groups,
+  });
+  const chained = applyChainRules(uniqued.nodes, profile);
+  const groupNames = new Set(uniqued.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
-  const sanitizedGroups = validateGroupRefs(input.groups, filteredNodes, {
+  const sanitizedGroups = validateGroupRefs(uniqued.groups, filteredNodes, {
     warnings: input.warnings,
     allKnownGroupNames: input.allKnownGroupNames,
   });
@@ -276,8 +283,9 @@ export function generateClashConfig(input: ClashGenerateInput): string {
  * 单独给 /sub/provider/:id/clash.yaml 路由使用。
  */
 export function generateProxyProviderYaml(nodes: Node[], warnings: string[]): string {
+  // 单 provider 范围内来源前缀无区分意义,不传 providerLabels,同名时走 ` #2` 后缀兜底。
   const uniqued = uniquifyNodeNames(nodes, warnings);
-  const proxies = uniqued
+  const proxies = uniqued.nodes
     .map((n) => buildClashProxy(n, warnings))
     .filter((p): p is Record<string, unknown> => p !== null);
   const header = [

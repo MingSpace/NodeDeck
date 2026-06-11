@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Network, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useEntityList } from "@/api/entities";
 import { useNodePoolPreview } from "./use-profile-form";
 import type { Profile } from "./types";
@@ -105,6 +106,21 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
               onChange={(e) => onFilterChange({ exclude_regex: e.target.value || undefined })}
               placeholder="过期|expired|官网|流量|剩余"
               className="h-8 text-xs"
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs font-medium block" htmlFor="sort-by-region">
+                按地区排序
+              </label>
+              <span className="text-[11px] text-muted-foreground">
+                港 → 台 → 日 → 新 → 美 → 其他,策略组成员同步聚类
+              </span>
+            </div>
+            <Switch
+              id="sort-by-region"
+              checked={draft.node_filter.sort_by_region ?? false}
+              onCheckedChange={(checked) => onFilterChange({ sort_by_region: checked })}
             />
           </div>
         </div>

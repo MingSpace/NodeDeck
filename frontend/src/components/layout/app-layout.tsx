@@ -9,6 +9,7 @@ import {
   Puzzle,
   Settings as SettingsIcon,
   Upload,
+  Bell,
   Power,
   ScrollText,
   PanelLeftClose,
@@ -38,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/groups", label: "策略组", icon: Layers },
   { to: "/modules", label: "Surge 模块", icon: Puzzle },
   { to: "/import", label: "导入", icon: Upload },
+  { to: "/notifications", label: "通知", icon: Bell },
   { to: "/logs", label: "日志", icon: ScrollText },
 ];
 
