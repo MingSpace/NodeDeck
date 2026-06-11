@@ -32,7 +32,8 @@ async function bootstrap() {
   const app = new Hono();
 
   // Access log 走独立 logger:只到终端,不进 ring buffer,避免淹没 Web UI 的业务日志。
-  app.use("*", honoLogger((message: string) => accessLogger.info(message)));
+  // hono/logger 默认给状态码加 ANSI 颜色码,进 pino JSON 后变成 \u001b[32m 乱码,这里剥掉。
+  app.use("*", honoLogger((message: string) => accessLogger.info(stripAnsi(message))));
 
   // 未捕获异常:保持 500 行为不变,但 /sub 路径额外发 Bark 通知(订阅生成失败客户端只会静默拿到 5xx)。
   app.onError((err, c) => {
@@ -125,6 +126,13 @@ function resolveStaticDir(): string | null {
     if (existsSync(dir) && statSync(dir).isDirectory()) return dir;
   }
   return null;
+}
+
+// eslint-disable-next-line no-control-regex
+const ANSI_PATTERN = /\u001b\[\d+(?:;\d+)*m/g;
+
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_PATTERN, "");
 }
 
 function relativizeForHono(absDir: string): string {

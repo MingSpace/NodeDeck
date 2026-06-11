@@ -93,7 +93,7 @@ export function NotificationsPage() {
 
   if (!draft) {
     return (
-      <div className="p-8 max-w-2xl">
+      <div className="p-8 max-w-[1800px] mx-auto">
         <h1 className="text-2xl font-bold tracking-tight mb-4">通知</h1>
         <Card>
           <CardContent className="text-sm text-muted-foreground py-6">加载中...</CardContent>
@@ -112,7 +112,7 @@ export function NotificationsPage() {
     update({ events: { ...draft.events, ...patch } });
 
   return (
-    <div className="p-8 max-w-2xl space-y-4 pb-24">
+    <div className="p-8 max-w-[1800px] mx-auto space-y-4 pb-24">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">通知</h1>
@@ -126,6 +126,7 @@ export function NotificationsPage() {
         </Button>
       </div>
 
+      <div className="grid gap-4 items-start lg:grid-cols-2">
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
@@ -290,6 +291,7 @@ export function NotificationsPage() {
           />
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
