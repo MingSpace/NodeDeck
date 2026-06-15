@@ -4,6 +4,8 @@
 
 把多个机场订阅、本地节点和自定义规则,统一生成 **Clash Meta (Mihomo)** 与 **Surge 5** 订阅。后端 Node.js + Hono,前端 React,单 Docker 镜像部署,所有配置以文件持久化、改完即生效。
 
+![NodeDeck 仪表板](docs/screenshots/dashboard.png)
+
 ## 特性
 
 - **多 Profile**:一份配置中心生成多套订阅,每个 Profile 独立 URL 和 token,可一键重生。
