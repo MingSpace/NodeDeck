@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="nd-bg" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#27272a"/>
+      <stop offset="1" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="nd-grad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+    </linearGradient>
+    <radialGradient id="nd-hub" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#ddd6fe"/>
+      <stop offset="0.55" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#6d28d9"/>
+    </radialGradient>
+    <radialGradient id="nd-node" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#bfdbfe"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="14" fill="url(#nd-bg)"/>
+
+  <rect x="0" y="0" width="64" height="22" rx="14" fill="white" fill-opacity="0.05"/>
+
+  <g stroke="url(#nd-grad)" stroke-width="1.4" stroke-linecap="round" opacity="0.55">
+    <line x1="19" y1="19" x2="32" y2="32"/>
+    <line x1="45" y1="19" x2="32" y2="32"/>
+    <line x1="19" y1="45" x2="32" y2="32"/>
+    <line x1="45" y1="45" x2="32" y2="32"/>
+  </g>
+
+  <g fill="url(#nd-node)">
+    <circle cx="19" cy="19" r="3.4"/>
+    <circle cx="45" cy="19" r="3.4"/>
+    <circle cx="19" cy="45" r="3.4"/>
+    <circle cx="45" cy="45" r="3.4"/>
+  </g>
+
+  <circle cx="32" cy="32" r="9" fill="url(#nd-hub)" opacity="0.35"/>
+  <circle cx="32" cy="32" r="6.5" fill="url(#nd-hub)"/>
+  <circle cx="32" cy="32" r="3" fill="white" fill-opacity="0.95"/>
+
+  <rect x="13" y="53" width="38" height="3" rx="1.5" fill="url(#nd-grad)"/>
+</svg>

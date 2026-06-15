@@ -1,0 +1,46 @@
+# NodeDeck 部署 compose:从 GHCR 拉预构建镜像,不本地 build
+#
+# 部署目录结构(推荐 /opt/nodedeck/):
+#   docker-compose.yml   <- 本文件
+#   update.sh            <- 升级脚本(可选)
+#   data/                <- 自动创建,所有配置都在这
+#
+# 首次部署:
+#   1. curl 拿到本文件 + scripts/update.sh
+#   2. vim docker-compose.yml,改下面 [必改] 三项
+#   3. docker compose up -d
+#
+# 升级到最新 latest:
+#   docker compose pull && docker compose up -d
+#   (或者直接 ./update.sh)
+#
+# 锁定到具体版本:
+#   把下面 image 那行的 :latest 改成 :v0.1.0 / :sha-abc1234,然后 pull + up
+#   可用 tag 见 https://github.com/MingSpace/NodeDeck/pkgs/container/nodedeck
+
+services:
+  nodedeck:
+    image: ghcr.io/mingspace/nodedeck:latest
+    container_name: nodedeck
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+    environment:
+      NODE_ENV: production
+      PORT: 8080
+      DATA_DIR: /app/data
+      LOG_LEVEL: info
+
+      # [必改] 首次启动密码,登录后系统会强制改密
+      INITIAL_PASSWORD: changeme-please
+
+      # [必改] 对外公网 URL(反代后客户端真实能访问的地址)
+      # 会写到 Surge 的 #!MANAGED-CONFIG 头里 + Web UI 显示订阅 URL
+      PUBLIC_BASE_URL: https://sub.example.com
+
+      # [可选] Session 加密密钥。不设的话首次启动会自动生成并保存到 data/secret.key,
+      # 后续启动直接复用,不会让登录态失效。只有想在多实例间共享会话、
+      # 或用 k8s Secret 注入时才需要显式指定;长度 >= 16 字符,推荐用 openssl rand -base64 48 生成。
+      # SESSION_SECRET: please-change-to-a-long-random-string
+    restart: unless-stopped
