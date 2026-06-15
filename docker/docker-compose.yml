@@ -2,17 +2,15 @@
 #
 # 部署目录结构(推荐 /opt/nodedeck/):
 #   docker-compose.yml   <- 本文件
-#   update.sh            <- 升级脚本(可选)
 #   data/                <- 自动创建,所有配置都在这
 #
 # 首次部署:
-#   1. curl 拿到本文件 + scripts/update.sh
-#   2. vim docker-compose.yml,改下面 [必改] 三项
+#   1. curl 拿到本文件
+#   2. vim docker-compose.yml,改下面 [必改] 两项
 #   3. docker compose up -d
 #
 # 升级到最新 latest:
 #   docker compose pull && docker compose up -d
-#   (或者直接 ./update.sh)
 #
 # 锁定到具体版本:
 #   把下面 image 那行的 :latest 改成 :v0.1.0 / :sha-abc1234,然后 pull + up

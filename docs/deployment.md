@@ -1,5 +1,5 @@
 # 部署指南
-**从 GHCR 拉预构建镜像**。仓库 `.github/workflows/docker.yml` 已经配好,每次 push 到 `main` 或打 `v*` tag,GitHub Actions 会构建 `linux/amd64` 镜像并推到 GHCR `ghcr.io/mingspace/nodedeck`。服务器只需要 docker + 2 个文件(`docker-compose.yml` + 可选的 `update.sh`)。
+**从 GHCR 拉预构建镜像**。仓库 `.github/workflows/docker.yml` 已经配好,每次 push 到 `main` 或打 `v*` tag,GitHub Actions 会构建 `linux/amd64` 镜像并推到 GHCR `ghcr.io/mingspace/nodedeck`。服务器只需要 docker + 一个 `docker-compose.yml`。
 
 ---
 
@@ -21,11 +21,9 @@ cd /opt/nodedeck
 ```bash
 BASE=https://raw.githubusercontent.com/MingSpace/NodeDeck/main
 curl -fsSL "$BASE/docker/docker-compose.yml" -o docker-compose.yml
-curl -fsSL "$BASE/scripts/update.sh"         -o update.sh
-chmod +x update.sh
 ```
 
-> 这两个文件以后偶尔有更新(改了端口、加了新环境变量),重新 curl 一遍覆盖即可,不会影响 `data/` 目录里的真实配置。注意:**重新 curl 会把你改过的密码 / PUBLIC_BASE_URL 重置成占位值**,覆盖前先备份。Session 密钥保存在 `data/secret.key`,不在 yml 里,不会被覆盖。
+> 这个文件以后偶尔有更新(改了端口、加了新环境变量),重新 curl 一遍覆盖即可,不会影响 `data/` 目录里的真实配置。注意:**重新 curl 会把你改过的密码 / PUBLIC_BASE_URL 重置成占位值**,覆盖前先备份。Session 密钥保存在 `data/secret.key`,不在 yml 里,不会被覆盖。
 
 ---
 
@@ -61,15 +59,15 @@ docker compose logs -f
 
 ## 5. 升级到最新版本
 
+沿用当前 image tag,拉最新镜像并重启:
+
 ```bash
 cd /opt/nodedeck
-./update.sh                  # 沿用当前 image tag,pull + up
-./update.sh latest           # 切到 main 最新构建
-./update.sh v0.2.0           # 锁定到具体 tag
-./update.sh sha-abc1234      # 锁定到某次 commit
+docker compose pull
+docker compose up -d
 ```
 
-脚本会改 yml 里的 image tag → `docker compose pull` → `up -d`,数据卷 `./data` 不会动。
+想切到别的版本,先编辑 `docker-compose.yml` 里的 image tag(如 `:latest`、`:v0.2.0`、`:sha-abc1234`)再执行上面两条。数据卷 `./data` 不会动。
 
 ---
 
@@ -175,7 +173,7 @@ git commit -m "config snapshot"
 
 | 现象 | 排查 |
 |---|---|
-| `./update.sh` 报 `denied: requested access to the resource is denied` | GHCR package 没设成 public,去 `https://github.com/users/<owner>/packages/container/nodedeck` 设 visibility = Public;或在服务器 `docker login ghcr.io -u <user> -p <PAT>` |
+| `docker compose pull` 报 `denied: requested access to the resource is denied` | GHCR package 没设成 public,去 `https://github.com/users/<owner>/packages/container/nodedeck` 设 visibility = Public;或在服务器 `docker login ghcr.io -u <user> -p <PAT>` |
 | `no matching manifest for linux/amd64` | workflow 没开 amd64;检查 `.github/workflows/docker.yml` 的 `platforms` |
 | 容器启动后无法访问 | 看 `docker logs nodedeck`,确认监听端口与 docker-compose ports 映射一致 |
 | 首次登录密码不对 | 删除 `data/config.yaml`,重启容器,会用新的 `INITIAL_PASSWORD` 重建 |

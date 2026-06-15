@@ -270,6 +270,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 
 - 引入数据库(SQLite / Postgres / Redis 等)— 文件系统是设计的核心
 - 把节点密码/uuid 等敏感数据 log 出来(pino 配 redact)
+- 把任何敏感信息(节点密码 / uuid / 订阅 token / 机场真实订阅 URL / API key / cookie)硬编码进源代码、测试 fixture、文档示例或 commit —— 开源仓库 git 历史不可抹除,真实订阅地址等同长期泄露;测试 / 文档一律用占位假数据(如 `example.com` / `your-token-here`)
 - 在响应中泄露后端文件路径
 - 修改 `<!-- USER -->` 章节内容
 - 提交 `data/` 实际内容(只能提交 schema/示例)
