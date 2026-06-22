@@ -59,7 +59,7 @@ export function importSurgeConf(text: string, fileName?: string): SurgeImportRes
   };
 }
 
-function extractSection(text: string, name: string): string | null {
+export function extractSection(text: string, name: string): string | null {
   const re = new RegExp(`^\\[\\s*${name}\\s*\\]\\s*$`, "im");
   const lines = text.split(/\r?\n/);
   let inSection = false;
@@ -432,7 +432,7 @@ function extractInlineModules(text: string): SurgeModule[] {
   ];
 }
 
-function stripComment(line: string): string {
+export function stripComment(line: string): string {
   for (const c of ["#", ";"]) {
     const i = line.indexOf(c);
     if (i >= 0) return line.slice(0, i);

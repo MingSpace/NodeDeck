@@ -253,13 +253,13 @@ describe("refreshProvider - 解析出 0 节点时写 error 状态", () => {
 });
 
 describe("refreshProvider - 解析并缓存上游 hosts 段(emit_hosts 自动带出的数据源)", () => {
-  it("Clash 顶层 hosts: 段被解析进 cache.extracted_hosts", async () => {
+  it("Clash 顶层 hosts: 中命中节点域名的条目被解析进 cache.extracted_hosts", async () => {
     const provider = fakeProvider({ interval: "12h" });
     mockedReadCache.mockResolvedValue(null);
     mockedFetch.mockResolvedValue({
       text: [
         "proxies:",
-        "  - { name: HK, type: ss, server: 1.2.3.4, port: 8388, cipher: aes-128-gcm, password: pass }",
+        "  - { name: HK, type: ss, server: hk.example.com, port: 8388, cipher: aes-128-gcm, password: pass }",
         "hosts:",
         "  '*.example.com': server:https://doh.example/dns-query",
         "",
@@ -274,6 +274,27 @@ describe("refreshProvider - 解析并缓存上游 hosts 段(emit_hosts 自动带
     expect(result.extracted_hosts).toEqual({
       "*.example.com": "server:https://doh.example/dns-query",
     });
+  });
+
+  it("hosts: 段与节点域名无关时被过滤(节点 server 为 IP / 仅国内域名分流)", async () => {
+    const provider = fakeProvider({ interval: "12h" });
+    mockedReadCache.mockResolvedValue(null);
+    mockedFetch.mockResolvedValue({
+      text: [
+        "proxies:",
+        "  - { name: HK, type: ss, server: 1.2.3.4, port: 8388, cipher: aes-128-gcm, password: pass }",
+        "hosts:",
+        "  taobao.com: server:223.6.6.6",
+        "",
+      ].join("\n"),
+      userinfo_header: null,
+      fetched_at: Date.now(),
+    });
+
+    const result = await refreshProvider(provider, { force: true });
+
+    expect(result.status).toBe("ok");
+    expect(result.extracted_hosts).toBeUndefined();
   });
 
   it("上游无 hosts 段时 extracted_hosts 为 undefined", async () => {

@@ -5,7 +5,7 @@ import { readProviderCache, writeProviderCache, type ProviderCache } from "./cac
 import { parseSubscription } from "../parsers/index.js";
 import { annotateNodes } from "../parsers/normalize.js";
 import { filterInfoNodes } from "../parsers/info-node-filter.js";
-import { extractHostsFromText } from "../import/extract-hosts.js";
+import { deriveProviderHostOverrides } from "../import/extract-hosts.js";
 import { parseUserInfoHeader } from "../schemas/userinfo.js";
 import { providerRepo } from "../storage/repos.js";
 import { REFRESH_INTERVAL_MINUTES } from "../schemas/common.js";
@@ -44,9 +44,13 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
     const rawNodes = parseSubscription(result.text, provider.parser_hint);
     const nodes = annotateNodes(rawNodes).map((n) => ({ ...n, source_provider_id: provider.id }));
     const userinfo = parseUserInfoHeader(result.userinfo_header) ?? undefined;
-    // 上游自带的 hosts 段(Clash 顶层 hosts: / Surge [Host])随刷新解析存入 cache;
+    // 只挑「与本源节点 server 域名相关」的 host 覆盖随刷新存入 cache:命中节点域名的上游
+    // [Host]/hosts: 条目 + Surge encrypted-dns-server 推导的节点 DoH(deriveProviderHostOverrides);
     // 生成订阅时由 profile-resolver 按 emit_hosts 自动并入,故"每次更新自动解析"。
-    const extractedMap = extractHostsFromText(result.text).hosts;
+    const extractedMap = deriveProviderHostOverrides({
+      text: result.text,
+      nodeServerDomains: nodes.map((n) => n.server),
+    });
     const extracted_hosts = Object.keys(extractedMap).length > 0 ? extractedMap : undefined;
     // 解析出 0 节点 ≠ "ok"——这是用户最容易踩的坑(尤其 inline 类型 content 为空 / 格式错配)。
     // 直接写 error 状态 + 具体原因,让前端能给出有用反馈,而不是绿色徽标"0 个节点"装作成功。
