@@ -1,18 +1,23 @@
 import { useRef, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Network, Filter, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProfileForm } from "./use-profile-form";
 import { NodeSelector } from "./node-selector";
 import { RulePipeline } from "./rule-pipeline";
-import { RightPanel } from "./right-panel";
+import { ProxyGroupsPicker, AdvancedPanel } from "./right-panel";
 import { PreviewPane } from "./preview-pane";
 import { YamlMode, type YamlModeHandle } from "./yaml-mode";
 import type { Profile } from "./types";
 
 type Mode = "visual" | "yaml";
+type Section = "nodes" | "rules" | "advanced";
+
+// 编辑区第二层 tab:下划线风格,区别于顶部「可视化 / YAML」的 pill 风格。
+const sectionTriggerCls =
+  "inline-flex items-center gap-1.5 rounded-none border-b-2 border-transparent bg-transparent px-3 py-2 text-xs font-medium text-muted-foreground shadow-none transition-colors hover:text-foreground data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none";
 
 export function ProfileEditorPage() {
   const { id = "" } = useParams<{ id: string }>();
@@ -29,6 +34,7 @@ export function ProfileEditorPage() {
     saving,
   } = useProfileForm(id);
   const [mode, setMode] = useState<Mode>("visual");
+  const [section, setSection] = useState<Section>("nodes");
   const yamlModeRef = useRef<YamlModeHandle>(null);
   const [yamlDirty, setYamlDirty] = useState(false);
 
@@ -64,8 +70,8 @@ export function ProfileEditorPage() {
   };
 
   return (
-    // h-screen + overflow-hidden 锁死整页在视口内,避免 PreviewPane(shrink-0,固定 height) 在窗口偏小或 stored height 偏大时
-    // 溢出 content div / h-screen 边界,从而把外层 <main className="overflow-auto"> 撑出滚动条(用户表现:"滚到底还能往下滚半屏")。
+    // h-screen + overflow-hidden 锁死整页在视口内:编辑区(左)与实时预览(右)各自内部滚动,整页不出现外层滚动条。
+    // 预览面板现在是右侧固定宽度、高度撑满,不会再像旧底部布局那样把 h-screen 撑溢出。
     <div className="flex flex-col h-screen overflow-hidden">
       <header className="border-b bg-card px-4 py-2 flex items-center gap-3 shrink-0">
         <Button variant="ghost" size="sm" onClick={() => navigate("/dashboard")}>
@@ -127,21 +133,48 @@ export function ProfileEditorPage() {
       </header>
 
       {mode === "visual" ? (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          <div className="flex-1 grid min-h-0" style={{ gridTemplateColumns: "minmax(0, 1.6fr) minmax(0, 2.1fr) minmax(0, 1.3fr)" }}>
-            <div className="border-r min-h-0">
-              <NodeSelector
-                profileId={id}
-                draft={draft}
-                onChange={update}
-                onFilterChange={(patch) => updateNested("node_filter", patch)}
-              />
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 min-h-0">
+            <div className="shrink-0 border-b px-2">
+              <Tabs value={section} onValueChange={(v) => setSection(v as Section)}>
+                <TabsList className="h-auto gap-0 rounded-none bg-transparent p-0">
+                  <TabsTrigger value="nodes" className={sectionTriggerCls}>
+                    <Network className="h-3.5 w-3.5" />
+                    节点来源
+                  </TabsTrigger>
+                  <TabsTrigger value="rules" className={sectionTriggerCls}>
+                    <Filter className="h-3.5 w-3.5" />
+                    规则 & 策略组
+                  </TabsTrigger>
+                  <TabsTrigger value="advanced" className={sectionTriggerCls}>
+                    <SlidersHorizontal className="h-3.5 w-3.5" />
+                    高级输出
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
             </div>
-            <div className="border-r min-h-0">
-              <RulePipeline draft={draft} onChange={(rules) => update({ rule_modules: rules })} />
-            </div>
-            <div className="min-h-0">
-              <RightPanel profileId={id} draft={draft} onChange={update} />
+            <div className="flex-1 min-h-0">
+              {section === "nodes" && (
+                <NodeSelector
+                  profileId={id}
+                  draft={draft}
+                  onChange={update}
+                  onFilterChange={(patch) => updateNested("node_filter", patch)}
+                />
+              )}
+              {section === "rules" && (
+                <div className="flex h-full min-h-0 flex-col">
+                  <div className="shrink-0 border-b bg-muted/10">
+                    <ProxyGroupsPicker draft={draft} onChange={update} />
+                  </div>
+                  <div className="min-h-0 flex-1">
+                    <RulePipeline draft={draft} onChange={(rules) => update({ rule_modules: rules })} />
+                  </div>
+                </div>
+              )}
+              {section === "advanced" && (
+                <AdvancedPanel profileId={id} draft={draft} onChange={update} />
+              )}
             </div>
           </div>
           <PreviewPane profileId={id} draft={draft} enabled={true} />

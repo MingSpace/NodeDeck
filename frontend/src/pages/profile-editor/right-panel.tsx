@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { cn } from "@/lib/utils";
 import { useEntityList } from "@/api/entities";
 import { useNodePoolPreview } from "./use-profile-form";
 import type { Profile, ChainRule } from "./types";
@@ -20,11 +21,48 @@ interface Props {
   onChange: (patch: Partial<Profile>) => void;
 }
 
-export function RightPanel({ profileId, draft, onChange }: Props) {
+// 策略组选择:Tab「规则 & 策略组」顶部横条,与下方规则流水线的 policy 下拉强关联。
+export function ProxyGroupsPicker({
+  draft,
+  onChange,
+}: {
+  draft: Profile;
+  onChange: (patch: Partial<Profile>) => void;
+}) {
   const groups = useEntityList<NamedItem>("groups");
+  return (
+    <div className="px-4 py-2.5 flex items-start gap-3 flex-wrap">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground shrink-0 h-7">
+        <Layers className="h-3.5 w-3.5" />
+        <span>策略组</span>
+        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+          {draft.proxy_groups.length}/{groups.data?.items.length ?? 0}
+        </Badge>
+      </div>
+      <div className="flex-1 min-w-0">
+        <ChipPicker
+          items={groups.data?.items ?? []}
+          selected={draft.proxy_groups}
+          onToggle={(id) =>
+            onChange({
+              proxy_groups: draft.proxy_groups.includes(id)
+                ? draft.proxy_groups.filter((g) => g !== id)
+                : [...draft.proxy_groups, id],
+            })
+          }
+          empty="暂无策略组,前往「策略组」添加"
+        />
+      </div>
+    </div>
+  );
+}
+
+// 高级 / 输出:Tab「高级」内容,卡片式 2 列平铺(原右栏纵向堆叠太挤)。
+export function AdvancedPanel({ profileId, draft, onChange }: Props) {
   const modules = useEntityList<NamedItem>("modules");
   const generals = useEntityList<NamedItem>("generals");
   const providers = useEntityList<NamedItem>("providers");
+  const groups = useEntityList<NamedItem>("groups");
   const nodePool = useNodePoolPreview(profileId, draft);
 
   const selectedGroupNames = useMemo(() => {
@@ -40,165 +78,157 @@ export function RightPanel({ profileId, draft, onChange }: Props) {
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0 overflow-auto">
-      <Section icon={<Layers className="h-3.5 w-3.5" />} title="策略组" count={`${draft.proxy_groups.length}/${groups.data?.items.length ?? 0}`}>
-        <ChipPicker
-          items={groups.data?.items ?? []}
-          selected={draft.proxy_groups}
-          onToggle={(id) =>
-            onChange({
-              proxy_groups: draft.proxy_groups.includes(id)
-                ? draft.proxy_groups.filter((g) => g !== id)
-                : [...draft.proxy_groups, id],
-            })
-          }
-          empty="暂无策略组,前往「策略组」添加"
-        />
-      </Section>
-
-      <Section icon={<Puzzle className="h-3.5 w-3.5" />} title="Surge 模块" count={`${draft.surge_modules.length}/${modules.data?.items.length ?? 0}`}>
-        <ChipPicker
-          items={modules.data?.items ?? []}
-          selected={draft.surge_modules}
-          onToggle={(id) =>
-            onChange({
-              surge_modules: draft.surge_modules.includes(id)
-                ? draft.surge_modules.filter((m) => m !== id)
-                : [...draft.surge_modules, id],
-            })
-          }
-          empty="暂无模块"
-        />
-      </Section>
-
-      <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="General 预设">
-        <Select
-          value={draft.general_preset ?? "__none__"}
-          onValueChange={(v) => onChange({ general_preset: v === "__none__" ? undefined : v })}
-        >
-          <SelectTrigger className="h-8 text-xs">
-            <SelectValue placeholder="选择 General" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="__none__" className="text-xs italic text-muted-foreground">
-              不引用
-            </SelectItem>
-            {generals.data?.items.map((g) => (
-              <SelectItem key={g.id} value={g.id} className="text-xs">
-                {g.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Section>
-
-      <Section icon={<LinkIcon className="h-3.5 w-3.5" />} title="链式代理 (chain_rules)" count={String(draft.chain_rules.length)}>
-        <ChainRulesEditor
-          rules={draft.chain_rules}
-          providers={providers.data?.items ?? []}
-          groupNames={selectedGroupNames}
-          nodeNames={nodeNames}
-          onChange={(rules) => onChange({ chain_rules: rules })}
-        />
-      </Section>
-
-      <Section
-        icon={<SettingsIcon className="h-3.5 w-3.5" />}
-        title="流量信息 (Subscription-UserInfo)"
-        trailing={
-          <Switch
-            checked={draft.userinfo.enabled}
-            onCheckedChange={(v) =>
-              onChange({ userinfo: { ...draft.userinfo, enabled: v } })
+    <div className="h-full min-h-0 overflow-auto">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
+        <Section icon={<Puzzle className="h-3.5 w-3.5" />} title="Surge 模块" count={`${draft.surge_modules.length}/${modules.data?.items.length ?? 0}`}>
+          <ChipPicker
+            items={modules.data?.items ?? []}
+            selected={draft.surge_modules}
+            onToggle={(id) =>
+              onChange({
+                surge_modules: draft.surge_modules.includes(id)
+                  ? draft.surge_modules.filter((m) => m !== id)
+                  : [...draft.surge_modules, id],
+              })
             }
-            aria-label="启用 Subscription-UserInfo"
+            empty="暂无模块"
           />
-        }
-        collapsed={!draft.userinfo.enabled}
-        collapsedHint="未启用 — 不会输出 Subscription-UserInfo / X-NodeDeck-Userinfo-* 响应头"
-      >
-        <div className="space-y-2">
+        </Section>
+
+        <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="General 预设">
           <Select
-            value={draft.userinfo.mode}
-            onValueChange={(v) =>
-              onChange({ userinfo: { ...draft.userinfo, mode: v as "primary" | "sum" } })
-            }
+            value={draft.general_preset ?? "__none__"}
+            onValueChange={(v) => onChange({ general_preset: v === "__none__" ? undefined : v })}
           >
             <SelectTrigger className="h-8 text-xs">
-              <SelectValue />
+              <SelectValue placeholder="选择 General" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="sum" className="text-xs">sum (各机场求和)</SelectItem>
-              <SelectItem value="primary" className="text-xs">primary (单机场)</SelectItem>
+              <SelectItem value="__none__" className="text-xs italic text-muted-foreground">
+                不引用
+              </SelectItem>
+              {generals.data?.items.map((g) => (
+                <SelectItem key={g.id} value={g.id} className="text-xs">
+                  {g.name}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
-          {draft.userinfo.mode === "primary" && (
+        </Section>
+
+        <Section
+          className="lg:col-span-2"
+          icon={<LinkIcon className="h-3.5 w-3.5" />}
+          title="链式代理 (chain_rules)"
+          count={String(draft.chain_rules.length)}
+        >
+          <ChainRulesEditor
+            rules={draft.chain_rules}
+            providers={providers.data?.items ?? []}
+            groupNames={selectedGroupNames}
+            nodeNames={nodeNames}
+            onChange={(rules) => onChange({ chain_rules: rules })}
+          />
+        </Section>
+
+        <Section
+          icon={<SettingsIcon className="h-3.5 w-3.5" />}
+          title="流量信息 (Subscription-UserInfo)"
+          trailing={
+            <Switch
+              checked={draft.userinfo.enabled}
+              onCheckedChange={(v) =>
+                onChange({ userinfo: { ...draft.userinfo, enabled: v } })
+              }
+              aria-label="启用 Subscription-UserInfo"
+            />
+          }
+          collapsed={!draft.userinfo.enabled}
+          collapsedHint="未启用 — 不会输出 Subscription-UserInfo / X-NodeDeck-Userinfo-* 响应头"
+        >
+          <div className="space-y-2">
             <Select
-              value={draft.userinfo.primary_provider ?? ""}
+              value={draft.userinfo.mode}
               onValueChange={(v) =>
-                onChange({ userinfo: { ...draft.userinfo, primary_provider: v || undefined } })
+                onChange({ userinfo: { ...draft.userinfo, mode: v as "primary" | "sum" } })
               }
             >
               <SelectTrigger className="h-8 text-xs">
-                <SelectValue placeholder="选择主机场" />
-              </SelectTrigger>
-              <SelectContent>
-                {providers.data?.items.map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="text-xs">
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={draft.userinfo.expose_per_provider_headers}
-              onChange={(e) =>
-                onChange({ userinfo: { ...draft.userinfo, expose_per_provider_headers: e.target.checked } })
-              }
-              className="h-3.5 w-3.5"
-            />
-            暴露每机场 X-NodeDeck-Userinfo-* 响应头
-          </label>
-        </div>
-      </Section>
-
-      <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="Clash 输出选项">
-        <div className="space-y-2">
-          <div>
-            <label className="text-xs block mb-1">flag (客户端方言)</label>
-            <Select
-              value={draft.clash_options.flag}
-              onValueChange={(v) =>
-                onChange({ clash_options: { ...draft.clash_options, flag: v as "mihomo" | "stash" } })
-              }
-            >
-              <SelectTrigger className="h-7 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="mihomo" className="text-xs">mihomo (Clash Meta)</SelectItem>
-                <SelectItem value="stash" className="text-xs">stash</SelectItem>
+                <SelectItem value="sum" className="text-xs">sum (各机场求和)</SelectItem>
+                <SelectItem value="primary" className="text-xs">primary (单机场)</SelectItem>
               </SelectContent>
             </Select>
+            {draft.userinfo.mode === "primary" && (
+              <Select
+                value={draft.userinfo.primary_provider ?? ""}
+                onValueChange={(v) =>
+                  onChange({ userinfo: { ...draft.userinfo, primary_provider: v || undefined } })
+                }
+              >
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue placeholder="选择主机场" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providers.data?.items.map((p) => (
+                    <SelectItem key={p.id} value={p.id} className="text-xs">
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={draft.userinfo.expose_per_provider_headers}
+                onChange={(e) =>
+                  onChange({ userinfo: { ...draft.userinfo, expose_per_provider_headers: e.target.checked } })
+                }
+                className="h-3.5 w-3.5"
+              />
+              暴露每机场 X-NodeDeck-Userinfo-* 响应头
+            </label>
           </div>
-          <label className="flex items-center gap-2 text-xs cursor-pointer">
-            <input
-              type="checkbox"
-              checked={draft.clash_options.use_proxy_providers}
-              onChange={(e) =>
-                onChange({
-                  clash_options: { ...draft.clash_options, use_proxy_providers: e.target.checked },
-                })
-              }
-              className="h-3.5 w-3.5"
-            />
-            使用 proxy-providers (远程拉取)
-          </label>
-        </div>
-      </Section>
+        </Section>
+
+        <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="Clash 输出选项">
+          <div className="space-y-2">
+            <div>
+              <label className="text-xs block mb-1">flag (客户端方言)</label>
+              <Select
+                value={draft.clash_options.flag}
+                onValueChange={(v) =>
+                  onChange({ clash_options: { ...draft.clash_options, flag: v as "mihomo" | "stash" } })
+                }
+              >
+                <SelectTrigger className="h-7 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="mihomo" className="text-xs">mihomo (Clash Meta)</SelectItem>
+                  <SelectItem value="stash" className="text-xs">stash</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <label className="flex items-center gap-2 text-xs cursor-pointer">
+              <input
+                type="checkbox"
+                checked={draft.clash_options.use_proxy_providers}
+                onChange={(e) =>
+                  onChange({
+                    clash_options: { ...draft.clash_options, use_proxy_providers: e.target.checked },
+                  })
+                }
+                className="h-3.5 w-3.5"
+              />
+              使用 proxy-providers (远程拉取)
+            </label>
+          </div>
+        </Section>
+      </div>
     </div>
   );
 }
@@ -210,6 +240,7 @@ function Section({
   trailing,
   collapsed,
   collapsedHint,
+  className,
   children,
 }: {
   icon: React.ReactNode;
@@ -218,11 +249,12 @@ function Section({
   trailing?: React.ReactNode;
   collapsed?: boolean;
   collapsedHint?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="border-b">
-      <div className="px-4 py-2 bg-muted/30 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+    <div className={cn("rounded-lg border bg-card overflow-hidden self-start", className)}>
+      <div className="px-4 py-2.5 bg-muted/30 border-b flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon}
         <span className="flex-1">{title}</span>
         {count && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{count}</Badge>}
@@ -230,7 +262,7 @@ function Section({
       </div>
       {collapsed ? (
         collapsedHint ? (
-          <div className="px-4 py-2 text-[11px] text-muted-foreground italic">{collapsedHint}</div>
+          <div className="px-4 py-3 text-[11px] text-muted-foreground italic">{collapsedHint}</div>
         ) : null
       ) : (
         <div className="px-4 py-3">{children}</div>
@@ -338,7 +370,7 @@ function ChainRulesEditor({
           <Plus className="h-3 w-3 inline mr-1" />
           添加链式规则
         </summary>
-        <div className="p-2 space-y-2 border-t">
+        <div className="p-2 grid grid-cols-1 sm:grid-cols-3 gap-2 border-t">
           <div>
             <label className="text-[11px] block mb-1">via (出口节点/组名)</label>
             <input
@@ -391,7 +423,7 @@ function ChainRulesEditor({
               className="h-7 text-xs"
             />
           </div>
-          <Button size="sm" onClick={add} disabled={!draft.via.trim()} className="w-full h-7 text-xs">
+          <Button size="sm" onClick={add} disabled={!draft.via.trim()} className="w-full h-7 text-xs sm:col-span-3">
             <Plus className="h-3 w-3" />
             添加
           </Button>
