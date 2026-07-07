@@ -125,14 +125,34 @@ describe("refreshProvider - never(手动刷新)模式", () => {
     expect(result.status).toBe("ok");
   });
 
-  it("有 cache 但 status=stale 时也允许重拉(种子未成功)", async () => {
+  it("有 cache 但 status=stale 时 non-force 仍 short-circuit,不自动重拉(手动源失败后不该被 scheduler 反复重拉 + 每天推失败通知)", async () => {
     const provider = fakeProvider({ interval: "never" });
-    mockedReadCache.mockResolvedValue({
-      ...okCache(0),
-      status: "stale",
-    });
+    const cached = { ...okCache(99999), status: "stale" as const, error: "HTTP 403" };
+    mockedReadCache.mockResolvedValue(cached);
 
-    await refreshProvider(provider);
+    const result = await refreshProvider(provider);
+
+    expect(result).toBe(cached);
+    expect(mockedFetch).not.toHaveBeenCalled();
+    expect(mockedWriteCache).not.toHaveBeenCalled();
+  });
+
+  it("有 cache 但 status=error(种子失败)时 non-force 也 short-circuit,只靠用户手动 force 重试", async () => {
+    const provider = fakeProvider({ interval: "never" });
+    const cached = { ...okCache(99999, []), status: "error" as const, error: "HTTP 403" };
+    mockedReadCache.mockResolvedValue(cached);
+
+    const result = await refreshProvider(provider);
+
+    expect(result).toBe(cached);
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it("status=stale 但 force=true(用户手动点刷新)仍穿透 fetch", async () => {
+    const provider = fakeProvider({ interval: "never" });
+    mockedReadCache.mockResolvedValue({ ...okCache(99999), status: "stale" as const, error: "HTTP 403" });
+
+    await refreshProvider(provider, { force: true });
 
     expect(mockedFetch).toHaveBeenCalledTimes(1);
   });

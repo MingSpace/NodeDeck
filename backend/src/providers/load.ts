@@ -25,19 +25,23 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
   const cached = await readProviderCache(provider.id);
   const interval = provider.refresh.interval;
 
-  if (!opts.force && cached?.status === "ok") {
+  if (!opts.force && cached) {
     const minutes = REFRESH_INTERVAL_MINUTES[interval];
     // null = never(手动刷新):non-force 路径(scheduler / loadProviderNodes)一律使用 cache,不自动拉。
-    // 用户手动点刷新按钮时走 force=true 路径,会绕过这里穿透到 fetch。
+    // 关键:不论 cache 是 ok / stale / error 都 short-circuit——否则失败(如 403)的手动源会被
+    //   每分钟的 scheduler 反复重拉,既打爆机场又每到冷却期就推一条 Bark 失败通知。
+    // 只有「完全无 cache」时才穿透 fetch 做一次种子;用户手动点刷新走 force=true 穿透。
     if (minutes === null) {
-      if (cached.nodes.length > 0) return cached;
-    } else if (minutes > 0) {
+      return cached;
+    }
+    // 周期 / on_request 只在 ok cache 未过期时复用;stale/error 仍按周期重试。
+    if (cached.status === "ok" && minutes > 0) {
       const ageMin = (Date.now() - cached.fetched_at) / 1000 / 60;
       if (ageMin < minutes) {
         return cached;
       }
     }
-    // minutes === 0 (on_request) 穿透到下面 fetch。
+    // minutes === 0 (on_request) 或已过期 / 非 ok 穿透到下面 fetch。
   }
   try {
     const result = await fetchProviderContent(provider);
