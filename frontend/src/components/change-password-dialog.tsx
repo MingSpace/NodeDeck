@@ -7,8 +7,21 @@ import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 
-export function ChangePasswordDialog({ forced }: { forced: boolean }) {
-  const [open, setOpen] = useState(forced);
+export function ChangePasswordDialog({
+  forced,
+  open: openProp,
+  onOpenChange,
+}: {
+  forced: boolean;
+  open?: boolean;
+  onOpenChange?: (v: boolean) => void;
+}) {
+  const [openState, setOpenState] = useState(forced);
+  const open = openProp ?? openState;
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    onOpenChange?.(v);
+  };
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");

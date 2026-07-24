@@ -47,7 +47,7 @@ export function SettingsPage() {
               <Button variant="outline" onClick={() => setPwOpen(true)}>
                 修改密码
               </Button>
-              {pwOpen && <ChangePasswordDialog forced={false} />}
+              <ChangePasswordDialog forced={false} open={pwOpen} onOpenChange={setPwOpen} />
             </CardContent>
           </Card>
 
