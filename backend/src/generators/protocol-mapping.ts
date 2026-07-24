@@ -19,14 +19,15 @@ export interface FieldMap {
 
 /** Common booleans / strings shared across protocols. */
 export const COMMON_FIELDS: FieldMap[] = [
-  { internal: "tls", clash: "tls", surge: "tls" },
+  { internal: "tls", clash: "tls", surge: "tls", notes: "Surge 端仅 vmess 需要显式 tls=true(默认明文);trojan/https/tuic/hysteria2 等由协议类型隐含,不输出该键" },
   { internal: "sni", clash: "sni", surge: "sni" },
   { internal: "skip_cert_verify", clash: "skip-cert-verify", surge: "skip-cert-verify" },
   { internal: "fingerprint", clash: "fingerprint", surge: "server-cert-fingerprint-sha256", notes: "服务器证书 SHA256 锁定(TLS 通用,替代标准 X.509 校验);区别于 client_fingerprint(uTLS 浏览器指纹)" },
   { internal: "client_fingerprint", clash: "client-fingerprint", surge: "tls-fingerprint", notes: "uTLS 客户端指纹(chrome/firefox 等);区别于 fingerprint(证书锁定)" },
+  { internal: "alpn", clash: "alpn", surge: "alpn", notes: "Clash 为数组;Surge 端(iOS 5.20.0+ / Mac 6.7.0+)数组多值展开为多个 alpn= 参数" },
   { internal: "udp", clash: "udp", surge: "udp-relay" },
   { internal: "tfo", clash: "tfo", surge: "tfo" },
-  { internal: "mptcp", clash: "mptcp", surge: null, notes: "Surge does not expose mptcp on per-node basis" },
+  { internal: "mptcp", clash: "mptcp", surge: null, notes: "mihomo 通用字段(仅 TCP 协议生效);Surge 无 per-node mptcp" },
 ];
 
 /**
@@ -72,10 +73,12 @@ export const HYSTERIA2_FIELDS: FieldMap[] = [
   // Surge hysteria2 仅支持下行带宽,不支持 upload-bandwidth(manual.nssurge.com/policy/proxy.html)
   { internal: "up", clash: "up", surge: null, notes: "Surge has no upload-bandwidth knob; mihomo-only" },
   { internal: "down", clash: "down", surge: "download-bandwidth", notes: "Surge expects plain Mbps integer (no 'Mbps' unit)" },
-  // Surge 端没有 hysteria2 的 obfs= 键;Salamander 混淆用 salamander-password= 单键表达
-  // (iOS 5.17.0+ / Mac 6.4.3+)。mihomo 仍是 obfs: salamander + obfs-password: 两键。
-  { internal: "obfs", clash: "obfs", surge: null, notes: "Surge 无 obfs= 键;salamander 由 salamander-password= 隐含" },
-  { internal: "obfs_password", clash: "obfs-password", surge: "salamander-password", notes: "仅 obfs=salamander 时输出;其他 obfs 类型 Surge 不支持 + warning" },
+  // Surge 端没有 hysteria2 的 obfs= 键,混淆按类型用单键表达:
+  // salamander → salamander-password=(iOS 5.17.0+ / Mac 6.4.3+)
+  // gecko → gecko-password=(iOS 5.20.0+ / Mac 6.7.0+)
+  // mihomo 两种混淆都是 obfs: <type> + obfs-password: 两键(wiki.metacubex.one/config/proxies/hysteria2)。
+  { internal: "obfs", clash: "obfs", surge: null, notes: "salamander/gecko;Surge 无 obfs= 键,混淆类型由 salamander-password=/gecko-password= 单键隐含" },
+  { internal: "obfs_password", clash: "obfs-password", surge: "salamander-password", notes: "obfs=salamander → salamander-password=;obfs=gecko → gecko-password=;其他 obfs 类型跳过 + warning" },
   { internal: "port_hopping", clash: "ports", surge: "port-hopping" },
   { internal: "hop_interval", clash: "hop-interval", surge: "port-hopping-interval" },
 ];

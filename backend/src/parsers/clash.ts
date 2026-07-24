@@ -29,6 +29,7 @@ function clashProxyToNode(p: ClashProxy): Node | null {
     port,
     udp: typeof p.udp === "boolean" ? p.udp : undefined,
     tfo: typeof p.tfo === "boolean" ? p.tfo : undefined,
+    mptcp: typeof p.mptcp === "boolean" ? p.mptcp : undefined,
     tls: typeof p.tls === "boolean" ? p.tls : undefined,
     sni: p.sni ? String(p.sni) : (p.servername ? String(p.servername) : undefined),
     skip_cert_verify: typeof p["skip-cert-verify"] === "boolean" ? (p["skip-cert-verify"] as boolean) : undefined,
@@ -43,15 +44,17 @@ function clashProxyToNode(p: ClashProxy): Node | null {
     case "ss": {
       // shadow-tls plugin 归一化到内部 shadow_tls_* 字段(与 Surge 侧共用抽象),
       // 生成 Clash 时由 buildClashProxy 对称重建;其它 plugin(obfs/v2ray-plugin)原样透传。
-      if (p.plugin === "shadow-tls") {
-        const po = (p["plugin-opts"] as Record<string, unknown> | undefined) ?? {};
+      // 缺 password 时不做归一化(空串会被两端 generator 的 falsy 判断丢掉整个 plugin),
+      // 走下面的透传分支原样保留,保证 roundtrip 不丢字段。
+      if (p.plugin === "shadow-tls" && (p["plugin-opts"] as Record<string, unknown> | undefined)?.password) {
+        const po = (p["plugin-opts"] as Record<string, unknown>) ?? {};
         const ver = Number(po.version);
         return {
           ...base,
           type: "ss",
           cipher: p.cipher ? String(p.cipher) : "aes-128-gcm",
           password: p.password ? String(p.password) : "",
-          shadow_tls_password: po.password ? String(po.password) : "",
+          shadow_tls_password: String(po.password),
           shadow_tls_sni: po.host ? String(po.host) : undefined,
           shadow_tls_version: ver === 1 || ver === 2 || ver === 3 ? (ver as 1 | 2 | 3) : undefined,
         };

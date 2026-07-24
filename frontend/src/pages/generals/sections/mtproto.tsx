@@ -36,7 +36,9 @@ export function MtprotoSection({ data, update }: Props) {
     update({ mtproto: { ...mt, ...patch } });
   };
 
-  const secretInvalid = enabled && mt.secret.length > 0 && !SECRET_RE.test(mt.secret);
+  // 空 secret 也算非法:enable=true + 空 secret 能通过保存,但 generator 会静默跳过整段,
+  // 用户会以为开了 MTProto 而订阅里没有;这里必须在 UI 就标红。
+  const secretInvalid = enabled && !SECRET_RE.test(mt.secret);
 
   return (
     <div className="space-y-3">

@@ -121,6 +121,51 @@ proxies:
     expect(nodes[1].shadow_tls_password).toBeUndefined();
   });
 
+  it("shadow-tls 缺 password 时不归一化,plugin 原样透传(避免 roundtrip 丢字段)", () => {
+    const yaml = `
+proxies:
+  - name: STLS-NOPWD
+    type: ss
+    server: 1.2.3.4
+    port: 443
+    cipher: aes-128-gcm
+    password: x
+    plugin: shadow-tls
+    plugin-opts:
+      host: cloud.tencent.com
+      version: 3
+`;
+    const nodes = parseClashYaml(yaml);
+    expect(nodes[0].shadow_tls_password).toBeUndefined();
+    expect(nodes[0]).toMatchObject({
+      plugin: "shadow-tls",
+      plugin_opts: { host: "cloud.tencent.com", version: 3 },
+    });
+  });
+
+  it("parses 通用字段 mptcp / hysteria2 obfs gecko", () => {
+    const yaml = `
+proxies:
+  - name: SS-MPTCP
+    type: ss
+    server: 1.2.3.4
+    port: 443
+    cipher: aes-128-gcm
+    password: x
+    mptcp: true
+  - name: HY2-GECKO
+    type: hysteria2
+    server: hy2.example.com
+    port: 443
+    password: pw
+    obfs: gecko
+    obfs-password: gp
+`;
+    const nodes = parseClashYaml(yaml);
+    expect(nodes[0].mptcp).toBe(true);
+    expect(nodes[1]).toMatchObject({ obfs: "gecko", obfs_password: "gp" });
+  });
+
   it("returns empty for non-clash yaml", () => {
     expect(parseClashYaml("foo: bar")).toEqual([]);
     expect(parseClashYaml("")).toEqual([]);

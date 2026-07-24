@@ -414,6 +414,9 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
       params.push(`username=${node.uuid}`);
       if (node.cipher) params.push(`encrypt-method=${node.cipher}`);
       if (node.vmess_aead !== undefined) params.push(`vmess-aead=${node.vmess_aead}`);
+      // Surge vmess 默认明文,必须显式 tls=true 才走 TLS(trojan/https 等由类型隐含,无此参数)。
+      // 参考 Surge Mac release note 官方示例: vmess, ..., ws=true, tls=true
+      if (node.tls) params.push("tls=true");
       pushTransport(params, node);
       break;
     case "vless":
@@ -437,15 +440,28 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
       // 参考: https://manual.nssurge.com/policy/proxy.html#parameter-for-hysteria-2
       // up 字段在转 Surge 时静默丢弃(mihomo 端仍会用),不发 warning 避免日志噪音。
       if (node.down) params.push(`download-bandwidth=${stripBandwidthUnit(node.down)}`);
-      // Surge 端没有 hysteria2 的 obfs=/obfs-password= 键;Salamander 混淆用单键
-      // salamander-password=(iOS 5.17.0+ / Mac 6.4.3+)表达。mihomo 的 obfs: salamander
-      // + obfs-password: 两键在这里折叠成一键;非 salamander 的 obfs 类型 Surge 不支持。
-      if (node.obfs && node.obfs !== "salamander") {
+      // Surge 端没有 hysteria2 的 obfs=/obfs-password= 键,混淆按类型用单键表达:
+      // salamander → salamander-password=(iOS 5.17.0+ / Mac 6.4.3+)
+      // gecko → gecko-password=(iOS 5.20.0+ / Mac 6.7.0+)
+      // mihomo 的 obfs: + obfs-password: 两键在这里折叠成一键;其他 obfs 类型 Surge 不支持。
+      if (node.obfs === "gecko") {
+        if (node.obfs_password) {
+          params.push(`gecko-password=${escapeValue(node.obfs_password)}`);
+        } else {
+          warnings.push(
+            `Surge hysteria2 "${node.name}" obfs=gecko 但缺 obfs-password,混淆未启用`,
+          );
+        }
+      } else if (node.obfs && node.obfs !== "salamander") {
         warnings.push(
-          `Surge hysteria2 "${node.name}" obfs="${node.obfs}" 不被支持(仅 salamander),混淆参数已跳过`,
+          `Surge hysteria2 "${node.name}" obfs="${node.obfs}" 不被支持(仅 salamander/gecko),混淆参数已跳过`,
         );
       } else if (node.obfs_password) {
         params.push(`salamander-password=${escapeValue(node.obfs_password)}`);
+      } else if (node.obfs === "salamander") {
+        warnings.push(
+          `Surge hysteria2 "${node.name}" obfs=salamander 但缺 obfs-password,混淆未启用`,
+        );
       }
       if (node.port_hopping) params.push(`port-hopping=${node.port_hopping}`);
       if (node.hop_interval !== undefined) params.push(`port-hopping-interval=${node.hop_interval}`);

@@ -335,6 +335,8 @@ export function buildClashProxy(node: Node, warnings: string[]): Record<string, 
   // common
   if (node.udp !== undefined) out.udp = node.udp;
   if (node.tfo !== undefined) out.tfo = node.tfo;
+  // mihomo 通用字段,仅 TCP 协议生效(wiki.metacubex.one/config/proxies/ mptcp 小节)
+  if (node.mptcp !== undefined) out.mptcp = node.mptcp;
   if (node.tls !== undefined) out.tls = node.tls;
   if (node.sni !== undefined) out.sni = node.sni;
   if (node.skip_cert_verify !== undefined) out["skip-cert-verify"] = node.skip_cert_verify;

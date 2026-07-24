@@ -73,6 +73,26 @@ Auto = url-test, A, B
     });
   });
 
+  it("parses hysteria2 gecko-password 单键写法(iOS 5.20+/Mac 6.7+)", () => {
+    const node = parseSurgeProxyLine(
+      "HY2G = hysteria2, hy2.example.com, 443, password=pw, gecko-password=gp",
+    );
+    expect(node).toMatchObject({
+      type: "hysteria2",
+      obfs: "gecko",
+      obfs_password: "gp",
+    });
+  });
+
+  it("parses vmess tls=true(Surge vmess 默认明文,tls 需显式)", () => {
+    const withTls = parseSurgeProxyLine(
+      "VM = vmess, vm.example.com, 443, username=uuid-1, ws=true, tls=true, ws-path=/v2",
+    );
+    expect(withTls).toMatchObject({ type: "vmess", tls: true });
+    const plaintext = parseSurgeProxyLine("VM2 = vmess, vm.example.com, 80, username=uuid-2");
+    expect(plaintext?.tls).toBeUndefined();
+  });
+
   it("parses shadow-tls 混淆参数(任意协议行,常见于 snell/ss)", () => {
     const node = parseSurgeProxyLine(
       "STLS = snell, 1.2.3.4, 443, psk=pwd1, version=4, reuse=true, shadow-tls-password=pwd2, shadow-tls-sni=gateway.icloud.com, shadow-tls-version=3",

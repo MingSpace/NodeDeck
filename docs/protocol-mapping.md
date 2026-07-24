@@ -17,15 +17,15 @@
 
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
-| `tls` | `tls: bool` | `tls=bool` | [CS] |
+| `tls` | `tls: bool` | `tls=bool` | [CS],Surge 端**仅 vmess** 需要显式 `tls=true`(vmess 默认明文);trojan/https/tuic/hysteria2 等由协议类型隐含,不输出该键 |
 | `sni` | `sni:` | `sni=` | [CS] |
 | `skip_cert_verify` | `skip-cert-verify: bool` | `skip-cert-verify=bool` | [CS] |
 | `fingerprint` | `fingerprint:` | `server-cert-fingerprint-sha256=` | [CS],服务器证书 SHA256 锁定(替代标准 X.509 校验);**区别于** `client_fingerprint` |
 | `client_fingerprint` | `client-fingerprint:` | `tls-fingerprint=` | [CS],uTLS 客户端指纹(chrome/firefox 等);**区别于** `fingerprint` |
 | `udp` | `udp: bool` | `udp-relay=bool` | [CS] |
 | `tfo` | `tfo: bool` | `tfo=bool` | [CS] |
-| `mptcp` | `mptcp: bool` | — | [C] |
-| `alpn` | `alpn: [h3]` | `alpn=h3`(可重复) | [CS],写法不同 |
+| `mptcp` | `mptcp: bool` | — | [C],mihomo 通用字段(仅 TCP 协议生效);Surge 无 per-node mptcp |
+| `alpn` | `alpn: [h3]` | `alpn=h3`(可重复) | [CS],写法不同;Surge 端 `alpn=` 需 iOS 5.20.0+ / Mac 6.7.0+ |
 
 ---
 
@@ -46,6 +46,7 @@
 | `alter_id` | `alterId:` | — | [C],Surge 假定为 0 |
 | `cipher` | `cipher:` | `encrypt-method=` | [CS] |
 | `vmess_aead` | — | `vmess-aead=bool` | [S] |
+| `tls` | `tls: bool` | `tls=true` | [CS],Surge vmess 默认明文,走 TLS 必须显式输出该参数 |
 | transport ws | `network: ws` + `ws-opts: { path, headers }` | `ws=true, ws-path=, ws-headers=Host:xx\|Foo:bar` | [CS],拍平 |
 | transport grpc | `network: grpc` + `grpc-opts:{grpc-service-name}` | — | [C] |
 
@@ -73,12 +74,12 @@
 | `password` | `password:` | `password=` | [CS] |
 | `up` | `up: "100 Mbps"` | — | [C],Surge hysteria2 不支持 upload-bandwidth |
 | `down` | `down: "200 Mbps"` | `download-bandwidth=200` | [CS],Surge 端去掉 `Mbps` 后缀只留数字 |
-| `obfs` | `obfs: salamander` | —(由 `salamander-password=` 隐含) | Surge 无 `obfs=` 键;非 salamander 类型跳过 + warning |
-| `obfs_password` | `obfs-password:` | `salamander-password=` | [CS],Surge 单键表达 Salamander 混淆(iOS 5.17.0+ / Mac 6.4.3+) |
+| `obfs` | `obfs: salamander\|gecko` | —(由单键隐含) | Surge 无 `obfs=` 键;混淆类型由 `salamander-password=`/`gecko-password=` 隐含,其他类型跳过 + warning |
+| `obfs_password` | `obfs-password:` | `salamander-password=` 或 `gecko-password=` | [CS],按 `obfs` 类型选键:salamander(iOS 5.17.0+ / Mac 6.4.3+)/ gecko(iOS 5.20.0+ / Mac 6.7.0+) |
 | `port_hopping` | `ports: 443-8443` | `port-hopping=443-8443` | [CS],键名不同 |
 | `hop_interval` | `hop-interval: 30` | `port-hopping-interval=30` | [CS],键名不同 |
 
-> Surge hysteria2 字段参考 [manual.nssurge.com](https://manual.nssurge.com/policy/proxy.html)(基础支持 iOS 5.8.0+ / Mac 5.4.0+;Salamander 混淆 iOS 5.17.0+ / Mac 6.4.3+)。parser 兼容读取旧版 `obfs=`/`obfs-password=` 双键写法;Gecko 混淆(`gecko-password=`,iOS 5.20.0+ / Mac 6.7.0+)mihomo 无对应,暂不建模。
+> Surge hysteria2 字段参考 [manual.nssurge.com](https://manual.nssurge.com/policy/proxy.html)(基础支持 iOS 5.8.0+ / Mac 5.4.0+;Salamander 混淆 iOS 5.17.0+ / Mac 6.4.3+;Gecko 混淆 iOS 5.20.0+ / Mac 6.7.0+)。mihomo 端 salamander/gecko 均为 `obfs:` + `obfs-password:` 两键([wiki](https://wiki.metacubex.one/config/proxies/hysteria2/));gecko 专属的 `obfs-min/max-packet-size` 为 mihomo-only,暂不建模。parser 兼容读取旧版 `obfs=`/`obfs-password=` 双键写法。
 
 ## 7. TUIC v5
 
@@ -222,9 +223,9 @@ WireGuard 在两端的**表达结构**完全不同:
 - Surge hosts `server:`(指定 DNS) → 转 `dns.proxy-server-nameserver-policy`(按域名 `*.`→`+.`,依赖 `proxy-server-nameserver` 非空);`DOMAIN-SET:` / `RULE-SET:` → 跳过 + warning
 
 ### Surge 输出降级
-- Clash `peers:` (WireGuard 多 peer) → 仅取第一个 peer + warning
-- Clash `GEOSITE,xxx` → 改为 `DOMAIN-SET,<url>` 若 ruleset 提供了 url,否则 warning
-- Clash `mrs` 格式 → 不支持 + warning(由 generator 注释提示)
+- Clash `peers:` (WireGuard 多 peer) → `[WireGuard <id>]` 段内逐 peer 输出多行 `peer = (...)`,不截断(见 §8)
+- Clash `GEOSITE,xxx` → 三级回退:① 有 inline `payload` 则展开内联 → ② 有 `url` 则改为 `DOMAIN-SET,<url>` → ③ 都没有则 warning + 跳过
+- Clash `mrs` 格式 → 无特殊处理,仍按 `RULE-SET,<url>` 原样输出;Surge 无法解析 mrs 二进制,该 ruleset 需另配文本格式 url 供 Surge 使用
 - 同 key 多值 hosts(多 IP / 多 server) → Surge 端展开成多行 `key = value`(支持同域名多上游 DNS)
 
 ---
@@ -291,7 +292,7 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 
 **同 key 多值**:value 含逗号或为数组时,Clash 顶层 `hosts:` 输出 YAML 数组(mihomo `config.go::parseHosts` / `NewHostValue` 支持);Surge `[Host]` 把每个值**展开成多行** `key = value` —— 支持给同一域名指定多个 `server:` 上游 DNS(机场常借此规避封锁),多 IP 同理。
 
-**provider 级 host**:每个 provider 可配 `hosts` + `emit_hosts`(默认 `true`)。`profile-resolver` 用 `mergeHostMaps` 把 `general.hosts` 与所有启用且 `emit_hosts` 的 provider.hosts 去重合并后交给两端 generator;导入 Surge conf 时 `[Host]` 段同一 key 的多行会保留为数组。
+**provider 级 host**:每个 provider 可配 `hosts` + `emit_hosts`(默认 `true`)。`profile-resolver` 用 `mergeHostMaps` 把三类来源去重合并后交给两端 generator:① `general.hosts`;② 所有启用且 `emit_hosts` 的 provider 手动 `hosts`;③ 这些 provider 刷新时自动解析出的 `cache.extracted_hosts`(仅与节点域名相关的上游 host,见 `import/extract-hosts.ts`)。导入 Surge conf 时 `[Host]` 段同一 key 的多行会保留为数组。
 
 **已知限制**:`server:` → Clash 用 `+.` 通配(含裸域,语义略宽于 Surge `*.`),对节点子域场景均可命中,需真机各导入一次确认;`server:syslib` 与混入 `server:` 的非解析器值在 Clash 被忽略 + warning;通配符 `+`/`.` 前缀与特殊值 `lan` 仅 Clash 有等价语义,透传到 Surge 会被当字面域名。
 

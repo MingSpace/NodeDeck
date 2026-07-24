@@ -146,6 +146,7 @@ export function parseSurgeProxyLine(line: string): Node | null {
         uuid: params.username ?? "",
         cipher: params["encrypt-method"] ?? "auto",
         vmess_aead: parseBool(params["vmess-aead"]),
+        tls: parseBool(params.tls),
       };
       if (parseBool(params.ws)) {
         node.network = "ws";
@@ -187,10 +188,15 @@ export function parseSurgeProxyLine(line: string): Node | null {
         password: params.password ?? "",
         up: params["upload-bandwidth"],
         down: params["download-bandwidth"],
-        // 现行写法是 salamander-password= 单键(iOS 5.17.0+ / Mac 6.4.3+);
-        // 兼容读取旧的 obfs=/obfs-password= 双键形态。
-        obfs: params["salamander-password"] ? "salamander" : params.obfs,
-        obfs_password: params["salamander-password"] ?? params["obfs-password"],
+        // 现行写法是按混淆类型的单键:salamander-password=(iOS 5.17.0+ / Mac 6.4.3+)
+        // 或 gecko-password=(iOS 5.20.0+ / Mac 6.7.0+);兼容读取旧的 obfs=/obfs-password= 双键形态。
+        obfs: params["salamander-password"]
+          ? "salamander"
+          : params["gecko-password"]
+            ? "gecko"
+            : params.obfs,
+        obfs_password:
+          params["salamander-password"] ?? params["gecko-password"] ?? params["obfs-password"],
         port_hopping: params["port-hopping"],
         hop_interval: params["port-hopping-interval"]
           ? parseInt(params["port-hopping-interval"], 10)

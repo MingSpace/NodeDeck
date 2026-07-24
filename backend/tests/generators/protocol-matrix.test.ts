@@ -362,14 +362,43 @@ describe("protocol matrix snapshot", () => {
     expect(clash).toContain("obfs-password: obfs-pw");
   });
 
-  it("Surge hysteria2 非 salamander 的 obfs → 跳过混淆参数 + warning", () => {
+  it("Surge hysteria2 gecko → 单键 gecko-password(iOS 5.20+/Mac 6.7+),mihomo 端保持双键", () => {
+    const node: Node = {
+      name: "HY2-Gecko",
+      type: "hysteria2",
+      server: "hy2.example.com",
+      port: 443,
+      password: "pw",
+      obfs: "gecko",
+      obfs_password: "gecko-pw",
+      tls: true,
+      tags: [],
+    };
+    const warnings: string[] = [];
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings,
+    });
+    expect(surge).toContain("gecko-password=gecko-pw");
+    expect(surge).not.toContain("salamander-password=");
+    expect(warnings).toHaveLength(0);
+    const clash = generateClashConfig({ profile: emptyProfile(), nodes: [node], groups: [], rules: [], warnings: [] });
+    expect(clash).toContain("obfs: gecko");
+    expect(clash).toContain("obfs-password: gecko-pw");
+  });
+
+  it("Surge hysteria2 未知 obfs 类型 → 跳过混淆参数 + warning", () => {
     const node: Node = {
       name: "HY2-Unknown-Obfs",
       type: "hysteria2",
       server: "hy2.example.com",
       port: 443,
       password: "pw",
-      obfs: "gecko",
+      obfs: "not-a-real-obfs",
       obfs_password: "obfs-pw",
       tls: true,
       tags: [],
@@ -384,7 +413,65 @@ describe("protocol matrix snapshot", () => {
       warnings,
     });
     expect(surge).not.toContain("salamander-password=");
-    expect(warnings.some((w) => w.includes("HY2-Unknown-Obfs") && w.includes("gecko"))).toBe(true);
+    expect(surge).not.toContain("gecko-password=");
+    expect(
+      warnings.some((w) => w.includes("HY2-Unknown-Obfs") && w.includes("not-a-real-obfs")),
+    ).toBe(true);
+  });
+
+  it("Surge hysteria2 obfs 声明但缺 obfs-password → 混淆未启用 + warning", () => {
+    const node: Node = {
+      name: "HY2-No-Obfs-Pwd",
+      type: "hysteria2",
+      server: "hy2.example.com",
+      port: 443,
+      password: "pw",
+      obfs: "salamander",
+      tls: true,
+      tags: [],
+    };
+    const warnings: string[] = [];
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings,
+    });
+    expect(surge).not.toContain("salamander-password=");
+    expect(warnings.some((w) => w.includes("HY2-No-Obfs-Pwd") && w.includes("混淆未启用"))).toBe(true);
+  });
+
+  it("Surge vmess tls=true 显式输出;trojan 由类型隐含不输出", () => {
+    const vmess: Node = {
+      name: "VM-TLS",
+      type: "vmess",
+      server: "vm.example.com",
+      port: 443,
+      uuid: "uuid-1",
+      tls: true,
+      tags: [],
+    };
+    const trojan: Node = {
+      name: "TJ",
+      type: "trojan",
+      server: "tj.example.com",
+      port: 443,
+      password: "pw",
+      tls: true,
+      tags: [],
+    };
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [vmess, trojan],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(surge).toMatch(/VM-TLS = vmess[^\n]*tls=true/);
+    expect(surge).not.toMatch(/TJ = trojan[^\n]*tls=/);
   });
 
   it("shadow-tls: ss 两端对称输出;非 ss 在 Clash 端丢弃 + warning", () => {

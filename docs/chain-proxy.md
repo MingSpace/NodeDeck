@@ -56,6 +56,7 @@ chain_rules:
 - `include_regex: string` — 节点名匹配此正则 (默认大小写不敏感,直接写 `hk` 就能命中 `HK/Hk/hk`)
 - `exclude_regex: string` — 节点名不匹配此正则 (同上)
 - `exclude_type: [string]` — 排除某些协议类型(避免给 wireguard 自己加 wireguard 前置)
+- `include_region: [string]` — 地区白名单;非空时只匹配已识别出对应 region 的节点(region 未识别的节点视为不匹配)
 
 > include/exclude_regex 走 JS `RegExp(str, "i")`,**不要**写 PCRE 风格的 `(?i)` 前缀 —— JS 不认这种内联标志,会因为 SyntaxError 被静默忽略,导致"正则填了但好像没生效"。
 
@@ -95,13 +96,14 @@ HK-01 = trojan, gz.example.com, 443, password=secret, sni=m.ctrip.com, underlyin
 
 ---
 
-## 环检测
+## 环检测与悬空降级
 
-NodeDeck 在生成前会构建链式拓扑图。如果存在环(例如 `A → B → A`),会:
+NodeDeck 在 generator 入口(`validateChain`)对应用完 chain_rules 的节点池做两层校验。**订阅始终能正常生成**,不会因为链式配置问题而报错中断:
 
-1. 拒绝生成订阅
-2. Web UI 中高亮报错
-3. 后台日志记录环路径
+1. **悬空引用**: `chain_via` 指向不存在的节点/组 → 清空该字段,节点降级为直接出口 + warning
+2. **环**(例如 `A → B → A`)→ 环上所有节点的 `chain_via` 全部清空 + warning
+
+warning 会出现在订阅文件头部的 `# WARN:` 注释和 Web UI 的预览里,例如 `Chain cycle detected: A -> B -> A; chain_via cleared on all involved nodes`。
 
 ---
 
@@ -124,7 +126,7 @@ chain_rules:
     via: WARP-Front-Pool
 ```
 
-输出时,该策略组也会被自动写入 `[Proxy Group]` (Surge) 或 `proxy-groups:` (Clash) 段。
+注意:generator **只输出 `profile.proxy_groups` 已引用的组**,不会因为 `chain_rules.via` 指向了某个组就自动把它写进输出。如果该组没加进 Profile,`chain_via` 会被当作悬空引用清空(+warning)。使用前先到 Profile 编辑器把该组加入 proxy_groups 列表。
 
 ---
 
@@ -134,5 +136,6 @@ chain_rules:
 |---|---|
 | Surge 报"underlying-proxy not found" | 确认 `via` 指向的节点/组名拼写一致(注意空格) |
 | Clash 报"dialer-proxy: not found" | 同上 |
-| NodeDeck 报"chain proxy cycle detected" | 检查 chain_rules 是否有 A→B 又 B→A |
+| 订阅头出现 `# WARN: Chain cycle detected` | chain_rules 形成了 A→B 又 B→A 的环,环上节点已被自动降级为直连;修正规则消除环即可恢复 |
+| 订阅头出现 `# WARN: Chain dangling` | `via` 指向的节点/组不在过滤后的节点池里(被 node_filter 过滤,或该组没加进 profile.proxy_groups) |
 | 链式生效但延迟很高 | WARP/前置节点本身慢;考虑用 url-test pool |

@@ -549,7 +549,7 @@ Surge 可以作为 Telegram 专用的 MTProto 入站代理:Telegram 客户端连
 在 Web UI「Generals → Surge 专属 → MTProto (Telegram 代理)」里开启,或直接写 yaml:
 
 ```yaml
-# data/generals/<id>.yaml 里追加
+# data/general/<id>.yaml 里追加
 mtproto:
   enable: true
   interface: 127.0.0.1        # 本机 Telegram 用回环;LAN 设备用局域网地址。generator 原样输出该值(不做改写),iOS 端建议别用 0.0.0.0,填一个具体可达地址
