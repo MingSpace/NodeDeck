@@ -13,7 +13,7 @@
 | 客户端 | 字段名 | 位置 |
 |---|---|---|
 | Clash (Mihomo v1.18+) | `dialer-proxy: <name>` | `proxies` 内某节点字段 |
-| Surge 5 | `underlying-proxy=<name>` | `[Proxy]` 中节点行末参数 |
+| Surge | `underlying-proxy=<name>` | `[Proxy]` 中节点行末参数 |
 
 > 注意: Mihomo v1.19.17 起完全移除了旧 `relay` 类型 group,统一使用 `dialer-proxy`。
 

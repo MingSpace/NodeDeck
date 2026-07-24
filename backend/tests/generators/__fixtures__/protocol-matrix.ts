@@ -165,6 +165,7 @@ export const protocolFixtures: { name: string; node: Node }[] = [
   {
     // 机场常见形态:伪装 SNI(ixigua.com)+ 服务器证书 SHA256 锁定。
     // 验证 fingerprint -> clash `fingerprint:` / surge `server-cert-fingerprint-sha256=`。
+    // reuse=false: AnyTLS 规范默认开启连接复用,显式关闭仅 Surge 端有键(mihomo 无对应)。
     name: "anytls-cert-pinning",
     node: {
       name: "🇭🇰 HK-AnyTLS",
@@ -172,10 +173,45 @@ export const protocolFixtures: { name: string; node: Node }[] = [
       server: "8d4a2926.example.com",
       port: 15026,
       password: "anytls-pwd",
+      reuse: false,
       tls: true,
       sni: "ixigua.com",
       fingerprint: "fac26f65c034829da42d740d23c4a7202475a3834f0ebaecae5f934adbbfd640",
       tfo: true,
+      udp: true,
+      tags: [],
+    },
+  },
+  {
+    // Shadow TLS 混淆叠加在 ss 上:
+    // clash → plugin: shadow-tls + plugin-opts { password, host, version }
+    // surge → shadow-tls-password= / shadow-tls-sni= / shadow-tls-version=
+    name: "ss-shadow-tls",
+    node: {
+      name: "🇭🇰 HK-SS-STLS",
+      type: "ss",
+      server: "stls.example.com",
+      port: 443,
+      cipher: "2022-blake3-aes-128-gcm",
+      password: "ss-pwd",
+      shadow_tls_password: "stls-pwd",
+      shadow_tls_sni: "cloud.tencent.com",
+      shadow_tls_version: 3,
+      udp: true,
+      tags: [],
+    },
+  },
+  {
+    // Snell v6(iOS 5.20.0+/Mac 6.7.0+ beta)+ 连接复用;Clash 端整节点跳过 + warning。
+    name: "snell-v6",
+    node: {
+      name: "🇹🇼 TW-Snell-v6",
+      type: "snell",
+      server: "tw6.example.com",
+      port: 7177,
+      psk: "snell6-psk",
+      snell_version: 6,
+      reuse: true,
       udp: true,
       tags: [],
     },

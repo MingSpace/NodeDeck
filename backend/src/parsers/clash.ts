@@ -40,7 +40,22 @@ function clashProxyToNode(p: ClashProxy): Node | null {
   } satisfies Partial<Node>;
 
   switch (p.type) {
-    case "ss":
+    case "ss": {
+      // shadow-tls plugin 归一化到内部 shadow_tls_* 字段(与 Surge 侧共用抽象),
+      // 生成 Clash 时由 buildClashProxy 对称重建;其它 plugin(obfs/v2ray-plugin)原样透传。
+      if (p.plugin === "shadow-tls") {
+        const po = (p["plugin-opts"] as Record<string, unknown> | undefined) ?? {};
+        const ver = Number(po.version);
+        return {
+          ...base,
+          type: "ss",
+          cipher: p.cipher ? String(p.cipher) : "aes-128-gcm",
+          password: p.password ? String(p.password) : "",
+          shadow_tls_password: po.password ? String(po.password) : "",
+          shadow_tls_sni: po.host ? String(po.host) : undefined,
+          shadow_tls_version: ver === 1 || ver === 2 || ver === 3 ? (ver as 1 | 2 | 3) : undefined,
+        };
+      }
       return {
         ...base,
         type: "ss",
@@ -49,6 +64,7 @@ function clashProxyToNode(p: ClashProxy): Node | null {
         plugin: p.plugin ? String(p.plugin) : undefined,
         plugin_opts: (p["plugin-opts"] as Record<string, unknown>) || undefined,
       };
+    }
     case "ssr":
       return {
         ...base,
@@ -143,7 +159,7 @@ function clashProxyToNode(p: ClashProxy): Node | null {
         ...base,
         type: "snell",
         psk: p.psk ? String(p.psk) : "",
-        snell_version: p.version === 3 || p.version === 4 || p.version === 5 ? (p.version as 3 | 4 | 5) : 4,
+        snell_version: p.version === 3 || p.version === 4 || p.version === 5 || p.version === 6 ? (p.version as 3 | 4 | 5 | 6) : 4,
         obfs: (p["obfs-opts"] as Record<string, unknown> | undefined)?.mode
           ? String((p["obfs-opts"] as Record<string, unknown>).mode)
           : undefined,

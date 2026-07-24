@@ -2,6 +2,7 @@ import type { GeneralPresetData } from "./types";
 import { BasicSection } from "./sections/basic";
 import { DnsSection } from "./sections/dns";
 import { MitmSection } from "./sections/mitm";
+import { MtprotoSection } from "./sections/mtproto";
 import { HostsSection, HttpApiSection, SsidSection, SurgeOnlySection } from "./sections/misc";
 
 interface Props {
@@ -28,6 +29,9 @@ export function GeneralPresetVisualForm({ data, update }: Props) {
           </SubCollapsible>
           <SubCollapsible title="HTTP API (控制台)" defaultOpen>
             <HttpApiSection data={data} update={update} />
+          </SubCollapsible>
+          <SubCollapsible title="MTProto (Telegram 代理)" defaultOpen>
+            <MtprotoSection data={data} update={update} />
           </SubCollapsible>
           <SubCollapsible title="SSID 规则" defaultOpen>
             <SsidSection data={data} update={update} />

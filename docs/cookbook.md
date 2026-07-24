@@ -13,6 +13,7 @@
 5. [Surge 模块嵌入](#5-surge-模块嵌入)
 6. [Profile 拼装与订阅 URL](#6-profile-拼装与订阅-url)
 7. [嵌套引用其它策略组 (nested_groups)](#7-嵌套引用其它策略组-nested_groups)
+8. [Telegram MTProto 入站代理 (Surge)](#8-telegram-mtproto-入站代理-surge)
 
 ---
 
@@ -153,7 +154,7 @@ NodeDeck 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers
 | `STRONG_SEP` | `: ：| │ ┃ ∶`,两侧空白可有可无 |
 | `WEAK_SEP` | `- = ~ ·` 等,**必须两侧都带空白** —— 否则 `Notice-Premium-01` / `expired-policy-test` 会被误伤 |
 
-另有两条短路规则:整个 name 是 `https?://...` 形式,或以 `t.me/ / tg:// / @<handle>` 起首,也判为信息节点。
+另有三条短路规则,命中任一即判为信息节点:① 整个 name 是 `https?://...` 形式;② 以 `t.me/` / `tg://` / `@<handle>` 起首;③ 整行就是纯用量数字(不含任何关键字),如 `45.35 GB | 200 GB`(`PURE_TRAFFIC_REGEX`)。
 
 **不会丢的事**:
 
@@ -228,7 +229,7 @@ clash_format: inline           # 直接展开到 rules: 段
 surge_format: inline_ruleset   # 在 conf 中生成 [Ruleset my-private] 段
 ```
 
-→ 两端都会展开成具体规则行;Surge 还会额外生成 `[Ruleset my-private]` 段供未来复用。
+→ Clash 把 `payload` 直接展开到 `rules:` 段。Surge 在 `surge_format: inline_ruleset` 下**不在 `[Rule]` 内联展开**,而是输出一条 `RULE-SET,my-private,<policy>` 引用 + 在文件末尾生成 `[Ruleset my-private]` 段承载规则内容(Mac 5.3.1+ 支持);若把 `surge_format` 设为其它值(如缺省),Surge 端才会把每行直接展开进 `[Rule]`。
 
 ### 2.3 GEOSITE (按分类)
 
@@ -344,7 +345,7 @@ proxy-providers:
   airport-a:
     type: http
     url: https://your-host/sub/provider/airport-a/clash.yaml?profile=home&t=XXXX
-    interval: 3600
+    interval: 43200          # 由该 provider 的 refresh.interval 换算(此处 12h → 43200s;on_request 才是 3600)
     health-check:
       enable: true
       url: http://www.gstatic.com/generate_204
@@ -536,3 +537,42 @@ mihomo / Surge 客户端加载后,Stream 的选择面板会显示两行:一个�
 | `g.include_other_group: string` | 单个组 name (Surge only) | Surge 原生 `include-other-group` 参数,把那个组的成员**平铺**展开到当前组(跟 nested_groups 的"嵌套引用"语义相反) |
 
 > **老 yaml 自动迁移**: 在旧版本里这事是通过 `selector.include_other_group` 数组实现的(名字误导)。NodeDeck v2 起读取旧 yaml 时,schema transform 会把那个字段的值搬到顶层 `nested_groups`,首次保存后写回的就是新字段形态。无需手动改 yaml。
+
+---
+
+## 8. Telegram MTProto 入站代理 (Surge)
+
+> 需 Surge iOS 5.21.0+ / Mac 6.8.0+。仅 Surge 输出生效,Clash 端忽略。
+
+Surge 可以作为 Telegram 专用的 MTProto 入站代理:Telegram 客户端连到 Surge 的监听端口,DC 选路、出站策略全走 Surge 规则系统。相比 SOCKS5 接管,MTProto 模式避开了 Telegram 客户端的一堆老 bug(IPv6 地址塞进 IPv4 请求、切网后卡 "Updating" 等)。
+
+在 Web UI「Generals → Surge 专属 → MTProto (Telegram 代理)」里开启,或直接写 yaml:
+
+```yaml
+# data/generals/<id>.yaml 里追加
+mtproto:
+  enable: true
+  interface: 127.0.0.1        # 本机 Telegram 用回环;LAN 设备用局域网地址。generator 原样输出该值(不做改写),iOS 端建议别用 0.0.0.0,填一个具体可达地址
+  port: 5753
+  secret: 0123456789abcdef0123456789abcdef   # 32 位 hex,可带 dd 前缀;UI 里有"随机"按钮
+  ipv6: true                  # 可选:强制走 Telegram IPv6 DC(需出站链路支持 IPv6),可解 IPv4 DC 卡死问题
+  # dc_config_url: https://example.com/mtproto-dc-config.json   # 可选:自定义 DC 映射
+```
+
+生成的 Surge conf 会多出一段:
+
+```
+[MTProto]
+interface = 127.0.0.1
+port = 5753
+secret = 0123456789abcdef0123456789abcdef
+ipv6 = true
+```
+
+Telegram 客户端填 `服务器 = 可达 interface 的地址 / 端口 = 5753 / secret 同上`,或用链接 `tg://proxy?server=<host>&port=5753&secret=<secret>`。
+
+配套技巧:
+
+- 用 `PROTOCOL,MTProto` 规则(inline ruleset)可以单独给 Telegram 流量指策略;
+- secret 不合法(非 32 位 hex)时,生成器会跳过整段并在订阅头部输出 `# WARN:`,不会生成 Surge 拒绝加载的坏配置;
+- 一个 profile 只允许一个 `[MTProto]` 段(Surge 限制)。

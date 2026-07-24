@@ -25,6 +25,7 @@ export interface GeneralPresetData {
   exclude_simple_hostnames?: boolean;
   always_real_ip?: string[];
   show_error_page_for_reject?: boolean;
+  block_quic?: "per-policy" | "all-proxy" | "all" | "always-allow";
   http_api?: {
     user: string;
     password: string;
@@ -77,5 +78,13 @@ export interface GeneralPresetData {
     skip_server_cert_verify: boolean;
     ca_p12?: string;
     ca_passphrase?: string;
+  };
+  mtproto?: {
+    enable: boolean;
+    interface: string;
+    port: number;
+    secret: string;
+    ipv6?: boolean;
+    dc_config_url?: string;
   };
 }

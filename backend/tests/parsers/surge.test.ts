@@ -62,6 +62,39 @@ Auto = url-test, A, B
     expect(node?.chain_via).toBe("Front");
   });
 
+  it("parses hysteria2 salamander-password 单键写法(iOS 5.17+/Mac 6.4.3+ 现行格式)", () => {
+    const node = parseSurgeProxyLine(
+      "HY2 = hysteria2, hy2.example.com, 443, password=pw, salamander-password=sp, download-bandwidth=200",
+    );
+    expect(node).toMatchObject({
+      type: "hysteria2",
+      obfs: "salamander",
+      obfs_password: "sp",
+    });
+  });
+
+  it("parses shadow-tls 混淆参数(任意协议行,常见于 snell/ss)", () => {
+    const node = parseSurgeProxyLine(
+      "STLS = snell, 1.2.3.4, 443, psk=pwd1, version=4, reuse=true, shadow-tls-password=pwd2, shadow-tls-sni=gateway.icloud.com, shadow-tls-version=3",
+    );
+    expect(node).toMatchObject({
+      type: "snell",
+      psk: "pwd1",
+      snell_version: 4,
+      reuse: true,
+      shadow_tls_password: "pwd2",
+      shadow_tls_sni: "gateway.icloud.com",
+      shadow_tls_version: 3,
+    });
+  });
+
+  it("parses snell v6 与 anytls reuse=false", () => {
+    const snell = parseSurgeProxyLine("S6 = snell, s.example.com, 7177, psk=p, version=6");
+    expect(snell).toMatchObject({ type: "snell", snell_version: 6 });
+    const anytls = parseSurgeProxyLine("AT = anytls, a.example.com, 443, password=p, reuse=false");
+    expect(anytls).toMatchObject({ type: "anytls", reuse: false });
+  });
+
   it("parses VLESS Reality from Surge", () => {
     const node = parseSurgeProxyLine(
       "VR = vless, r.example.com, 443, uuid=abc-def, vless-flow=xtls-rprx-vision, reality-public-key=PK, reality-short-id=SID, sni=www.cloudflare.com, tls-fingerprint=chrome",

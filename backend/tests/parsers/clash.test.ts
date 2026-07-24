@@ -82,6 +82,45 @@ proxies:
     expect(nodes[0].chain_via).toBe("B");
   });
 
+  it("ss 的 plugin: shadow-tls 归一化到 shadow_tls_* 字段;其它 plugin 原样透传", () => {
+    const yaml = `
+proxies:
+  - name: STLS
+    type: ss
+    server: 1.2.3.4
+    port: 443
+    cipher: aes-128-gcm
+    password: x
+    plugin: shadow-tls
+    plugin-opts:
+      host: cloud.tencent.com
+      password: stls-pwd
+      version: 3
+  - name: OBFS
+    type: ss
+    server: 5.6.7.8
+    port: 443
+    cipher: aes-128-gcm
+    password: y
+    plugin: obfs
+    plugin-opts:
+      mode: tls
+      host: bing.com
+`;
+    const nodes = parseClashYaml(yaml);
+    expect(nodes[0]).toMatchObject({
+      shadow_tls_password: "stls-pwd",
+      shadow_tls_sni: "cloud.tencent.com",
+      shadow_tls_version: 3,
+    });
+    expect(nodes[0].plugin).toBeUndefined();
+    expect(nodes[1]).toMatchObject({
+      plugin: "obfs",
+      plugin_opts: { mode: "tls", host: "bing.com" },
+    });
+    expect(nodes[1].shadow_tls_password).toBeUndefined();
+  });
+
   it("returns empty for non-clash yaml", () => {
     expect(parseClashYaml("foo: bar")).toEqual([]);
     expect(parseClashYaml("")).toEqual([]);

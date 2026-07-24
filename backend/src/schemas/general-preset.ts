@@ -66,6 +66,20 @@ const httpApiSchema = z
   })
   .optional();
 
+// Surge [MTProto] 段:Surge 作为 Telegram MTProto 入站代理服务器(iOS 5.21.0+ / Mac 6.8.0+)。
+// 一个 profile 只允许一个 [MTProto] 段;secret 为 32 位十六进制(可带 dd 前缀),
+// 参考 https://manual.nssurge.com/others/mtproto.html
+const mtprotoSchema = z
+  .object({
+    enable: z.boolean().default(false),
+    interface: z.string().default("127.0.0.1"),
+    port: z.number().int().min(1).max(65535).default(5753),
+    secret: z.string().default(""),
+    ipv6: z.boolean().optional(),
+    dc_config_url: z.string().url().optional(),
+  })
+  .optional();
+
 const ssidRuleSchema = z.object({
   ssid: z.string(),
   suspend: z.boolean().optional(),
@@ -103,6 +117,9 @@ export const generalPresetSchema = z.object({
   exclude_simple_hostnames: z.boolean().optional(),
   always_real_ip: z.array(z.string()).optional(),
   show_error_page_for_reject: z.boolean().optional(),
+  // [S] 全局 QUIC 拦截策略(iOS 5.14.6+ / Mac 5.10.3+):
+  // per-policy(默认,按各 policy 自身设置) / all-proxy(拦截所有代理) / all(连 DIRECT 一起拦) / always-allow
+  block_quic: z.enum(["per-policy", "all-proxy", "all", "always-allow"]).optional(),
   http_api: httpApiSchema,
 
   // [C]
@@ -126,6 +143,7 @@ export const generalPresetSchema = z.object({
   tun: tunSchema, // [C]
   sniffer: snifferSchema, // [C]
   mitm: mitmSchema, // [S]
+  mtproto: mtprotoSchema, // [S] Telegram MTProto 入站代理
 });
 
 export type GeneralPreset = z.infer<typeof generalPresetSchema>;

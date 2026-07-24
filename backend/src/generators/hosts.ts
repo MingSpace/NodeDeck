@@ -7,7 +7,7 @@
  * - Surge: `[Host]` 段每行 `key = value`,仅支持单值;额外支持 `server:<dns>` 指定解析器
  *   (含 `server:system` / `server:syslib`),以及 key 侧 `DOMAIN-SET:` / `RULE-SET:` 批量绑定。
  *
- * 参考(目标版本: mihomo Stable / Surge 5):
+ * 参考(目标版本: mihomo Stable / Surge):
  * - mihomo docs/config.yaml `hosts` 段 + config.go `parseHosts`(`NewHostValue` 接受 string 或数组,
  *   支持 `domain: [ip1, ip2]`)
  * - Surge manual Local DNS Mapping: https://manual.nssurge.com/dns/local-dns-mapping.html

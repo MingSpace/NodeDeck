@@ -1,6 +1,6 @@
 # 协议字段对照表
 
-> Clash (Mihomo) ↔ Surge 5 字段命名差异权威表。
+> Clash (Mihomo) ↔ Surge 字段命名差异权威表(目标版本:mihomo Stable / Surge iOS 5.21+ & Mac 6.8+;低版本要求会单独标注)。
 > 与代码 `backend/src/generators/protocol-mapping.ts` 保持同步。
 
 ---
@@ -71,21 +71,21 @@
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
 | `password` | `password:` | `password=` | [CS] |
-| `up` | `up: "100 Mbps"` | — | [C],Surge 5 hysteria2 不支持 upload-bandwidth |
+| `up` | `up: "100 Mbps"` | — | [C],Surge hysteria2 不支持 upload-bandwidth |
 | `down` | `down: "200 Mbps"` | `download-bandwidth=200` | [CS],Surge 端去掉 `Mbps` 后缀只留数字 |
-| `obfs` | `obfs: salamander` | `obfs=salamander` | [CS] |
-| `obfs_password` | `obfs-password:` | `obfs-password=` | [CS] |
+| `obfs` | `obfs: salamander` | —(由 `salamander-password=` 隐含) | Surge 无 `obfs=` 键;非 salamander 类型跳过 + warning |
+| `obfs_password` | `obfs-password:` | `salamander-password=` | [CS],Surge 单键表达 Salamander 混淆(iOS 5.17.0+ / Mac 6.4.3+) |
 | `port_hopping` | `ports: 443-8443` | `port-hopping=443-8443` | [CS],键名不同 |
 | `hop_interval` | `hop-interval: 30` | `port-hopping-interval=30` | [CS],键名不同 |
 
-> Surge 5 hysteria2 字段参考 [manual.nssurge.com](https://manual.nssurge.com/policy/proxy.html)(iOS 5.8.0+ / Mac 5.4.0+)。
+> Surge hysteria2 字段参考 [manual.nssurge.com](https://manual.nssurge.com/policy/proxy.html)(基础支持 iOS 5.8.0+ / Mac 5.4.0+;Salamander 混淆 iOS 5.17.0+ / Mac 6.4.3+)。parser 兼容读取旧版 `obfs=`/`obfs-password=` 双键写法;Gecko 混淆(`gecko-password=`,iOS 5.20.0+ / Mac 6.7.0+)mihomo 无对应,暂不建模。
 
 ## 7. TUIC v5
 
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
-| `uuid` | `uuid:` | `uuid=` | [CS],Surge 5 TUIC v5 |
-| `password` | `password:` | `password=` | [CS],Surge 5 TUIC v5 |
+| `uuid` | `uuid:` | `uuid=` | [CS],Surge TUIC v5 |
+| `password` | `password:` | `password=` | [CS],Surge TUIC v5 |
 | `tuic_version` | `version: 5` | `version=5` | [CS],显式标明否则 Surge 退回 v4 (token-only) |
 | `congestion_controller` | `congestion-controller: bbr` | — | [C] |
 
@@ -96,7 +96,7 @@
 WireGuard 在两端的**表达结构**完全不同:
 
 - **Clash (mihomo)**: 全部字段在 `proxies:` 单条 yaml 节点里
-- **Surge 5**: `[Proxy]` 行只声明 `<name> = wireguard, section-name=<id>`,密钥/self-ip/peer 在独立的 `[WireGuard <id>]` 段里
+- **Surge**: `[Proxy]` 行只声明 `<name> = wireguard, section-name=<id>`,密钥/self-ip/peer 在独立的 `[WireGuard <id>]` 段里
 
 字段键名映射:
 
@@ -125,10 +125,28 @@ WireGuard 在两端的**表达结构**完全不同:
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
 | `psk` | — | `psk=` | [S] |
-| `snell_version` | — | `version=` | [S] |
+| `snell_version` | — | `version=` | [S],3/4/5/6;v6 需 iOS 5.20.0+ / Mac 6.7.0+(beta,流量特征由 PSK 派生,无额外客户端参数,不支持 QUIC Proxy Mode) |
+| `reuse` | — | `reuse=` | [S],连接复用(Snell v4+ 可选) |
 | `obfs`, `obfs_host` | — | `obfs=`, `obfs-host=` | [S] |
 
 > Clash 内核不原生支持 Snell;NodeDeck 在 Clash 输出中跳过 Snell 节点并发出警告。
+
+## 9.1 AnyTLS
+
+| 内部抽象 | Clash | Surge | 备注 |
+|---|---|---|---|
+| `password` | `password:` | `password=` | [CS],Surge 端 AnyTLS v2 需 iOS 5.17.0+ / Mac 6.4.3+ |
+| `reuse` | — | `reuse=` | [S],AnyTLS 规范默认开启复用,`reuse=false` 显式关闭;mihomo 无此键 |
+
+## 9.2 Shadow TLS(传输层混淆,可叠加在任意 TCP 协议上)
+
+| 内部抽象 | Clash (仅 ss) | Surge (任意 proxy 行) | 备注 |
+|---|---|---|---|
+| `shadow_tls_password` | `plugin: shadow-tls` + `plugin-opts.password` | `shadow-tls-password=` | [CS] |
+| `shadow_tls_sni` | `plugin-opts.host` | `shadow-tls-sni=` | [CS],TLS 握手明文 SNI;Surge 不填则不发 SNI |
+| `shadow_tls_version` | `plugin-opts.version`(1/2/3) | `shadow-tls-version=`(仅 2/3,缺省 2) | v1 在 Surge 端无对应 → 跳过键 + warning |
+
+> Surge:v2 自 iOS 5.2.0 / Mac 4.10.0,v3 自 iOS 5.5.0 / Mac 5.0.3(参考 [manual: Shadow TLS](https://manual.nssurge.com/policy/proxy.html));mihomo 仅 shadowsocks 支持该 plugin,非 ss 节点在 Clash 输出丢弃 shadow-tls 字段 + warning。Clash parser 会把 `plugin: shadow-tls` 归一化到内部 `shadow_tls_*` 字段,generator 对称重建。
 
 ---
 
@@ -277,7 +295,16 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 
 **已知限制**:`server:` → Clash 用 `+.` 通配(含裸域,语义略宽于 Surge `*.`),对节点子域场景均可命中,需真机各导入一次确认;`server:syslib` 与混入 `server:` 的非解析器值在 Clash 被忽略 + warning;通配符 `+`/`.` 前缀与特殊值 `lan` 仅 Clash 有等价语义,透传到 Surge 会被当字面域名。
 
-参考(mihomo Stable / Surge 5):mihomo `docs/config.yaml` hosts 段;Surge manual [Local DNS Mapping](https://manual.nssurge.com/dns/local-dns-mapping.html)。
+参考(mihomo Stable / Surge):mihomo `docs/config.yaml` hosts 段;Surge manual [Local DNS Mapping](https://manual.nssurge.com/dns/local-dns-mapping.html)。
+
+---
+
+## 19. Surge 专属 General 参数 / MTProto
+
+| 内部字段 | Surge 输出 | 备注 |
+|---|---|---|
+| `general.block_quic` | `[General] block-quic = per-policy\|all-proxy\|all\|always-allow` | [S],全局 QUIC 拦截策略(iOS 5.14.6+ / Mac 5.10.3+);Clash 端忽略 |
+| `general.mtproto` | 独立 `[MTProto]` 段(`interface` / `port` / `secret` / `ipv6` / `dc-config-url`) | [S],Telegram MTProto 入站代理(iOS 5.21.0+ / Mac 6.8.0+);secret 必须 32 位 hex(可带 `dd` 前缀),非法时跳过整段 + warning;一个 profile 仅允许一个该段。参考 [manual: MTProto](https://manual.nssurge.com/others/mtproto.html) |
 
 ---
 

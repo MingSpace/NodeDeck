@@ -35,6 +35,11 @@ export function importSurgeConf(text: string, fileName?: string): SurgeImportRes
     general.ssid_rules = [...(general.ssid_rules ?? []), ...ssidFromText];
   }
 
+  const mtprotoFromText = parseMtprotoSection(text);
+  if (general && mtprotoFromText) {
+    general.mtproto = mtprotoFromText;
+  }
+
   const manualNodes = annotateNodes(parseSurgeConf(text));
 
   const directSkipped = countDirectPseudoNodes(text);
@@ -114,6 +119,9 @@ function parseGeneralSection(text: string, fileName?: string): GeneralPreset | u
     exclude_simple_hostnames: kv["exclude-simple-hostnames"] === "true",
     always_real_ip: kv["always-real-ip"]?.split(",").map((s) => s.trim()),
     show_error_page_for_reject: kv["show-error-page-for-reject"] === "true",
+    block_quic: ["per-policy", "all-proxy", "all", "always-allow"].includes(kv["block-quic"])
+      ? (kv["block-quic"] as GeneralPreset["block_quic"])
+      : undefined,
     http_api: parseHttpApi(kv),
     dns: {
       enable: true,
@@ -197,6 +205,34 @@ function parseMitmSection(text: string): GeneralPreset["mitm"] | undefined {
     skip_server_cert_verify: kv["skip-server-cert-verify"] === "true",
     ca_p12: kv["ca-p12"],
     ca_passphrase: kv["ca-passphrase"],
+  };
+}
+
+/**
+ * 解析 Surge `[MTProto]` 段(Telegram 入站代理,manual.nssurge.com/others/mtproto.html)。
+ * 与 generator 端对称;conf 中出现该段即视为启用(Surge 本身没有 enable 键)。
+ * interface/port 缺失时用 Surge 文档示例的缺省值兜底,secret 缺失保留空串
+ * (generator 端会因 secret 不合法跳过输出 + warning,不静默生成坏配置)。
+ */
+function parseMtprotoSection(text: string): GeneralPreset["mtproto"] | undefined {
+  const body = extractSection(text, "MTProto");
+  if (!body) return undefined;
+  const kv: Record<string, string> = {};
+  for (const raw of body.split(/\r?\n/)) {
+    const line = stripComment(raw).trim();
+    if (!line || !line.includes("=")) continue;
+    const idx = line.indexOf("=");
+    kv[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+  }
+  if (Object.keys(kv).length === 0) return undefined;
+  const port = kv.port ? parseInt(kv.port, 10) : NaN;
+  return {
+    enable: true,
+    interface: kv.interface ?? "127.0.0.1",
+    port: Number.isInteger(port) && port >= 1 && port <= 65535 ? port : 5753,
+    secret: kv.secret ?? "",
+    ipv6: kv.ipv6 === "true" ? true : kv.ipv6 === "false" ? false : undefined,
+    dc_config_url: kv["dc-config-url"],
   };
 }
 

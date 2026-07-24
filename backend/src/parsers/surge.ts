@@ -101,6 +101,14 @@ export function parseSurgeProxyLine(line: string): Node | null {
     client_fingerprint: params["tls-fingerprint"],
     alpn: params.alpn ? [params.alpn] : undefined,
     chain_via: params["underlying-proxy"],
+    // Shadow TLS 混淆参数可出现在任意 proxy 行(常见于 snell/ss)。
+    shadow_tls_password: params["shadow-tls-password"],
+    shadow_tls_sni: params["shadow-tls-sni"],
+    shadow_tls_version: params["shadow-tls-version"] === "3"
+      ? (3 as const)
+      : params["shadow-tls-version"] === "2"
+        ? (2 as const)
+        : undefined,
     tags: [],
   } satisfies Partial<Node>;
 
@@ -179,8 +187,10 @@ export function parseSurgeProxyLine(line: string): Node | null {
         password: params.password ?? "",
         up: params["upload-bandwidth"],
         down: params["download-bandwidth"],
-        obfs: params.obfs,
-        obfs_password: params["obfs-password"],
+        // 现行写法是 salamander-password= 单键(iOS 5.17.0+ / Mac 6.4.3+);
+        // 兼容读取旧的 obfs=/obfs-password= 双键形态。
+        obfs: params["salamander-password"] ? "salamander" : params.obfs,
+        obfs_password: params["salamander-password"] ?? params["obfs-password"],
         port_hopping: params["port-hopping"],
         hop_interval: params["port-hopping-interval"]
           ? parseInt(params["port-hopping-interval"], 10)
@@ -218,9 +228,10 @@ export function parseSurgeProxyLine(line: string): Node | null {
         ...base,
         type: "snell",
         psk: params.psk ?? "",
-        snell_version: params.version === "3" || params.version === "4" || params.version === "5"
-          ? (parseInt(params.version, 10) as 3 | 4 | 5)
+        snell_version: params.version === "3" || params.version === "4" || params.version === "5" || params.version === "6"
+          ? (parseInt(params.version, 10) as 3 | 4 | 5 | 6)
           : 4,
+        reuse: parseBool(params.reuse),
         obfs: params.obfs,
         obfs_host: params["obfs-host"],
       };
@@ -229,6 +240,7 @@ export function parseSurgeProxyLine(line: string): Node | null {
         ...base,
         type: "anytls",
         password: params.password ?? "",
+        reuse: parseBool(params.reuse),
         tls: true,
       };
     case "socks5":

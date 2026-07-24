@@ -342,12 +342,37 @@ export function buildClashProxy(node: Node, warnings: string[]): Record<string, 
   if (node.client_fingerprint !== undefined) out["client-fingerprint"] = node.client_fingerprint;
   if (node.alpn) out.alpn = node.alpn;
 
+  // Shadow TLS 混淆:mihomo 仅在 shadowsocks 上支持(plugin: shadow-tls),
+  // 其余协议(trojan/vmess 等)无对应写法 → 丢弃字段 + warning(snell 在上面已整节点跳过)。
+  // ss 的重建放在 switch 内部(与 plugin/plugin-opts 互斥处理)。
+  if (node.shadow_tls_password && node.type !== "ss") {
+    warnings.push(
+      `Clash(mihomo) 仅支持 shadowsocks 的 shadow-tls 混淆,"${node.name}"(${node.type}) 的 shadow-tls 参数已丢弃`,
+    );
+  }
+
   switch (node.type) {
     case "ss":
       if (node.cipher) out.cipher = node.cipher;
       if (node.password !== undefined) out.password = node.password;
-      if (node.plugin) out.plugin = node.plugin;
-      if (node.plugin_opts) out["plugin-opts"] = node.plugin_opts;
+      if (node.shadow_tls_password) {
+        // 解析时已把 plugin: shadow-tls 归一化到 shadow_tls_* 字段,这里对称重建。
+        // 若节点同时带了其它 plugin(理论上互斥),shadow-tls 优先并 warning。
+        if (node.plugin && node.plugin !== "shadow-tls") {
+          warnings.push(
+            `ss "${node.name}" 同时配置了 plugin=${node.plugin} 与 shadow-tls,已按 shadow-tls 输出`,
+          );
+        }
+        out.plugin = "shadow-tls";
+        out["plugin-opts"] = {
+          password: node.shadow_tls_password,
+          ...(node.shadow_tls_sni ? { host: node.shadow_tls_sni } : {}),
+          ...(node.shadow_tls_version !== undefined ? { version: node.shadow_tls_version } : {}),
+        };
+      } else {
+        if (node.plugin) out.plugin = node.plugin;
+        if (node.plugin_opts) out["plugin-opts"] = node.plugin_opts;
+      }
       break;
     case "ssr":
       if (node.cipher) out.cipher = node.cipher;

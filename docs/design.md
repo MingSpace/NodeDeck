@@ -42,16 +42,21 @@ data/
 
 ```
 Providers → Fetch + Cache → Parse → Normalize (region/level/line tag)
-         → Dedup (sha1 of type+server+port+secret)
-         → Profile Filter + Rename
-         → Apply chain_rules → write chain_via
+         → Dedup (sha1 of type+server+port+secret, keep-first)
+         → Profile Filter + Rename (node_filter: include/exclude/rename)
+         → [可选] sort_by_region 地区聚类
+         → uniquifyNodeNames (撞名加来源前缀)
+         → [仅 Surge] escapeSurgeNames (净化 = , ")
+         → applyChainRules (写 chain_via)
+         → validateChain (悬空降级 + 环检测)
+         → validateGroupRefs (剔除 group.proxies 里的悬空引用)
          → Output Generator (Clash YAML / Surge .conf)
 ```
 
 ## 5. 输出 Generator
 
 - `clash.ts`: 生成 Mihomo 兼容 YAML,完整 proxies/proxy-groups/rule-providers/dns/tun
-- `surge.ts`: 生成 Surge 5 .conf,完整段顺序 + #!MANAGED-CONFIG + RULE-SET flags + REJECT 子类型 + inline ruleset + module 合并 + MITM
+- `surge.ts`: 生成 Surge .conf,完整段顺序 + #!MANAGED-CONFIG + RULE-SET flags + REJECT 子类型 + inline ruleset + module 合并 + MITM + MTProto(Telegram 入站代理)
 - 共享 `protocol-mapping.ts` 作为字段映射权威源
 
 详见 [`protocol-mapping.md`](protocol-mapping.md)。
@@ -82,7 +87,7 @@ generator 入口会做两层校验:
 
 - 订阅: `GET /sub?profile={id}&target={clash|surge}&t={token}` (token 12 字符 nanoid)
 - Web UI: cookie session(HMAC),首次登录强制改密
-- 可选 IP 白名单(只对 `/api/*` 与 `/` 生效;`/sub` 不限 IP)
+- 可选 IP 白名单(`ip_allowlist`):只保护**需登录的管理 API**(`/api/entities|providers|dashboard|import|profiles|config|notification|logs`);登录接口 `/api/auth/*`、健康检查 `/api/health`/`/api/version`、静态前端 `/` 与订阅 `/sub` 均**不受**其约束
 
 ## 9. 部署
 

@@ -121,7 +121,17 @@ export const nodeSchema = z.object({
 
   // [S] snell
   psk: z.string().optional(),
-  snell_version: z.union([z.literal(3), z.literal(4), z.literal(5)]).optional(),
+  snell_version: z.union([z.literal(3), z.literal(4), z.literal(5), z.literal(6)]).optional(),
+
+  // [S] 连接复用开关(snell v4+ / anytls;anytls 规范默认开启,false 显式关闭)
+  reuse: z.boolean().optional(),
+
+  // [CS] Shadow TLS 传输层混淆(可叠加在任意 TCP 协议上;机场常配 snell/ss 使用)
+  // clash(mihomo): 仅 ss 支持,`plugin: shadow-tls` + plugin-opts { password, host, version }
+  // surge: 任意 proxy 行追加 `shadow-tls-password= / shadow-tls-sni= / shadow-tls-version=`(仅 2/3)
+  shadow_tls_password: z.string().optional(),
+  shadow_tls_sni: z.string().optional(),
+  shadow_tls_version: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
 
   // [S] shadowsocks plugin
   plugin: z.string().optional(),

@@ -29,6 +29,19 @@ export const COMMON_FIELDS: FieldMap[] = [
   { internal: "mptcp", clash: "mptcp", surge: null, notes: "Surge does not expose mptcp on per-node basis" },
 ];
 
+/**
+ * Shadow TLS 传输层混淆(可叠加在任意 TCP 协议上)。
+ * - Surge: 任意 proxy 行追加参数(v2: iOS 5.2.0+/Mac 4.10.0+;v3: iOS 5.5.0+/Mac 5.0.3+);
+ *   version 仅支持 2/3,缺省 2。
+ * - mihomo: 仅 shadowsocks 支持,写法为 `plugin: shadow-tls` + `plugin-opts: { password, host, version }`,
+ *   version 支持 1/2/3。其余协议在 Clash 输出降级为跳过该组字段 + warning。
+ */
+export const SHADOW_TLS_FIELDS: FieldMap[] = [
+  { internal: "shadow_tls_password", clash: "plugin-opts.password", surge: "shadow-tls-password" },
+  { internal: "shadow_tls_sni", clash: "plugin-opts.host", surge: "shadow-tls-sni", notes: "TLS 握手明文 SNI;Surge 不填则不发 SNI" },
+  { internal: "shadow_tls_version", clash: "plugin-opts.version", surge: "shadow-tls-version", notes: "Surge 仅 2/3(缺省 2);v1 在 Surge 端跳过 + warning" },
+];
+
 /** Shadowsocks-specific. */
 export const SHADOWSOCKS_FIELDS: FieldMap[] = [
   { internal: "cipher", clash: "cipher", surge: "encrypt-method" },
@@ -56,11 +69,13 @@ export const VLESS_FIELDS: FieldMap[] = [
 /** Hysteria2-specific. */
 export const HYSTERIA2_FIELDS: FieldMap[] = [
   { internal: "password", clash: "password", surge: "password" },
-  // Surge 5 hysteria2 仅支持下行带宽,不支持 upload-bandwidth(参见 manual.nssurge.com 第 17 节)
+  // Surge hysteria2 仅支持下行带宽,不支持 upload-bandwidth(manual.nssurge.com/policy/proxy.html)
   { internal: "up", clash: "up", surge: null, notes: "Surge has no upload-bandwidth knob; mihomo-only" },
   { internal: "down", clash: "down", surge: "download-bandwidth", notes: "Surge expects plain Mbps integer (no 'Mbps' unit)" },
-  { internal: "obfs", clash: "obfs", surge: "obfs" },
-  { internal: "obfs_password", clash: "obfs-password", surge: "obfs-password" },
+  // Surge 端没有 hysteria2 的 obfs= 键;Salamander 混淆用 salamander-password= 单键表达
+  // (iOS 5.17.0+ / Mac 6.4.3+)。mihomo 仍是 obfs: salamander + obfs-password: 两键。
+  { internal: "obfs", clash: "obfs", surge: null, notes: "Surge 无 obfs= 键;salamander 由 salamander-password= 隐含" },
+  { internal: "obfs_password", clash: "obfs-password", surge: "salamander-password", notes: "仅 obfs=salamander 时输出;其他 obfs 类型 Surge 不支持 + warning" },
   { internal: "port_hopping", clash: "ports", surge: "port-hopping" },
   { internal: "hop_interval", clash: "hop-interval", surge: "port-hopping-interval" },
 ];
@@ -69,7 +84,7 @@ export const HYSTERIA2_FIELDS: FieldMap[] = [
 export const TUIC_FIELDS: FieldMap[] = [
   { internal: "uuid", clash: "uuid", surge: "uuid" },
   { internal: "password", clash: "password", surge: "password" },
-  // Surge 5 TUIC v5 必须显式 version=5(无该字段时 Surge 假定 v4 并改读 token);
+  // Surge TUIC v5 必须显式 version=5(无该字段时 Surge 假定 v4 并改读 token);
   // mihomo `version: 5` ↔ Surge `version=5`
   { internal: "tuic_version", clash: "version", surge: "version" },
   { internal: "congestion_controller", clash: "congestion-controller", surge: null },
@@ -78,12 +93,12 @@ export const TUIC_FIELDS: FieldMap[] = [
 /**
  * WireGuard.
  *
- * 重要:Surge 5 wireguard 用"section-name"模式 — [Proxy] 行只写
+ * 重要:Surge wireguard 用"section-name"模式 — [Proxy] 行只写
  * `<name> = wireguard, section-name=<id>`,密钥/self-ip/peer 全部在单独的
  * `[WireGuard <id>]` 段里(参见 manual.nssurge.com/policy/wireguard.html)。
  * 字段键名与 Clash 一致,但表达位置不同:
  *
- *   Clash (mihomo)              Surge 5
+ *   Clash (mihomo)              Surge
  *   ───────────────             ─────────────────────────────
  *   proxy.private-key:          [WireGuard X] private-key
  *   proxy.public-key:           [WireGuard X] peer = (public-key=...)
@@ -103,12 +118,19 @@ export const WIREGUARD_FIELDS: FieldMap[] = [
   { internal: "peers", clash: "peers", surge: "peer", notes: "Multi-peer = repeated `peer = (...)` lines in [WireGuard <id>]" },
 ];
 
-/** Snell (Surge-only). */
+/** Snell (Surge-only). v6 需 iOS 5.20.0+ / Mac 6.7.0+(beta,不支持 QUIC Proxy Mode)。 */
 export const SNELL_FIELDS: FieldMap[] = [
   { internal: "psk", clash: null, surge: "psk" },
-  { internal: "snell_version", clash: null, surge: "version" },
+  { internal: "snell_version", clash: null, surge: "version", notes: "3/4/5/6;v6 派生流量特征,无额外客户端参数" },
+  { internal: "reuse", clash: null, surge: "reuse", notes: "连接复用,Snell v4+ 可选" },
   { internal: "obfs", clash: null, surge: "obfs" },
   { internal: "obfs_host", clash: null, surge: "obfs-host" },
+];
+
+/** AnyTLS (v2: iOS 5.17.0+ / Mac 6.4.3+)。 */
+export const ANYTLS_FIELDS: FieldMap[] = [
+  { internal: "password", clash: "password", surge: "password" },
+  { internal: "reuse", clash: null, surge: "reuse", notes: "AnyTLS 规范默认开启复用,reuse=false 显式关闭;mihomo 无此键" },
 ];
 
 /** Chain proxy field. */

@@ -204,6 +204,28 @@ export function SurgeOnlySection({ data, update }: Props) {
             </SelectContent>
           </Select>
         </Field>
+        <Field label="block_quic (全局 QUIC 拦截, iOS 5.14.6+/Mac 5.10.3+)">
+          <Select
+            value={data.block_quic ?? "__none__"}
+            onValueChange={(v) =>
+              update({
+                block_quic:
+                  v === "__none__"
+                    ? undefined
+                    : (v as "per-policy" | "all-proxy" | "all" | "always-allow"),
+              })
+            }
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">(默认 per-policy)</SelectItem>
+              <SelectItem value="per-policy">per-policy (按各策略自身设置)</SelectItem>
+              <SelectItem value="all-proxy">all-proxy (拦截所有代理的 QUIC)</SelectItem>
+              <SelectItem value="all">all (连 DIRECT 一起拦)</SelectItem>
+              <SelectItem value="always-allow">always-allow (全部放行)</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
       </div>
 
       <div className="grid grid-cols-2 gap-3">

@@ -2,7 +2,7 @@
 
 ## Agent Role
 
-你是 **专精 TypeScript / Node.js 全栈 + 代理协议(Clash Mihomo / Surge 5)** 的工程师。优先级:
+你是 **专精 TypeScript / Node.js 全栈 + 代理协议(Clash Mihomo / Surge,目标 iOS 5.21+ / Mac 6.8+)** 的工程师。优先级:
 
 1. **正确性**: 生成的 clash yaml / surge .conf 必须能被对应客户端无错加载
 2. **协议保真**: 字段映射严格遵循 `[backend/src/generators/protocol-mapping.ts](backend/src/generators/protocol-mapping.ts)` 与 `[docs/protocol-mapping.md](docs/protocol-mapping.md)`,不可瞎猜键名;**新协议 / 新字段 / 客户端报错** 一律按 `Protocol Documentation Lookup` 章节先查 mihomo wiki + Surge manual 再动手
@@ -232,7 +232,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 2. **`backend/src/generators/protocol-mapping.ts`** — 代码版字段表
 3. **mihomo wiki** (Clash) — `https://wiki.metacubex.one/`,使用 `WebFetch` 拉取具体页面(如 `/config/proxies/<type>` `/config/proxy-providers` `/config/proxy-groups`)
 4. **Surge manual** — `https://manual.nssurge.com/`(可换算 `https://kb.nssurge.com/`),关注 `Proxy Protocol` `Policy Group` `Rule` `Module` 等小节
-5. **WebSearch** — 当上面都没明确说,搜 `mihomo <protocol> yaml example` / `surge 5 <feature> conf`,优先取 issue / changelog / commit 原文,不轻信博客转载
+5. **WebSearch** — 当上面都没明确说,搜 `mihomo <protocol> yaml example` / `surge <feature> conf`,优先取 issue / changelog / commit 原文,不轻信博客转载
 
 落地规则:
 
@@ -246,7 +246,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - **协议矩阵 snapshot**: `tests/generators/protocol-matrix.test.ts` + `__fixtures__/protocol-matrix.ts`,每协议 × 两端各一份 snapshot;改 generator 字段映射后用 `pnpm vitest -u` 更新,review diff 时严格对比与上游文档是否一致
 - **综合 fixture**: `tests/generators/fixture.test.ts`(全 Profile 端到端 snapshot)
 - **/sub 集成测试**: `tests/routes/sub.test.ts` 用 `vi.mock` 隔离 storage,断言 status / Subscription-UserInfo / Profile-Update-Interval / Content-Disposition / body 形态
-- **真实客户端验证**(手动,但必做): 任何涉及 generator / protocol-mapping 的改动,至少在 Clash Verge + Surge 5 各导入一次,看客户端日志无 error/warn
+- **真实客户端验证**(手动,但必做): 任何涉及 generator / protocol-mapping 的改动,至少在 Clash Verge + Surge(最新版)各导入一次,看客户端日志无 error/warn
 - 覆盖率门槛: parsers + generators ≥ 90%,其余模块按需
 
 ## Boundaries

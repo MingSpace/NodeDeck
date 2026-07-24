@@ -5,6 +5,7 @@ import { emptyProfile, protocolFixtures } from "./__fixtures__/protocol-matrix.j
 import type { Node } from "../../src/schemas/node.js";
 import type { ProxyGroup } from "../../src/schemas/proxy-group.js";
 import { providerSchema, type Provider } from "../../src/schemas/provider.js";
+import { generalPresetSchema } from "../../src/schemas/general-preset.js";
 
 function makeProvider(id: string, name: string, tags: string[] = []): Provider {
   return providerSchema.parse({ id, name, type: "http", url: "https://example.com/sub", tags });
@@ -219,7 +220,7 @@ describe("protocol matrix snapshot", () => {
     expect(warnings.some((w) => w.includes("Chain dangling") && w.includes("GhostNode"))).toBe(true);
   });
 
-  // Surge 5 wireguard 必须用 section-name 模式(参见 manual.nssurge.com/policy/wireguard.html)。
+  // Surge wireguard 必须用 section-name 模式(参见 manual.nssurge.com/policy/wireguard.html)。
   // 这里直接断言关键结构字段,避免完全依赖 snapshot 的脆弱性 — 即使 snapshot 丢失也能锁住格式契约。
   it("Surge wireguard 输出 section-name + [WireGuard <id>] 段 + peer = (...)", () => {
     const node: Node = {
@@ -283,7 +284,7 @@ describe("protocol matrix snapshot", () => {
     expect(surge).toContain(`[WireGuard ${sid}]`);
   });
 
-  it("Surge hysteria2 不输出 upload-bandwidth(Surge 5 不支持)", () => {
+  it("Surge hysteria2 不输出 upload-bandwidth(Surge 不支持)", () => {
     const node: Node = {
       name: "HY2",
       type: "hysteria2",
@@ -330,6 +331,194 @@ describe("protocol matrix snapshot", () => {
     expect(surge).toContain("version=5");
     expect(surge).toContain("uuid=11111111-2222-3333-4444-555555555555");
     expect(surge).toContain("password=pw");
+  });
+
+  it("Surge hysteria2 salamander → 单键 salamander-password,不输出 obfs=/obfs-password=", () => {
+    const node: Node = {
+      name: "HY2-Obfs",
+      type: "hysteria2",
+      server: "hy2.example.com",
+      port: 443,
+      password: "pw",
+      obfs: "salamander",
+      obfs_password: "obfs-pw",
+      tls: true,
+      tags: [],
+    };
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(surge).toContain("salamander-password=obfs-pw");
+    expect(surge).not.toMatch(/[, ]obfs=/);
+    expect(surge).not.toContain("obfs-password=");
+    // mihomo 端保持双键
+    const clash = generateClashConfig({ profile: emptyProfile(), nodes: [node], groups: [], rules: [], warnings: [] });
+    expect(clash).toContain("obfs: salamander");
+    expect(clash).toContain("obfs-password: obfs-pw");
+  });
+
+  it("Surge hysteria2 非 salamander 的 obfs → 跳过混淆参数 + warning", () => {
+    const node: Node = {
+      name: "HY2-Unknown-Obfs",
+      type: "hysteria2",
+      server: "hy2.example.com",
+      port: 443,
+      password: "pw",
+      obfs: "gecko",
+      obfs_password: "obfs-pw",
+      tls: true,
+      tags: [],
+    };
+    const warnings: string[] = [];
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings,
+    });
+    expect(surge).not.toContain("salamander-password=");
+    expect(warnings.some((w) => w.includes("HY2-Unknown-Obfs") && w.includes("gecko"))).toBe(true);
+  });
+
+  it("shadow-tls: ss 两端对称输出;非 ss 在 Clash 端丢弃 + warning", () => {
+    const ssNode: Node = {
+      name: "SS-STLS",
+      type: "ss",
+      server: "a.example.com",
+      port: 443,
+      cipher: "aes-128-gcm",
+      password: "p",
+      shadow_tls_password: "stls",
+      shadow_tls_sni: "cloud.tencent.com",
+      shadow_tls_version: 3,
+      tags: [],
+    };
+    const trojanNode: Node = {
+      name: "TJ-STLS",
+      type: "trojan",
+      server: "b.example.com",
+      port: 443,
+      password: "p2",
+      tls: true,
+      shadow_tls_password: "stls2",
+      tags: [],
+    };
+    const warnings: string[] = [];
+    const clash = generateClashConfig({
+      profile: emptyProfile(),
+      nodes: [ssNode, trojanNode],
+      groups: [],
+      rules: [],
+      warnings,
+    });
+    expect(clash).toContain("plugin: shadow-tls");
+    expect(clash).toContain("host: cloud.tencent.com");
+    expect(clash).toContain("version: 3");
+    // trojan 无 mihomo 对应写法:字段丢弃 + warning,节点本体仍输出
+    expect(clash).toContain("name: TJ-STLS");
+    expect(warnings.some((w) => w.includes("TJ-STLS") && w.includes("shadow-tls"))).toBe(true);
+
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [ssNode, trojanNode],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    // Surge 端任意 TCP 协议都可叠 shadow-tls
+    expect(surge).toMatch(/^SS-STLS = ss,.*shadow-tls-password=stls.*shadow-tls-sni=cloud\.tencent\.com.*shadow-tls-version=3/m);
+    expect(surge).toMatch(/^TJ-STLS = trojan,.*shadow-tls-password=stls2/m);
+  });
+
+  it("shadow-tls v1 → Surge 端不输出 version 键 + warning", () => {
+    const node: Node = {
+      name: "SS-STLS-V1",
+      type: "ss",
+      server: "a.example.com",
+      port: 443,
+      cipher: "aes-128-gcm",
+      password: "p",
+      shadow_tls_password: "stls",
+      shadow_tls_version: 1,
+      tags: [],
+    };
+    const warnings: string[] = [];
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [node],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings,
+    });
+    expect(surge).toContain("shadow-tls-password=stls");
+    expect(surge).not.toContain("shadow-tls-version=");
+    expect(warnings.some((w) => w.includes("shadow-tls v1"))).toBe(true);
+  });
+
+  it("[General] block-quic + [MTProto] 段输出(合法 secret)", () => {
+    const general = generalPresetSchema.parse({
+      id: "g1",
+      name: "G1",
+      block_quic: "all-proxy",
+      mtproto: {
+        enable: true,
+        interface: "0.0.0.0",
+        port: 5753,
+        secret: "dd0123456789abcdef0123456789abcdef",
+        ipv6: true,
+        dc_config_url: "https://example.com/dc.json",
+      },
+    });
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      general,
+      warnings: [],
+    });
+    expect(surge).toContain("block-quic = all-proxy");
+    expect(surge).toContain("[MTProto]");
+    expect(surge).toContain("interface = 0.0.0.0");
+    expect(surge).toContain("port = 5753");
+    expect(surge).toContain("secret = dd0123456789abcdef0123456789abcdef");
+    expect(surge).toContain("ipv6 = true");
+    expect(surge).toContain("dc-config-url = https://example.com/dc.json");
+    // Clash 端两者都应被忽略
+    const clash = generateClashConfig({ profile: emptyProfile(), nodes: [], groups: [], rules: [], general, warnings: [] });
+    expect(clash).not.toContain("mtproto");
+    expect(clash).not.toContain("block-quic");
+  });
+
+  it("[MTProto] secret 非法 → 跳过整段 + warning", () => {
+    const general = generalPresetSchema.parse({
+      id: "g2",
+      name: "G2",
+      mtproto: { enable: true, secret: "not-a-hex-secret" },
+    });
+    const warnings: string[] = [];
+    const surge = generateSurgeConfig({
+      profile: emptyProfile(),
+      nodes: [],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      general,
+      warnings,
+    });
+    // WARN 注释里会出现 "[MTProto]" 字样,这里断言的是"没有独立的段头行"
+    expect(surge).not.toMatch(/^\[MTProto\]$/m);
+    expect(warnings.some((w) => w.includes("MTProto"))).toBe(true);
   });
 
   it("Surge wireguard 节点带 chain_via 时发 warning(Surge 不支持 wg 叠 underlying-proxy)", () => {

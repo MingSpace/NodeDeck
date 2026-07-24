@@ -260,6 +260,31 @@ default=DIRECT
     ]);
   });
 
+  it("parses [MTProto] section + [General] block-quic into general", () => {
+    const text = `
+[General]
+loglevel = notify
+block-quic = all-proxy
+
+[MTProto]
+interface = 0.0.0.0
+port = 5753
+secret = dd0123456789abcdef0123456789abcdef
+ipv6 = true
+dc-config-url = https://example.com/dc.json
+`;
+    const r = importSurgeConf(text);
+    expect(r.general?.block_quic).toBe("all-proxy");
+    expect(r.general?.mtproto).toEqual({
+      enable: true,
+      interface: "0.0.0.0",
+      port: 5753,
+      secret: "dd0123456789abcdef0123456789abcdef",
+      ipv6: true,
+      dc_config_url: "https://example.com/dc.json",
+    });
+  });
+
   // 回归: Surge 配置里常见 `DIRECT = direct` 伪节点会被解析成 port=0,
   // 让 nodeSchema 校验失败,导致 /api/import/commit 整个 500。
   // 现在直接跳过这种伪节点,并通过 warning 告知用户。

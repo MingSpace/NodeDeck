@@ -94,6 +94,26 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
     lines.push("");
   }
 
+  // [MTProto] — Surge 作为 Telegram MTProto 入站代理(iOS 5.21.0+ / Mac 6.8.0+)。
+  // 一个 profile 仅允许一个该段;secret 必须是 32 位十六进制(可带 dd 前缀),
+  // 不合法时跳过整段 + warning(Surge 会拒绝加载非法 secret)。
+  if (general?.mtproto?.enable) {
+    const mt = general.mtproto;
+    if (!/^(dd)?[0-9a-fA-F]{32}$/.test(mt.secret)) {
+      input.warnings.push(
+        `MTProto secret 不合法(需 32 位十六进制,可带 dd 前缀),[MTProto] 段已跳过`,
+      );
+    } else {
+      lines.push("[MTProto]");
+      lines.push(`interface = ${mt.interface}`);
+      lines.push(`port = ${mt.port}`);
+      lines.push(`secret = ${mt.secret}`);
+      if (mt.ipv6 !== undefined) lines.push(`ipv6 = ${mt.ipv6}`);
+      if (mt.dc_config_url) lines.push(`dc-config-url = ${mt.dc_config_url}`);
+      lines.push("");
+    }
+  }
+
   // [Proxy]
   // wireguard 走特殊路径:[Proxy] 段只放 `name = wireguard, section-name=<id>` 一行,
   // 密钥 / 自身 IP / peer 写在文件后面单独的 [WireGuard <id>] 段。
@@ -330,6 +350,7 @@ function appendGeneralLines(lines: string[], g: GeneralPreset): void {
     ["test-timeout", g.test_timeout],
     ["proxy-test-udp", g.proxy_test_udp],
     ["udp-policy-not-supported-behaviour", g.udp_policy_not_supported_behaviour],
+    ["block-quic", g.block_quic],
     ["geoip-maxmind-url", g.geoip_maxmind_url],
     ["ipv6", g.ipv6],
     ["ipv6-vif", g.ipv6_vif],
@@ -412,17 +433,25 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
       break;
     case "hysteria2":
       if (node.password !== undefined) params.push(`password=${escapeValue(node.password)}`);
-      // Surge 5 hysteria2 仅支持 download-bandwidth(单位 Mbps,纯数字),不支持 upload-bandwidth。
+      // Surge hysteria2 仅支持 download-bandwidth(单位 Mbps,纯数字),不支持 upload-bandwidth。
       // 参考: https://manual.nssurge.com/policy/proxy.html#parameter-for-hysteria-2
       // up 字段在转 Surge 时静默丢弃(mihomo 端仍会用),不发 warning 避免日志噪音。
       if (node.down) params.push(`download-bandwidth=${stripBandwidthUnit(node.down)}`);
-      if (node.obfs) params.push(`obfs=${node.obfs}`);
-      if (node.obfs_password) params.push(`obfs-password=${escapeValue(node.obfs_password)}`);
+      // Surge 端没有 hysteria2 的 obfs=/obfs-password= 键;Salamander 混淆用单键
+      // salamander-password=(iOS 5.17.0+ / Mac 6.4.3+)表达。mihomo 的 obfs: salamander
+      // + obfs-password: 两键在这里折叠成一键;非 salamander 的 obfs 类型 Surge 不支持。
+      if (node.obfs && node.obfs !== "salamander") {
+        warnings.push(
+          `Surge hysteria2 "${node.name}" obfs="${node.obfs}" 不被支持(仅 salamander),混淆参数已跳过`,
+        );
+      } else if (node.obfs_password) {
+        params.push(`salamander-password=${escapeValue(node.obfs_password)}`);
+      }
       if (node.port_hopping) params.push(`port-hopping=${node.port_hopping}`);
       if (node.hop_interval !== undefined) params.push(`port-hopping-interval=${node.hop_interval}`);
       break;
     case "tuic":
-      // Surge 5 TUIC v5 与 mihomo 一样用 uuid + password,version=5 必须显式标注以区分 v4(token-only)。
+      // Surge TUIC v5 与 mihomo 一样用 uuid + password,version=5 必须显式标注以区分 v4(token-only)。
       // 参考: https://surge.tel/20/2559 与 manual.nssurge.com/policy/proxy.html
       // mihomo TUIC v4 (用 token 字段) 当前不在 schema 里,生成时统一按 v5 输出。
       if (node.uuid) params.push(`uuid=${node.uuid}`);
@@ -430,7 +459,7 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
       params.push(`version=${node.tuic_version ?? 5}`);
       break;
     case "wireguard":
-      // Surge 5 的 wireguard 采用 section-name 模式:[Proxy] 行只引用一个 ID,密钥/IP/peer
+      // Surge 的 wireguard 采用 section-name 模式:[Proxy] 行只引用一个 ID,密钥/IP/peer
       // 全部写在单独的 [WireGuard <ID>] 段。这里返回 sentinel,主流程会在生成 [Proxy] 行
       // 时直接构造 `<name> = wireguard, section-name=<id>`,并把 [WireGuard <id>] 段追加到输出末尾。
       // 参考: https://manual.nssurge.com/policy/wireguard.html
@@ -438,11 +467,14 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
     case "snell":
       if (node.psk) params.push(`psk=${node.psk}`);
       params.push(`version=${node.snell_version ?? 4}`);
+      if (node.reuse !== undefined) params.push(`reuse=${node.reuse}`);
       if (node.obfs) params.push(`obfs=${node.obfs}`);
       if (node.obfs_host) params.push(`obfs-host=${node.obfs_host}`);
       break;
     case "anytls":
       if (node.password !== undefined) params.push(`password=${escapeValue(node.password)}`);
+      // AnyTLS 规范默认开启连接复用,仅 reuse=false 有显式意义,但 true 也照写(幂等)
+      if (node.reuse !== undefined) params.push(`reuse=${node.reuse}`);
       break;
     case "socks5":
       if (node.username) params.push(`username=${node.username}`);
@@ -467,12 +499,25 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
   if (node.alpn && node.alpn.length > 0) for (const a of node.alpn) params.push(`alpn=${a}`);
   if (node.tfo) params.push(`tfo=${node.tfo}`);
   if (node.udp !== undefined) params.push(`udp-relay=${node.udp}`);
+  // Shadow TLS 混淆可叠加在任意 TCP 协议上(v2: Mac 4.10.0+;v3: Mac 5.0.3+)。
+  // Surge 只认 version 2/3(缺省 2);v1 无对应写法,跳过 version 键并 warning。
+  if (node.shadow_tls_password) {
+    params.push(`shadow-tls-password=${escapeValue(node.shadow_tls_password)}`);
+    if (node.shadow_tls_sni) params.push(`shadow-tls-sni=${node.shadow_tls_sni}`);
+    if (node.shadow_tls_version === 2 || node.shadow_tls_version === 3) {
+      params.push(`shadow-tls-version=${node.shadow_tls_version}`);
+    } else if (node.shadow_tls_version === 1) {
+      warnings.push(
+        `Surge 不支持 shadow-tls v1("${node.name}"),已按缺省 v2 输出,若服务端为 v1 将无法握手`,
+      );
+    }
+  }
   if (node.chain_via) params.push(`underlying-proxy=${node.chain_via}`);
 
   let head = `${node.type}, ${node.server}, ${node.port}`;
   if (node.type === "http" || node.type === "https") {
     // Surge http/https 凭据格式: 必须 username 与 password 同时存在用位置参数;
-    // 任一缺失 Surge 5 会拒绝解析,这里直接降级为无认证 + warning。
+    // 任一缺失 Surge 会拒绝解析,这里直接降级为无认证 + warning。
     if (node.username && node.password !== undefined) {
       head += `, ${node.username}, ${escapeValue(node.password)}`;
     } else if (node.username || node.password !== undefined) {

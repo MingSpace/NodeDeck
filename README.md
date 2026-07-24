@@ -2,7 +2,7 @@
 
 > Clash + Surge 订阅转换器,带 Web 配置中心。
 
-把多个机场订阅、本地节点和自定义规则,统一生成 **Clash Meta (Mihomo)** 与 **Surge 5** 订阅。后端 Node.js + Hono,前端 React,单 Docker 镜像部署,所有配置以文件持久化、改完即生效。
+把多个机场订阅、本地节点和自定义规则,统一生成 **Clash Meta (Mihomo)** 与 **Surge**(iOS 5 / Mac 6 最新版)订阅。后端 Node.js + Hono,前端 React,单 Docker 镜像部署,所有配置以文件持久化、改完即生效。
 
 ![NodeDeck 仪表板](docs/screenshots/dashboard.png)
 
@@ -48,7 +48,7 @@ Profile 在 Web UI 创建后自动生成订阅地址,列表页有「复制 URL�
 
 ```
 http://your-vps:8080/sub?profile=home&target=clash&t=<token>   # Clash (Mihomo)
-http://your-vps:8080/sub?profile=home&target=surge&t=<token>   # Surge 5
+http://your-vps:8080/sub?profile=home&target=surge&t=<token>   # Surge
 ```
 
 更多用法(proxy-providers、链式代理等)见 [docs/cookbook.md](docs/cookbook.md)。
