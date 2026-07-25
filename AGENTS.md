@@ -5,8 +5,8 @@
 你是 **专精 TypeScript / Node.js 全栈 + 代理协议(Clash Mihomo / Surge,目标 iOS 5.21+ / Mac 6.8+)** 的工程师。优先级:
 
 1. **正确性**: 生成的 clash yaml / surge .conf 必须能被对应客户端无错加载
-2. **协议保真**: 字段映射严格遵循 `[backend/src/generators/protocol-mapping.ts](backend/src/generators/protocol-mapping.ts)` 与 `[docs/protocol-mapping.md](docs/protocol-mapping.md)`,不可瞎猜键名;**新协议 / 新字段 / 客户端报错** 一律按 `Protocol Documentation Lookup` 章节先查 mihomo wiki + Surge manual 再动手
-3. **类型安全**: 后端用 zod schema 校验所有 yaml 输入;前端共享同一 schema(`backend/src/schemas/` ↔ `frontend/src/schemas/`)
+2. **协议保真**: 字段映射不可瞎猜键名,一律按 `Protocol Documentation Lookup` 章节办
+3. **类型安全**: 后端用 zod schema 校验所有外部输入(HTTP body / yaml 文件 / env);**前端目前不跑 zod**,校验只在后端一侧,前端靠"提交后读后端报错"兜底(见 `React` 小节)
 4. **改完不重启**: 任何配置变化必须在不重启容器的前提下生效(文件是唯一真相,chokidar invalidate)
 
 ## Project Overview
@@ -16,26 +16,33 @@ NodeDeck = 个人自用的 Clash + Surge 订阅转换器 + Web 配置中心。�
 ## Tech Stack
 
 
-| 工具              | 版本        | 用途                     |
-| --------------- | --------- | ---------------------- |
-| Node.js         | >= 20 LTS | 后端 runtime             |
-| TypeScript      | 5.7+      | 全栈语言                   |
-| pnpm            | 10.x      | 包管理 + workspace        |
-| Hono            | 4.x       | 后端框架(serve API + 静态前端) |
-| zod             | 3.x       | schema 校验              |
-| js-yaml         | 4.x       | YAML 读写                |
-| nanoid          | 5.x       | token 生成               |
-| node-cron       | 3.x       | Provider 定时刷新          |
-| chokidar        | 4.x       | 文件热加载                  |
-| pino            | 9.x       | 日志                     |
-| bcryptjs        | 2.x       | 密码哈希(纯 JS,无 native 依赖) |
-| React           | 18.3      | 前端                     |
-| Vite            | 6.x       | 前端构建                   |
-| Tailwind CSS    | 3.4       | 样式                     |
-| shadcn/ui       | latest    | 组件库                    |
-| TanStack Query  | 5.x       | API 数据                 |
-| react-hook-form | 7.x       | 表单                     |
-| Monaco Editor   | 4.x       | 模块/规则原文编辑              |
+| 工具               | 版本        | 用途                       |
+| ---------------- | --------- | ------------------------ |
+| Node.js          | >= 20 LTS | 后端 runtime               |
+| TypeScript       | 5.7+      | 全栈语言                     |
+| pnpm             | 10.x      | 包管理 + workspace          |
+| Hono             | 4.x       | 后端框架(serve API + 静态前端)   |
+| zod              | 3.x       | schema 校验(**仅后端**)       |
+| js-yaml          | 4.x       | YAML 读写(前后端都用)           |
+| nanoid           | 5.x       | token 生成                 |
+| node-cron        | 3.x       | Provider 定时刷新            |
+| chokidar         | 4.x       | 文件热加载                    |
+| pino             | 9.x       | 日志                       |
+| bcryptjs         | 2.x       | 密码哈希(纯 JS,无 native 依赖)   |
+| vitest           | 2.x       | 后端单测 + snapshot(只装在 backend) |
+| ESLint           | 9.x       | 扁平配置 + typescript-eslint 8.x   |
+| React            | 18.3      | 前端                       |
+| react-router-dom | 7.x       | 前端路由(见 `frontend/src/App.tsx`) |
+| Vite             | 6.x       | 前端构建                     |
+| Tailwind CSS     | 3.4       | 样式                       |
+| shadcn/ui        | latest    | 组件库                      |
+| TanStack Query   | 5.x       | API 数据                   |
+| @dnd-kit         | 6.x       | 规则/组成员/链式规则拖拽排序          |
+| zustand          | 5.x       | 目前仅 toast store          |
+| node-forge       | 1.x       | 前端生成 MITM CA 证书          |
+| Monaco Editor    | 4.x       | 模块/规则原文编辑                |
+
+> `frontend/package.json` 里的 `react-hook-form` / `@hookform/resolvers` / `zod` 是**历史遗留的未使用依赖**,前端源码零引用;不要因为看到依赖就按它们的范式写新代码。
 
 
 ## Key Commands
@@ -53,9 +60,15 @@ pnpm -F frontend dev         # vite dev (port 5173, /api 与 /sub 反代到 8080
 
 # 校验
 pnpm typecheck               # 全 workspace 类型检查
-pnpm test                    # backend vitest run
+pnpm lint                    # eslint 扁平配置(eslint.config.js),--max-warnings 0
+pnpm test                    # backend vitest run(38 个文件 / 600+ 用例,约 3s)
 pnpm test:watch              # backend vitest watch
-pnpm vitest run -t "fixture name" -- --filter backend  # 跑单个测试
+
+# vitest 只装在 backend,root 没有 vitest bin —— `pnpm vitest ...` 会报
+# ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL Command "vitest" not found,必须用 -F backend exec
+pnpm -F backend exec vitest run -t "fixture name"   # 跑单个测试
+pnpm -F backend exec vitest run -u                  # 更新 snapshot
+pnpm -F backend exec vitest run --coverage          # 覆盖率
 
 # 构建
 pnpm build                   # 前端 + 后端
@@ -67,45 +80,26 @@ pnpm build                   # 前端 + 后端
 
 ## Local Dev Environment (优先复用,不要瞎起)
 
-用户长期在本地保持 `pnpm dev` 运行(frontend:5173 / backend:8080)。**在执行 `pnpm dev` / `pnpm -F frontend dev` / `pnpm -F backend dev` 之前,必须先按下面顺序确认本地是否已经在跑,跑着就直接复用,不要再起新进程**(双开 vite 会端口冲突,双开 tsx watch 会触发重复编译 + 文件系统竞争)。
+开发机是 **macOS**,用户通常常驻一个 `pnpm dev`(frontend:5173 / backend:8080,vite 把 `/api` 与 `/sub` 反代到 8080)。**起任何 dev 命令之前先按下面顺序探测,已经在跑就直接复用**(双开 vite 端口冲突,双开 tsx watch 会重复编译 + 抢文件)。
 
-探测顺序:
-
-1. **终端文件**: `head -n 10 /home/mings/.cursor/projects/home-mings-Code-MConvert/terminals/*.txt`,找 `command:` 含 `pnpm.*dev` / `vite` / `tsx watch` 且 `running_for_ms` 不为空的条目
-2. **端口监听**: `ss -tlnp | grep -E ':(5173|8080)'`(或 `netstat -tlnp`),只要看到有进程 LISTEN 就当作已起
+1. **终端文件**(最可靠): 读 `~/.cursor/projects/Users-minghui-Code-NodeDeck/terminals/*.txt` 的头部元数据,找 `command:` 含 `pnpm dev` / `vite` / `tsx watch` 且 `status` 仍在运行的条目;注意里面可能同时存在已经退出的旧条目,要看 `status` / `running_for_ms` 而不是只看 command
+2. **端口监听**: `lsof -nP -iTCP -sTCP:LISTEN | grep -E '5173|8080'`(macOS 没有 `ss` / `netstat -tlnp`)
 3. **HTTP 探活**: `curl -sS -o /dev/null -w "%{http_code}\n" --max-time 5 http://localhost:5173/` 与 `http://localhost:8080/api/health`,200 即可用
 
-**重要**: 沙盒里 `ls /workspace` 看不到用户的项目目录不代表没跑 —— 用户在宿主机 `/home/mings/Code/MConvert` 里跑 dev server,沙盒和宿主共享 network namespace,localhost 直接通。**不要因为"找不到代码"就推断"没启动"然后自作主张 `pnpm install && pnpm dev`**。
+三步全失败才需要起新进程,起之前先问一句"本地没探测到 dev server,要我帮你起吗?"。
 
-只有上面三步全失败,才需要起新进程;起之前先和用户确认一句"本地没探测到 dev server,要我帮你起吗?"
+### 前端 UI 验证(`cursor-ide-browser`)
 
-### 前端 UI 验证(`cursor-ide-browser` 用法,务必看完)
+- **只要状态码 / API JSON / HTML 骨架** → 直接 `curl http://localhost:5173/<route>` 或 `http://localhost:8080/api/<path>`,不需要浏览器
+- **要看渲染后的 DOM / 截图 / 控制台报错** → 用 `cursor-ide-browser` 的 `browser_navigate` / `browser_snapshot` / `browser_take_screenshot`;**控制台和网络请求没有专用工具**(不存在 `browser_console_messages`),要用 `browser_cdp` 配 `Log.enable` / `Runtime.evaluate` / `Network.enable`
 
-按"需要看到什么"分两路:
+调用要点:
 
-- **只要 HTTP 状态码 / API JSON / SSR 后 HTML 骨架** → `curl http://localhost:5173/<route>` 或 `curl http://localhost:8080/api/<path>`,agent 自己就能跑,无需用户参与
-- **要看渲染后的 DOM / 截图 / 控制台错误 / 网络请求** → 必须用 `cursor-ide-browser` MCP 的 `browser_navigate` / `browser_snapshot` / `browser_take_screenshot` / `browser_console_messages` 等工具
-
-**`cursor-ide-browser` 的关键机制(踩过坑的经验)**:
-
-1. **先自主尝试,失败再请求用户触发** —— 需要浏览器时,**直接调用 `browser_tabs` action="list" 探活**:
-   - 工具能正常返回(可能是空 tabs 列表,也可能列出已有 tabs)就是已激活,直接继续后续 `browser_*` 调用,**不一定要让用户先 mention**
-   - 只有返回 `Tool not found, available tools:` 空 list 时,才请求用户在聊天里发一次 `@Browser` mention(任意 prompt,例如 `@Browser 看下 /providers 渲染对不对`)来激活工具集
-2. **一旦激活,工具注入在会话内是粘性的** —— 后续 turn 里 agent 可以直接 `CallMcpTool` 调用 `browser_*` 系列,不需要用户每轮都打 `@Browser`
-3. **新会话(/new chat)开始时,粘性可能失效** —— 但仍然先按第 1 条探活,不要预判"新会话所以肯定没激活"就直接让用户 mention
-
-**当探活返回 `Tool not found` 时**,直接请求用户用 `@Browser` 触发,不要尝试任何"绕过"方案(下面这些都是死路,不要再走):
-
-- ❌ 看 `mcps/cursor-ide-browser/tools/` 目录是不是空的 —— **它本来就是空的**,工具是按 mention 动态注入的,不落盘到 `tools/*.json`
-- ❌ 看 `~/.cursor-server/data/logs/*/exthost*/anysphere.cursor-agent-exec/Mcp FileSystem Writer.log` 里有没有 `lease returned 0 tools across 1 clients` —— **常态就是 0**,这是上游故意设计,不是 bug
-- ❌ 推断"Remote-WSL 模式不支持 / Cursor 版本有 bug / Browser 面板没开" —— 都不是,跟 WSL 远程模式、Cursor 客户端版本、Browser 面板状态都无关
-- ❌ 用 `Task` 工具 spawn `generalPurpose` 等 subagent 让它代调 —— subagent 上下文也拿不到,工具集只 lease 给当前 parent 上下文
-
-**调用注意事项**(完整指南见 `mcps/cursor-ide-browser/INSTRUCTIONS.md`):
-
-- 任何会改变页面结构的动作(`browser_navigate` / `browser_click` / `browser_fill` 等)之后,下一步交互前要先 `browser_snapshot` 拿 fresh ref
-- 多步连续交互前先 `browser_lock` action="lock",收尾时 `browser_lock` action="unlock";单次"打开 + 截图"这种只读操作可以不 lock
-- 优先 `browser_snapshot` 拿 ARIA refs 再点击,**避免** `browser_mouse_click_xy` 这种坐标点击(除非 DOM 交互失败)
+- 需要浏览器时**先自己调 `browser_tabs` action="list" 探活**:能返回(哪怕是空列表)就是已激活,直接继续;只有报 `Tool not found` 才请用户发一次 `@Browser` mention 激活。激活后在会话内是粘性的,不用每轮都 mention;新会话仍先探活再判断,不要预设"没激活"
+- 探活失败时不要试"绕过"方案 —— 查 MCP 日志、翻 `tools/*.json`(本来就是空的,工具按 mention 动态注入)、spawn subagent 代调(工具只 lease 给当前 parent 上下文)全都是死路
+- 任何改变页面结构的动作(`browser_navigate` / `browser_click` / `browser_fill`)之后,下一步交互前要重新 `browser_snapshot` 拿 fresh ref
+- 多步连续交互前 `browser_lock` action="lock",收尾 `action="unlock"`;单次"打开 + 截图"不用 lock
+- 优先用 snapshot 的 ARIA ref 点击,**避免** `browser_mouse_click_xy` 坐标点击(除非 DOM 交互失败)
 
 ## Project Structure
 
@@ -113,49 +107,58 @@ pnpm build                   # 前端 + 后端
 NodeDeck/
 ├── backend/
 │   ├── src/
-│   │   ├── index.ts                # Hono app entry
+│   │   ├── index.ts                # Hono app entry(含 /health 与 SPA fallback)
 │   │   ├── env.ts                  # 环境变量解析(zod 校验)
 │   │   ├── logger.ts               # pino 实例
-│   │   ├── routes/                 # /api/* + /sub + /sub/provider/:id/clash.yaml
-│   │   ├── parsers/                # clash / surge / v2ray / uri / dedup / normalize
-│   │   ├── import/                 # 整包 clash / surge 配置一键导入
+│   │   ├── log-buffer.ts           # pino 行 → 结构化内存缓冲(Web UI 日志页 + SSE)
+│   │   ├── log-store.ts            # 按日 NDJSON 落盘 data/logs/,retention_days 热生效
+│   │   ├── routes/
+│   │   │   ├── sub.ts              # /sub、/sub/{clash,surge}/:profile、/sub/provider/:id/clash.yaml
+│   │   │   ├── api.ts              # /api/health、/api/version + 各子路由装配 + session/IP 白名单挂载点
+│   │   │   ├── entities.ts         # 各实体 CRUD
+│   │   │   ├── profile-preview.ts  # Web UI 实时预览 + 链式诊断
+│   │   │   ├── provider-actions.ts # status / :id/nodes / :id/refresh / :id/extracted-hosts / refresh-all
+│   │   │   └── dashboard.ts / logs.ts / notification.ts / config.ts / import.ts / auth.ts
+│   │   ├── parsers/                # clash / surge / v2ray / uri / dedup / normalize / info-node-filter
+│   │   ├── import/                 # 整包 clash / surge 导入 + extract-hosts + dedup-pool
 │   │   ├── generators/             # clash + surge 输出
 │   │   │   ├── clash.ts            # generateClashConfig + generateProxyProviderYaml
 │   │   │   ├── surge.ts
 │   │   │   ├── profile-resolver.ts # Profile → 解析后的资源(节点/组/规则/模块)
 │   │   │   ├── node-filter.ts      # include/exclude/rename
+│   │   │   ├── node-sort.ts        # sortNodesByRegion(sort_by_region 开关)
 │   │   │   ├── node-naming.ts      # uniquify(去重) + escapeSurgeNames(净化)
+│   │   │   ├── group-members.ts    # selector→节点池 + 组成员索引
+│   │   │   ├── group-refs.ts       # group.proxies 悬空引用清理
+│   │   │   ├── hosts.ts            # hosts 合并 + splitClashHosts
 │   │   │   └── protocol-mapping.ts # 字段映射表(权威源)
-│   │   ├── providers/              # fetch + cron + cache + pool
-│   │   ├── chain/                  # applyChainRules + validateChain (环检测/悬空降级)
+│   │   ├── providers/              # fetcher / scheduler(cron) / cache-store / pool / load
+│   │   ├── chain/apply.ts          # applyChainRules + validateChain + 诊断
+│   │   ├── notifications/          # bark / checks / service / state(订阅到期与刷新失败告警)
 │   │   ├── schemas/                # zod schema(全部实体)
-│   │   ├── storage/                # YAML 读写 + chokidar
-│   │   ├── auth/                   # session + token middleware
+│   │   ├── storage/                # YAML 读写 + chokidar watcher + cache + reset
+│   │   ├── auth/                   # session / token / rate-limit / secret middleware
 │   │   └── userinfo/               # Subscription-UserInfo 聚合
-│   └── tests/
-│       ├── parsers/                # 各协议 fixture
-│       ├── generators/             # 协议矩阵 snapshot + 综合 fixture
-│       │   ├── protocol-matrix.test.ts
-│       │   └── __fixtures__/
-│       ├── routes/                 # /sub 集成测试(mock storage)
-│       ├── chain/                  # 链式与环检测
-│       ├── import/                 # 整包导入测试
-│       └── userinfo/
+│   └── tests/                      # 与 src 同构:parsers / generators / chain / import /
+│                                   # routes / providers / notifications / auth / schemas /
+│                                   # storage / userinfo;generators 下有 __fixtures__ + __snapshots__
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/                  # Login / Dashboard / Providers / Rules / Groups / Modules / Generals / Profiles / profile-editor / Settings / Import / Nodes
-│   │   ├── components/             # ui (shadcn) + 业务组件 + Monaco yaml-editor
-│   │   ├── api/                    # tanstack query hooks
-│   │   ├── lib/                    # utils, http client
-│   │   ├── schemas/                # 从 backend 共享 zod
-│   │   └── hooks/
+│   │   ├── App.tsx                 # react-router 路由表(权威页面清单)
+│   │   ├── pages/                  # login / dashboard / providers / nodes / rules / groups /
+│   │   │                           # modules / generals / profile-editor(profiles/:id) /
+│   │   │                           # settings / import / notifications / logs
+│   │   ├── components/             # ui (shadcn) + layout + 业务组件 + Monaco yaml-editor
+│   │   ├── api/                    # tanstack query hooks(entities / logs)
+│   │   ├── lib/                    # http client, utils, line-diff, relative-time
+│   │   └── hooks/                  # use-auth
 │   └── public/
 ├── docker/
 │   ├── Dockerfile                  # multi-stage
 │   └── docker-compose.yml
 ├── data/                           # 运行时持久化(开发也用,gitignored)
 ├── docs/
-│   ├── design.md                   # 完整设计
+│   ├── design.md                   # 完整设计(第 4 节 = 处理流水线)
 │   ├── protocol-mapping.md         # 字段对照表(权威)
 │   ├── cookbook.md                 # 用户向使用示例(规则形态/链式/proxy-providers)
 │   ├── chain-proxy.md              # 链式代理用法
@@ -177,7 +180,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 
 数据流: 任何写入路径 (API → 文件) → chokidar 触发 → 缓存失效 → 下次 `/sub` 请求重新解析。**永远不要在内存维护权威状态**;文件是唯一真相。
 
-详细数据流见 `[docs/design.md](docs/design.md)` 第 5 节。
+详细数据流见 `[docs/design.md](docs/design.md)` **第 4 节「处理流水线」**(第 5 节讲的是 Generator 输出形态)。
 
 ## Code Style & Conventions
 
@@ -187,6 +190,14 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - 所有外部输入(HTTP body / yaml file / env var)必须先过 zod 校验
 - 业务逻辑用纯函数 + 显式依赖注入,便于测试
 - 不写无意义注释(`// increment counter`),只写"为什么"的注释
+- 故意不用的解构占位一律 `_` 前缀(`const { chain_via: _omit, ...rest }`),tsc 与 lint 都按这个约定放行
+
+### Lint(`eslint.config.js`)
+
+- **类型感知规则只覆盖 `backend/src` 与 `frontend/src`** —— `backend/tsconfig.json` 显式 exclude 了 tests,给 tests/构建脚本开类型感知会直接解析报错;它们只跑纯语法规则
+- 刻意没上 `recommendedTypeChecked` 全家桶:js-yaml 的 `load()` 返回 `any`,`no-unsafe-*` 会在 parsers/storage 刷上百条噪音。只留了 promise 相关三条(`no-floating-promises` / `no-misused-promises` / `await-thenable`)
+- 想加规则先想清楚存量代价,别为了开一条规则去批量改业务代码
+- 目前**没装 `eslint-plugin-react-hooks`**,所以 `react-hooks/exhaustive-deps` 这类 disable 注释写了会报"规则不存在";要用得先加依赖(属于 Ask First)
 
 ### YAML / 配置
 
@@ -197,23 +208,25 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 ### React
 
 - 函数组件 + hooks,无 class
-- 表单一律 react-hook-form + zodResolver,共享后端 schema
-- 状态: 服务端数据用 TanStack Query;UI 局部状态用 useState;跨页面状态用 zustand
-- 组件优先小而专注,超 250 行就拆
+- **表单是手写受控组件 + `useState`,没有 react-hook-form,也没有前端 zod 校验**;前端只做轻量的必填/格式提示,权威校验在后端 schema,失败靠 toast 展示后端报错。跨端约定用注释锚定(如 `// 与 backend/src/schemas/notification.ts 保持同步`),改后端 schema 时要顺手 grep 这类注释
+- 状态: 服务端数据用 TanStack Query;局部状态用 useState;zustand 目前只有 `components/ui/toast.tsx` 一个 store,没有跨页面全局 store,新增前先想清楚是否真的需要
+- fire-and-forget 的 promise(`invalidateQueries` / `navigate` / `refetch`)要显式 `void` 前缀,否则过不了 `no-floating-promises`;真的需要等它完成就老实 `await`
+- 组件小而专注:**新文件超 400 行就拆**。存量有一批超标文件(`pages/providers/index.tsx` 786、`pages/groups/proxy-list-editor.tsx` 762、`pages/providers/visual-form.tsx` 573 等),**不要顺手重构它们** —— 只在本来就要改那块逻辑时才拆
 
 ### Generator
 
 - **永远从 `protocol-mapping.ts` 查字段名**,不要在 generator 中硬编码字符串字面量
 - 每个协议在 `buildClashProxy` / `buildSurgeProxyLine` 的 switch 内部独立分支,新增协议时:同时在 `nodeTypeSchema` 加枚举 + `protocol-mapping.ts` 加 FIELD 表 + 两侧 generator 加 case
 - generator 输出必须 deterministic(无时间戳混入主体,只在顶部注释中)
-- generator 入口的固定 pipeline(改顺序前要慎重):
+- generator 入口的固定 pipeline(`clash.ts` / `surge.ts` 两端必须一致,改顺序前要慎重):
   1. `applyNodeFilter` — include/exclude/rename
-  2. `uniquifyNodeNames` — 同名加 ` #2` 后缀
-  3. `escapeSurgeNames` — **仅 Surge** 净化 `=` `,` `"`
-  4. `applyChainRules` — 写 `chain_via`;selector 支持按策略组成员(`include_groups`)/ 点名节点(`include_nodes`)圈定,两者 OR、与其余条件 AND,所需的「组 name → 成员节点名」索引由 `generators/group-members.ts` 的 `buildGroupMemberIndex` 在入口现算(与写进产物的组成员同源)。每条规则有 `enabled` 与 `mode`(`override` / `fill`);**一个节点只能有一条链**(两端字段都是每节点单值),命中多条以最靠前为准
-  5. `validateChain` — node.chain_via 悬空引用降级 + 环检测
-  6. `validateGroupRefs` — group.proxies 显式列表的悬空节点剔除;区分两类诊断 — `nodeDangling`(被 node_filter 过滤的节点,节点池全空时聚合为 1 条总览,否则 per-group 截断为"前 5 个 + 和另外 X 个")与 `notImported`(系统中存在该 group yaml 但当前 profile.proxy_groups 没引入,文案明确指引到 Profile 编辑器加进来);组名 / DIRECT / REJECT 等内置 policy 一律保留
-  7. 协议 builder 转字典/INI 行
+  2. `sortNodesByRegion` — 仅当 `profile.node_filter.sort_by_region` 打开;必须在 uniquify **之前**,否则去重后缀会跟着顺序变动而抖
+  3. `uniquifyNodeNames` — 撞名加来源前缀,回退 ` #2` 后缀
+  4. `escapeSurgeNames` — **仅 Surge** 净化 `=` `,` `"`
+  5. `applyChainRules` — 写 `chain_via`;selector 支持按策略组成员(`include_groups`)/ 点名节点(`include_nodes`)圈定,两者 OR、与其余条件 AND,所需的「组 name → 成员节点名」索引由 `generators/group-members.ts` 的 `buildGroupMemberIndex` 在入口现算(与写进产物的组成员同源)。每条规则有 `enabled` 与 `mode`(`override` / `fill`);**一个节点只能有一条链**(两端字段都是每节点单值),命中多条以最靠前为准
+  6. `validateChain` — node.chain_via 悬空引用降级 + 环检测
+  7. `validateGroupRefs` — group.proxies 显式列表的悬空节点剔除;区分两类诊断 — `nodeDangling`(被 node_filter 过滤的节点,节点池全空时聚合为 1 条总览,否则 per-group 截断为"前 5 个 + 和另外 X 个")与 `notImported`(系统中存在该 group yaml 但当前 profile.proxy_groups 没引入,文案明确指引到 Profile 编辑器加进来);组名 / DIRECT / REJECT 等内置 policy 一律保留
+  8. 协议 builder 转字典/INI 行
 - ruleset 分发 **先按 `rs.type` 分大类**(remote_url / inline_list / geosite / geoip),再按 `clash_format` / `surge_format` 决定细节;不要再回到"先看 format 再看 type"的旧顺序
 
 ### Protocol Documentation Lookup (重要)
@@ -242,22 +255,24 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 
 ## Testing Strategy
 
-- **单元测试**(vitest): parsers / generators / chain / userinfo / 协议字段映射
-- **协议矩阵 snapshot**: `tests/generators/protocol-matrix.test.ts` + `__fixtures__/protocol-matrix.ts`,每协议 × 两端各一份 snapshot;改 generator 字段映射后用 `pnpm vitest -u` 更新,review diff 时严格对比与上游文档是否一致
-- **综合 fixture**: `tests/generators/fixture.test.ts`(全 Profile 端到端 snapshot)
+测试只在 backend 一侧(前端无测试)。当前基线:38 个文件 / 600+ 用例,`pnpm test` 约 3 秒跑完。
+
+- **单元测试**(vitest): parsers / generators / chain / import / providers / notifications / auth / schemas / storage / userinfo
+- **协议矩阵 snapshot**: `tests/generators/protocol-matrix.test.ts` + `tests/generators/__fixtures__/protocol-matrix.ts`,每协议 × 两端各一份 snapshot;改字段映射后用 `pnpm -F backend exec vitest run -u` 更新,review diff 时逐条比对上游文档
+- **综合 fixture**: `tests/generators/fixture.test.ts`(全 Profile 端到端 snapshot,输入在 `__fixtures__/example-profile.input.ts`)
 - **/sub 集成测试**: `tests/routes/sub.test.ts` 用 `vi.mock` 隔离 storage,断言 status / Subscription-UserInfo / Profile-Update-Interval / Content-Disposition / body 形态
 - **真实客户端验证**(手动,但必做): 任何涉及 generator / protocol-mapping 的改动,至少在 Clash Verge + Surge(最新版)各导入一次,看客户端日志无 error/warn
-- 覆盖率门槛: parsers + generators ≥ 90%,其余模块按需
+- 覆盖率是**目标不是门槛**(CI 不卡):parsers + generators 尽量 ≥ 90%,其余按需;要看数据跑 `pnpm -F backend exec vitest run --coverage`
 
 ## Boundaries
 
 ### Always
 
 - 所有 yaml 写入前必须 zod schema 校验通过
-- 任何修改 generator 前先跑 `pnpm test`,改动后跑 `pnpm vitest -u` 更新 fixture,逐一肉眼 diff snapshot
-- 链式代理由 generator 入口的 `validateChain` 自动做环检测 + 悬空降级;新增引用类字段时也要走这条管线,不要旁路
-- 涉及 Clash/Surge 字段或新特性时,先按 `Protocol Documentation Lookup` 章节查文档再动手
-- 提交前 `pnpm typecheck && pnpm test` 全绿
+- 改 generator 前先跑一遍 `pnpm test` 拿到干净基线(snapshot 更新流程见 `Testing Strategy`)
+- 引用类字段(节点/组/规则互指)一律走 generator 入口的 `validateChain` / `validateGroupRefs` 管线做悬空降级与环检测,不要旁路自己判
+- 涉及 Clash/Surge 字段或新特性时,先按 `Protocol Documentation Lookup` 查文档再动手
+- 提交前 `pnpm typecheck && pnpm lint && pnpm test` 全绿
 
 ### Ask First
 
@@ -272,8 +287,8 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - 把节点密码/uuid 等敏感数据 log 出来(pino 配 redact)
 - 把任何敏感信息(节点密码 / uuid / 订阅 token / 机场真实订阅 URL / API key / cookie)硬编码进源代码、测试 fixture、文档示例或 commit —— 开源仓库 git 历史不可抹除,真实订阅地址等同长期泄露;测试 / 文档一律用占位假数据(如 `example.com` / `your-token-here`)
 - 在响应中泄露后端文件路径
-- 修改 `<!-- USER -->` 章节内容
-- 提交 `data/` 实际内容(只能提交 schema/示例)
+- 修改 `## User-Specified Content` 章节内容(用户自己维护)
+- 提交 `data/` 实际内容(只能提交 schema/示例)、`.env`、任何密钥
 - 给输出 yaml/conf 中插入"广告"或"打赏"链接
 
 ## Critical Files
@@ -287,6 +302,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - `[backend/src/generators/group-members.ts](backend/src/generators/group-members.ts)` - selector→节点池筛选 + 组成员索引(clash / surge / chain 三处共用,改这里会同时影响组成员与链式作用域)
 - `[backend/src/generators/group-refs.ts](backend/src/generators/group-refs.ts)` - group.proxies 悬空节点引用清理
 - `[backend/src/routes/sub.ts](backend/src/routes/sub.ts)` - 订阅入口(含 proxy-providers 子路由)
+- `[backend/src/routes/profile-preview.ts](backend/src/routes/profile-preview.ts)` - Web UI 实时预览 + 链式/组引用诊断的唯一后端来源,改 generator 诊断输出时要同步看它
 - `[frontend/src/pages/profile-editor/](frontend/src/pages/profile-editor)` - Web UI 复杂度峰值
 - `[docs/protocol-mapping.md](docs/protocol-mapping.md)` - 与代码 mapping 对照,保持同步
 - `[docs/cookbook.md](docs/cookbook.md)` - 用户向使用示例,改完特性后同步更新对应小节
@@ -311,28 +327,22 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 | 改 yaml 后没生效 | chokidar 没触发(挂载文件系统问题) | 重启容器或在 Web UI Admin 触发刷新;Docker on macOS 的 NFS 挂载已知有延迟 |
 | Hysteria2 obfs 不工作 | obfs-password 没设(salamander 必填) | schema 加联动校验;客户端日志会写明缺哪个字段 |
 | host 的 `server:` 在 Clash 不生效 | generals DNS 的 `proxy-server-nameserver` 为空,而 `proxy-server-nameserver-policy` 需它非空才生效 | 在 generals DNS 填 `proxy-server-nameserver`(通用 DoH);`server:` 由 `splitClashHosts` 投到 `dns.proxy-server-nameserver-policy`(`*.`→`+.`),`DOMAIN-SET:`/`RULE-SET:` 仍跳过 + warning(`backend/src/generators/hosts.ts`) |
-| provider 的 host 没出现在订阅里 | provider `emit_hosts` 关了,或该 provider 被禁用,或上游 host 与节点域名无关被过滤 | 打开节点源编辑页「节点源 Host」区的 emit_hosts 开关;输出 hosts = `general.hosts` + 各启用源手动 `provider.hosts` + 各源**自动解析(仅节点域名相关)**的 `cache.extracted_hosts`,由 `mergeHostMaps` 去重合并 |
-| 机场 `[Host]`/`hosts:` 段(给节点域名配 DoH 防污染)没带进订阅 | 上游虽有 hosts 段,但 key 与本源节点 server 域名不相关被过滤(本项目只带节点域名相关的 host) | `deriveProviderHostOverrides`(`import/extract-hosts.ts`)每次刷新只挑两类存入 cache `extracted_hosts`:① 上游 Clash 顶层 `hosts:` / Surge `[Host]` 中**命中本源节点 server 域名**(精确 + 通配父域)的条目;② Surge `encrypted-dns-server`(机场自建 DoH)为每个域名型节点推导 `节点域名 = server:<DoH>`。国内域名分流等无关条目一律丢弃,节点 server 为 IP 跳过。`profile-resolver` 按 `emit_hosts` 自动并入(编辑页「节点源 Host」区有只读预览,`GET /api/providers/:id/extracted-hosts`);base64/uri 列表无 hosts 段、节点全 IP 解析为空属正常 |
+| provider / 机场 `[Host]`、`hosts:` 段没带进订阅 | ① provider `emit_hosts` 关了或该源被禁用;② 上游 host 的 key 与本源节点 server 域名无关,被有意过滤(本项目只带**节点域名相关**的 host) | 输出 hosts = `general.hosts` + 各启用源手动 `provider.hosts` + 各源自动解析的 `cache.extracted_hosts`,由 `mergeHostMaps` 去重合并;自动解析由 `deriveProviderHostOverrides`(`import/extract-hosts.ts`)在每次刷新时只挑两类:① Clash 顶层 `hosts:` / Surge `[Host]` 中命中本源节点 server 域名(精确 + 通配父域)的条目;② Surge `encrypted-dns-server`(机场自建 DoH)为每个域名型节点推导 `节点域名 = server:<DoH>`。无关条目丢弃、节点 server 为 IP 跳过;`profile-resolver` 按 `emit_hosts` 并入(编辑页「节点源 Host」区有只读预览,`GET /api/providers/:id/extracted-hosts`)。base64/uri 列表无 hosts 段、节点全 IP 解析为空都属正常 |
 | 节点源报「content 为空(…上游仍返回空 body)」 | 机场按 User-Agent 网关,Surge 系 UA 返回 200 + 空 body(实测部分机场即此) | 默认 `user_agent` 已改空字符串,fetcher 拿到空 body 会自动回退 `clash-verge`/`ClashMeta`/`mihomo` 等 UA 重试(`providers/fetcher.ts` 的 `FALLBACK_USER_AGENTS`);仍全空则订阅多半失效或需特定 UA,可在节点源手动指定 User-Agent |
 
 
 ## When You're Stuck
 
-1. 看 `[docs/protocol-mapping.md](docs/protocol-mapping.md)` 找对应字段名
-2. 用真实 Surge / Clash Verge 客户端 import 输出文件,看报错行号(客户端日志最权威)
-3. **主动查上游文档**(`WebFetch` 工具):
-   - mihomo: `https://wiki.metacubex.one/config/proxies/<protocol>` / `/proxy-providers` / `/proxy-groups` / `/rules`
-   - Surge: `https://manual.nssurge.com/policy/proxy.html` / `/policy/group.html` / `/rule/main.html` / `/module.html`
-4. 查上游 issue/changelog: `https://github.com/MetaCubeX/mihomo/releases` / `https://nssurge.com/changelogs/`(用 `WebSearch` 关键字 + 限定 site)
-5. 在 `backend/tests/generators/protocol-matrix.ts` 加一份最小 fixture 复现问题 → 跑 `vitest -u` 锁定 baseline → 再修
-6. 仍然不确定 → 把"已查的链接 + 客户端报错原文 + 当前生成的 yaml/conf 片段"一并发给用户确认,不要瞎试
+1. 按 `Protocol Documentation Lookup` 的顺序查文档(项目映射表 → mihomo wiki → Surge manual → 上游 issue/changelog)
+2. 用真实 Surge / Clash Verge 客户端 import 输出文件,看报错行号 —— 客户端日志最权威
+3. 在 `backend/tests/generators/__fixtures__/protocol-matrix.ts` 加一份最小 fixture 复现问题 → `pnpm -F backend exec vitest run -u` 锁定 baseline → 再修
+4. 仍然不确定 → 把"已查的链接 + 客户端报错原文 + 当前生成的 yaml/conf 片段"一并发给用户确认,不要瞎试
 
 ## Git Workflow
 
-- 分支: `main`(可发布)、`feat/`*、`fix/*`、`chore/*`
+- 分支: `main`(可发布)、`feat/*`、`fix/*`、`chore/*`
 - commit message: 中文短句,前缀 `[模块]`,如 `[generator] 修复 surge ws-headers 多个值导出`
-- PR 前必须 `pnpm typecheck && pnpm test` 全绿
-- 不要提交 `data/` 真实内容、`.env`、密钥
+- PR 前必须 `pnpm typecheck && pnpm lint && pnpm test` 全绿
 
 ## User-Specified Content
 - 不追求 100% 单元测试覆盖率,但 generator + parser 模块是核心,必须有 fixture 测试
