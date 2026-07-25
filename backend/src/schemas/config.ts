@@ -22,7 +22,13 @@ export const appConfigSchema = z.object({
     password_hash: z.string().min(1),
     must_change_password: z.boolean().default(true),
   }),
-  ip_allowlist: z.array(z.string()).default([]),
+  // 空字符串条目(Web UI 点了「新增」却没填就保存)会让白名单"非空但匹配不上任何 IP",
+  // 而 PUT /api/config 本身也在白名单后面,管理员将被永久锁在设置页外无法自救。
+  // 因此读写两侧都在这里统一清洗,顺带自愈磁盘上已经写坏的 config.yaml。
+  ip_allowlist: z
+    .array(z.string())
+    .default([])
+    .transform((list) => list.map((entry) => entry.trim()).filter((entry) => entry.length > 0)),
   public_base_url: z.string().url().optional(),
   default_user_agent: z.string().default("Surge/2400"),
   auth: z

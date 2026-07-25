@@ -111,8 +111,12 @@ function ServiceConfigCard() {
   };
 
   const onSave = () => {
+    // 空行是「新增」点出来但没填的占位,原样提交会变成一条永远匹配不上的白名单规则,
+    // 直接把自己挡在所有 /api/* 外面(设置页也救不回来),所以提交前先剔除。
+    const allowlist = draft.ip_allowlist.map((entry) => entry.trim()).filter(Boolean);
+    update({ ip_allowlist: allowlist });
     save.mutate({
-      ip_allowlist: draft.ip_allowlist,
+      ip_allowlist: allowlist,
       public_base_url: draft.public_base_url,
       default_user_agent: draft.default_user_agent,
     });
@@ -165,7 +169,10 @@ function ServiceConfigCard() {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-1 mb-2">
-            限制 /api/* 与 Web UI 访问。留空 = 放行所有 IP。订阅 URL 不受此限制。
+            限制 /api/* 与 Web UI 访问。留空 = 放行所有 IP(空白行保存时会被忽略)。订阅 URL 不受此限制。
+          </p>
+          <p className="text-xs text-amber-600 mb-2">
+            填错会导致登录后所有接口 403,且设置页本身也被挡住,只能改服务器上的 data/config.yaml 才能恢复。
           </p>
           {draft.ip_allowlist.length === 0 && (
             <div className="text-xs text-muted-foreground border border-dashed rounded p-3 text-center">

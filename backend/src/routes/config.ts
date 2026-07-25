@@ -2,12 +2,25 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { loadConfig, saveConfig } from "../storage/config-store.js";
 import { resetData } from "../storage/reset.js";
+import { isValidAllowlistEntry } from "../auth/middleware.js";
 import { logger } from "../logger.js";
 
 export const configRouter = new Hono();
 
+// 先清洗掉空行再逐条校验,避免"白名单非空却一条都匹配不上"把管理员锁死在设置页外。
+const ipAllowlistSchema = z
+  .array(z.string())
+  .transform((list) => list.map((entry) => entry.trim()).filter((entry) => entry.length > 0))
+  .pipe(
+    z.array(
+      z
+        .string()
+        .refine(isValidAllowlistEntry, { message: "不是合法的 IP 或 CIDR,例如 1.2.3.4 或 192.168.1.0/24" }),
+    ),
+  );
+
 const updateSchema = z.object({
-  ip_allowlist: z.array(z.string()).optional(),
+  ip_allowlist: ipAllowlistSchema.optional(),
   public_base_url: z.string().url().optional().or(z.literal("")),
   default_user_agent: z.string().min(1).optional(),
 });

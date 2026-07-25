@@ -187,7 +187,11 @@ git commit -m "config snapshot"
 
 - 一定要改 `INITIAL_PASSWORD`,登录后系统会强制再次改密
 - Session 密钥首启自动生成在 `data/secret.key`(0600 权限);想强制踢光所有登录态时,删掉这个文件重启容器即可
-- 给 Web UI 启用 IP 白名单(在 `data/config.yaml` 中加 `ip_allowlist`)
+- 给 Web UI 启用 IP 白名单(在 `data/config.yaml` 中加 `ip_allowlist`)。注意这是**能把自己锁在外面**的开关:
+  白名单只保护需登录的管理 API,登录接口不受限,所以症状是「能登录进去,但页面上所有数据都 403」。
+  由于 `PUT /api/config` 本身也在白名单后面,填错时只能改服务器上的文件恢复:
+  `ip_allowlist: []` 存盘即生效,不用重启容器。
+  另外反代必须透传 `X-Forwarded-For` 或 `X-Real-IP`,否则后端拿到的客户端 IP 是 `unknown`,同样全部 403。
 - 用 HTTPS 反代,**不要直接暴露 8080 到公网**
 - 定期备份 `data/` (但要排除 `config.yaml` 的密码哈希和 `secret.key` 到公开仓库)
 - `docker-compose.yml` 若手动指定了 `SESSION_SECRET`,不要传到公开仓库

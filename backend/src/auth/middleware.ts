@@ -44,6 +44,23 @@ export const ipAllowlist: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
+/**
+ * 白名单条目是否可能匹配到任何客户端 IP。
+ *
+ * @business_rule 写不进去比写错更安全:一条永远匹配不上的规则(如 `1.2.3` / `10.0.0.0/33`)
+ * 会把管理员锁在 /api/config 外面,只能 SSH 改 config.yaml 才能恢复,所以保存时就要拦。
+ * 支持范围与 `matchIp` 对齐:IPv4 精确、IPv4 CIDR,以及 IPv6 字面量(仅精确匹配)。
+ */
+export function isValidAllowlistEntry(entry: string): boolean {
+  if (entry.includes(":")) return /^[0-9a-fA-F:]+$/.test(entry);
+  const parts = entry.split("/");
+  if (parts.length > 2) return false;
+  if (ipv4ToNum(parts[0]) === null) return false;
+  if (parts.length === 1) return true;
+  const bits = Number(parts[1]);
+  return Number.isInteger(bits) && bits >= 0 && bits <= 32;
+}
+
 function matchIp(rule: string, ip: string): boolean {
   if (rule === ip) return true;
   if (rule.endsWith("/0")) return true;

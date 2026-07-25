@@ -306,6 +306,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 | Surge `RULE-SET,<id>,POLICY` 而 inline ruleset 段没出现 | `surge_format` 不是 `inline_ruleset` | inline list 想用引用形式必须显式 `surge_format: inline_ruleset`,否则就直接展开 |
 | 启用 `use_proxy_providers` 后 group 没节点 | `selector.from_providers` 没指定,且未启用任何 provider 的 `clash_proxy_provider` | 检查 provider yaml `clash_proxy_provider.enabled: true`;主订阅顶部应能看到 `proxy-providers:` 段 |
 | Subscription-UserInfo 显示 0 | Provider fetch 失败回退到旧缓存,但 header 没缓存 | cache JSON 里 `raw_userinfo_header` + `userinfo` 字段都要写;查 `providers/cache-store.ts` |
+| 能登录,但登录后所有 `/api/*` 全 403 | `ip_allowlist` 非空却匹配不上客户端 IP(`/api/auth/*` 不受白名单约束,所以只有登录是通的);常见来源:设置页点了「新增」没填就保存留下空条目、CIDR 写错、反代没透传 `X-Forwarded-For`/`X-Real-IP` 导致 IP 是 `unknown` | 后端日志搜 `Blocked by IP allowlist` 能看到被判定的 IP;空/非法条目已由 `schemas/config.ts` 清洗 + `PUT /api/config` 校验拦截,存量坏配置改 `data/config.yaml` 为 `ip_allowlist: []` 即热生效 |
 | 改 yaml 后没生效 | chokidar 没触发(挂载文件系统问题) | 重启容器或在 Web UI Admin 触发刷新;Docker on macOS 的 NFS 挂载已知有延迟 |
 | Hysteria2 obfs 不工作 | obfs-password 没设(salamander 必填) | schema 加联动校验;客户端日志会写明缺哪个字段 |
 | host 的 `server:` 在 Clash 不生效 | generals DNS 的 `proxy-server-nameserver` 为空,而 `proxy-server-nameserver-policy` 需它非空才生效 | 在 generals DNS 填 `proxy-server-nameserver`(通用 DoH);`server:` 由 `splitClashHosts` 投到 `dns.proxy-server-nameserver-policy`(`*.`→`+.`),`DOMAIN-SET:`/`RULE-SET:` 仍跳过 + warning(`backend/src/generators/hosts.ts`) |
