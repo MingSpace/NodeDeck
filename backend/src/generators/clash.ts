@@ -10,6 +10,7 @@ import { sortNodesByRegion } from "./node-sort.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, buildProviderLabels } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
+import { buildGroupMemberIndex, filterNodesBySelector } from "./group-members.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { splitClashHosts } from "./hosts.js";
@@ -65,7 +66,11 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     providerLabels: buildProviderLabels(input.providers ?? []),
     groups: input.groups,
   });
-  const chained = applyChainRules(uniqued.nodes, profile);
+  // chain_rules 的 selector.include_groups 需要"组 → 成员节点名"索引。
+  // 用改名后的节点/组算(uniqued),这样规则里写的组名与最终产物一致。
+  const chained = applyChainRules(uniqued.nodes, profile, {
+    groupMembers: buildGroupMemberIndex(uniqued.groups, uniqued.nodes),
+  });
   const groupNames = new Set(uniqued.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
   const sanitizedGroups = validateGroupRefs(uniqued.groups, filteredNodes, {
@@ -516,39 +521,12 @@ function resolveGroupMembers(
   // 但测试里手动构造的 ProxyGroup literal 可能漏写。
   for (const otherGroup of g.nested_groups ?? []) members.add(otherGroup);
   if (g.selector) {
-    let pool = allNodes.slice();
     // proxy-providers 模式:剥离掉 use 段引用的 provider 节点,避免重复
-    if (proxyProviderIds.size > 0) {
-      pool = pool.filter((n) => !n.source_provider_id || !proxyProviderIds.has(n.source_provider_id));
-    }
-    if (g.selector.from_providers && g.selector.from_providers.length > 0) {
-      pool = pool.filter((n) => n.source_provider_id && g.selector!.from_providers.includes(n.source_provider_id));
-    }
-    if (g.selector.include_region && g.selector.include_region.length > 0) {
-      // 白名单:region 未识别(undefined)的节点也排除,与 from_providers 行为一致。
-      pool = pool.filter((n) => n.region && g.selector!.include_region.includes(n.region));
-    }
-    if (g.selector.exclude_type && g.selector.exclude_type.length > 0) {
-      pool = pool.filter((n) => !g.selector!.exclude_type.includes(n.type));
-    }
-    // selector.include/exclude_regex 默认大小写不敏感,与 node-filter.ts 保持一致。详见该文件注释。
-    if (g.selector.include_regex) {
-      try {
-        const re = new RegExp(g.selector.include_regex, "i");
-        pool = pool.filter((n) => re.test(n.name));
-      } catch {
-        // invalid regex
-      }
-    }
-    if (g.selector.exclude_regex) {
-      try {
-        const re = new RegExp(g.selector.exclude_regex, "i");
-        pool = pool.filter((n) => !re.test(n.name));
-      } catch {
-        // invalid
-      }
-    }
-    for (const n of pool) members.add(n.name);
+    const base =
+      proxyProviderIds.size > 0
+        ? allNodes.filter((n) => !n.source_provider_id || !proxyProviderIds.has(n.source_provider_id))
+        : allNodes;
+    for (const n of filterNodesBySelector(base, g.selector)) members.add(n.name);
   }
   // proxy-providers 模式下,group 可以仅靠 use 引用,proxies 列表允许为空(mihomo 接受);
   // 否则保持原行为,空就回退到 DIRECT。

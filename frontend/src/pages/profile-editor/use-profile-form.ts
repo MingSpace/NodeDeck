@@ -1,10 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEntity, useSaveEntity } from "@/api/entities";
 import { api } from "@/lib/api";
 import { useDebounced, useDebouncedWithStaleFlag } from "@/lib/use-debounced";
 import { toast } from "@/components/ui/toast";
-import type { Profile, NodePoolPreviewResp, RuleModuleRef, ChainRule } from "./types";
+import type {
+  Profile,
+  NodePoolPreviewResp,
+  RuleModuleRef,
+  ChainRule,
+  ChainPreviewResp,
+} from "./types";
 
 export function useProfileForm(id: string) {
   const queryClient = useQueryClient();
@@ -151,6 +157,44 @@ export function useGeneratedPreview(
   });
 }
 
+/**
+ * 链式代理专用预览:每条规则命中/生效多少节点、有无冲突、解析后的完整链路。
+ * 与 /preview 一样以 draft 为输入,所以规则改一下立刻能看到影响面,不必先保存。
+ */
+export function useChainPreview(id: string, draft: Profile | null, enabled: boolean) {
+  // 刚添加、还没选出口的规则过不了后端 zod(via 是 namedRefSchema,要求非空),整份 draft 会被
+  // 判非法并回退到磁盘版 —— 那样预览数字就全是上次保存的配置,静默误导。
+  // 这里把未填完的规则临时置为 disabled + 占位出口:数组下标保持不变(stat.index 要能对回卡片),
+  // 其余规则的命中数照常可用;"未选择出口"由 UI 侧单独提示。
+  const normalized = useMemo(() => {
+    if (!draft) return null;
+    if (draft.chain_rules.every((r) => r.via.trim().length > 0)) return draft;
+    return {
+      ...draft,
+      chain_rules: draft.chain_rules.map((r) =>
+        r.via.trim().length > 0 ? r : { ...r, via: "DIRECT", enabled: false },
+      ),
+    };
+  }, [draft]);
+  const debouncedDraft = useDebounced(normalized, 400);
+  return useQuery<ChainPreviewResp>({
+    queryKey: ["chain-preview", id, debouncedDraft],
+    queryFn: ({ signal }) =>
+      api.post<ChainPreviewResp>(
+        `/api/profiles/${id}/chain-preview`,
+        { profile: debouncedDraft },
+        { signal },
+      ),
+    enabled: enabled && !!debouncedDraft,
+    // 反闪烁:key 变化时保留上一次结果,命中数字原地更新而不是整块消失。
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
+    // SWR:机场首次无 cache 时后端回 revalidating=true,短轮询直到节点池就绪。
+    refetchInterval: (query) => (query.state.data?.revalidating ? 2000 : false),
+  });
+}
+
 export function policyOptionsForGroups(groupNames: string[]): string[] {
   return Array.from(
     new Set([...groupNames, "DIRECT", "REJECT", "REJECT-DROP", "REJECT-NO-DROP", "REJECT-TINYGIF"]),
@@ -170,5 +214,5 @@ export function makeGeoipCn(policy: string): RuleModuleRef {
 }
 
 export function emptyChainRule(via: string): ChainRule {
-  return { selector: {}, via };
+  return { enabled: true, selector: {}, via, mode: "override" };
 }

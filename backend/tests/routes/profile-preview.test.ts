@@ -20,13 +20,14 @@ vi.mock("../../src/storage/config-store.js", () => ({
   loadConfig: vi.fn(),
 }));
 
-import { profileRepo, providerRepo } from "../../src/storage/repos.js";
+import { profileRepo, providerRepo, proxyGroupRepo } from "../../src/storage/repos.js";
 import { buildNodePool } from "../../src/providers/pool.js";
 import { loadConfig } from "../../src/storage/config-store.js";
 import { profilePreviewRouter } from "../../src/routes/profile-preview.js";
 
 const mockedProfileGet = profileRepo.get as unknown as ReturnType<typeof vi.fn>;
 const mockedProviderGet = providerRepo.get as unknown as ReturnType<typeof vi.fn>;
+const mockedGroupGet = proxyGroupRepo.get as unknown as ReturnType<typeof vi.fn>;
 const mockedBuildNodePool = buildNodePool as unknown as ReturnType<typeof vi.fn>;
 const mockedLoadConfig = loadConfig as unknown as ReturnType<typeof vi.fn>;
 
@@ -324,5 +325,185 @@ describe("POST /api/profiles/:id/node-pool-preview", () => {
     expect(res.status).toBe(200);
     const json = (await res.json()) as { nodes: { name: string }[] };
     expect(json.nodes.map((n) => n.name)).toEqual(["HK 01", "JP 01"]);
+  });
+});
+
+interface ChainPreviewJson {
+  node_count: number;
+  rules: {
+    index: number;
+    enabled: boolean;
+    via: string;
+    via_status: string;
+    matched_count: number;
+    effective_count: number;
+    sample: string[];
+  }[];
+  unmatched_count: number;
+  conflicts: { node: string; rules: number[] }[];
+  chains: { node: string; path: string[]; terminal: string }[];
+  groups: { name: string; member_count: number }[];
+  nodes: { name: string }[];
+  warnings: string[];
+}
+
+function groupEntry(id: string, name: string, includeRegex: string) {
+  return {
+    id,
+    path: "",
+    mtimeMs: 0,
+    data: {
+      id,
+      name,
+      type: "select",
+      proxies: [],
+      nested_groups: [],
+      selector: {
+        include_regex: includeRegex,
+        include_other_group: [],
+        from_providers: [],
+        exclude_type: [],
+        include_region: [],
+      },
+    },
+  };
+}
+
+describe("POST /api/profiles/:id/chain-preview", () => {
+  function postChain(id: string, body: unknown): Promise<Response> {
+    return buildApp().request(`/api/profiles/${id}/chain-preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  it("按策略组圈定节点,回传命中数与出口类型", async () => {
+    mockedBuildNodePool.mockResolvedValue({
+      nodes: [fakeNode("HK 01", "prov-a"), fakeNode("JP 01", "prov-a"), fakeNode("US 01", "prov-a")],
+      byProvider: new Map(),
+      revalidating: [],
+    });
+    mockedProviderGet.mockResolvedValue(providerEntry("prov-a", "Aurora"));
+    mockedGroupGet.mockResolvedValue(groupEntry("ai", "AI", "HK|JP"));
+    mockedProfileGet.mockResolvedValue({
+      id: "home",
+      path: "",
+      mtimeMs: 0,
+      data: fakeProfile(),
+    });
+
+    const draft = fakeProfile({
+      providers: ["prov-a"],
+      proxy_groups: ["ai"],
+      chain_rules: [
+        {
+          enabled: true,
+          selector: {
+            include_groups: ["AI"],
+            include_nodes: [],
+            include_type: [],
+            include_other_group: [],
+            from_providers: [],
+            exclude_type: [],
+            include_region: [],
+          },
+          via: "US 01",
+          mode: "override",
+        },
+      ],
+    });
+    const res = await postChain("home", { profile: draft });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as ChainPreviewJson;
+    expect(json.node_count).toBe(3);
+    expect(json.groups).toEqual([{ name: "AI", member_count: 2 }]);
+    expect(json.rules[0].matched_count).toBe(2);
+    expect(json.rules[0].effective_count).toBe(2);
+    expect(json.rules[0].via_status).toBe("node");
+    expect(json.rules[0].sample).toEqual(["HK 01", "JP 01"]);
+    expect(json.unmatched_count).toBe(1);
+    expect(json.chains.map((c) => c.path)).toEqual([
+      ["HK 01", "US 01"],
+      ["JP 01", "US 01"],
+    ]);
+  });
+
+  it("指定节点 + 冲突诊断:后一条被前一条抢走时 effective 为 0", async () => {
+    mockedBuildNodePool.mockResolvedValue({
+      nodes: [fakeNode("HK 01", "prov-a"), fakeNode("JP 01", "prov-a")],
+      byProvider: new Map(),
+      revalidating: [],
+    });
+    mockedProviderGet.mockResolvedValue(providerEntry("prov-a", "Aurora"));
+    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
+
+    const emptySelector = {
+      include_groups: [],
+      include_nodes: [] as string[],
+      include_type: [],
+      include_other_group: [],
+      from_providers: [],
+      exclude_type: [],
+      include_region: [],
+    };
+    const draft = fakeProfile({
+      providers: ["prov-a"],
+      chain_rules: [
+        { enabled: true, selector: { ...emptySelector, include_nodes: ["HK 01"] }, via: "JP 01", mode: "override" },
+        { enabled: true, selector: { ...emptySelector, include_nodes: ["HK 01"] }, via: "DIRECT", mode: "override" },
+      ],
+    });
+    const res = await postChain("home", { profile: draft });
+    const json = (await res.json()) as ChainPreviewJson;
+    expect(json.rules[0].effective_count).toBe(1);
+    expect(json.rules[1].matched_count).toBe(1);
+    expect(json.rules[1].effective_count).toBe(0);
+    expect(json.conflicts).toEqual([{ node: "HK 01", rules: [0, 1] }]);
+  });
+
+  it("出口指向不存在的名字 → via_status=missing,且 warnings 提示降级", async () => {
+    mockedBuildNodePool.mockResolvedValue({
+      nodes: [fakeNode("HK 01", "prov-a")],
+      byProvider: new Map(),
+      revalidating: [],
+    });
+    mockedProviderGet.mockResolvedValue(providerEntry("prov-a", "Aurora"));
+    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
+
+    const draft = fakeProfile({
+      providers: ["prov-a"],
+      chain_rules: [
+        {
+          enabled: true,
+          selector: {
+            include_groups: [],
+            include_nodes: [],
+            include_type: [],
+            include_other_group: [],
+            from_providers: [],
+            exclude_type: [],
+            include_region: [],
+          },
+          via: "Ghost",
+          mode: "override",
+        },
+      ],
+    });
+    const res = await postChain("home", { profile: draft });
+    const json = (await res.json()) as ChainPreviewJson;
+    expect(json.rules[0].via_status).toBe("missing");
+    expect(json.warnings.some((w) => w.includes("Chain dangling"))).toBe(true);
+    // validateChain 已把悬空的 chain_via 清掉,所以不留残链
+    expect(json.chains).toEqual([]);
+  });
+
+  it("profile 不存在且无 draft → 404", async () => {
+    mockedProfileGet.mockResolvedValue(null);
+    const res = await buildApp().request("/api/profiles/missing/chain-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(404);
   });
 });

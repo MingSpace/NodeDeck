@@ -10,6 +10,7 @@ import { sortNodesByRegion } from "./node-sort.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, buildProviderLabels, escapeSurgeNames } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
+import { buildGroupMemberIndex, filterNodesBySelector } from "./group-members.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { buildSurgeHostLines } from "./hosts.js";
 
@@ -44,7 +45,11 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   });
   // Surge 专属:把 = , " 等会破坏 INI 行解析的字符替换掉,且同步改写所有引用。
   const escaped = escapeSurgeNames(uniqued.nodes, uniqued.groups, input.warnings);
-  const chained = applyChainRules(escaped.nodes, profile);
+  // chain_rules 的 selector.include_groups 需要"组 → 成员节点名"索引。
+  // 用 escape 之后的节点/组算,保证组名与 Surge 产物里的一致。
+  const chained = applyChainRules(escaped.nodes, profile, {
+    groupMembers: buildGroupMemberIndex(escaped.groups, escaped.nodes),
+  });
   const groupNames = new Set(escaped.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
   // 清理 group.proxies 中悬空的节点名(被 node_filter 过滤掉但 group 仍显式引用的)
@@ -669,35 +674,7 @@ function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
   // 但测试里手动构造的 ProxyGroup literal 可能漏写。
   for (const otherGroup of g.nested_groups ?? []) members.add(otherGroup);
   if (g.selector) {
-    let pool = allNodes.slice();
-    if (g.selector.from_providers && g.selector.from_providers.length > 0) {
-      pool = pool.filter((n) => n.source_provider_id && g.selector!.from_providers.includes(n.source_provider_id));
-    }
-    if (g.selector.include_region && g.selector.include_region.length > 0) {
-      // 白名单:region 未识别(undefined)的节点也排除,与 from_providers 行为一致。
-      pool = pool.filter((n) => n.region && g.selector!.include_region.includes(n.region));
-    }
-    if (g.selector.exclude_type && g.selector.exclude_type.length > 0) {
-      pool = pool.filter((n) => !g.selector!.exclude_type.includes(n.type));
-    }
-    // selector.include/exclude_regex 默认大小写不敏感,与 node-filter.ts 保持一致。详见该文件注释。
-    if (g.selector.include_regex) {
-      try {
-        const re = new RegExp(g.selector.include_regex, "i");
-        pool = pool.filter((n) => re.test(n.name));
-      } catch {
-        // ignore
-      }
-    }
-    if (g.selector.exclude_regex) {
-      try {
-        const re = new RegExp(g.selector.exclude_regex, "i");
-        pool = pool.filter((n) => !re.test(n.name));
-      } catch {
-        // ignore
-      }
-    }
-    for (const n of pool) members.add(n.name);
+    for (const n of filterNodesBySelector(allNodes, g.selector)) members.add(n.name);
   }
   if (members.size === 0) members.add("DIRECT");
   return Array.from(members);

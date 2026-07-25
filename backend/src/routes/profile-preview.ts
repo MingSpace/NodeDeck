@@ -10,6 +10,14 @@ import { buildNodePool } from "../providers/pool.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
 import { sortNodesByRegion } from "../generators/node-sort.js";
 import { uniquifyNodeNames, buildProviderLabels } from "../generators/node-naming.js";
+import { buildGroupMemberIndex } from "../generators/group-members.js";
+import {
+  analyzeChainRules,
+  applyChainRules,
+  resolveChainPaths,
+  validateChain,
+  CHAIN_BUILTINS,
+} from "../chain/apply.js";
 import { nodeFilterSchema, profileSchema, type Profile } from "../schemas/profile.js";
 import type { Provider } from "../schemas/provider.js";
 import { logger } from "../logger.js";
@@ -251,6 +259,101 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
     raw_count: pool.nodes.length,
     by_provider: byProvider,
     revalidating: (pool.revalidating?.length ?? 0) > 0,
+  });
+});
+
+// 每条规则回传的命中节点样例上限:UI 只用来给用户"瞄一眼命中对不对",
+// 全量回传在几百节点 × 多条规则时会让响应无谓地变大。
+const MATCH_SAMPLE_LIMIT = 12;
+const CONFLICT_LIMIT = 30;
+
+/**
+ * 链式代理专用预览:回传每条 chain_rule 的命中/生效节点数、冲突、解析后的完整链路,
+ * 以及可选作出口(via)的候选名单。UI 靠它做"改一下 selector 立刻看到影响谁"的实时反馈。
+ *
+ * 这里刻意复刻 generator 入口管线的前几步(filter → sort → uniquify),否则规则里写的
+ * 节点名/组名与订阅产物中的名字对不上(改名前缀 `【标识】` 就是最典型的坑)。
+ * Surge 端额外的 escapeSurgeNames 不在此复刻 — 它只净化 = , " 等字符,不影响命中判断。
+ */
+profilePreviewRouter.post("/:id/chain-preview", async (c) => {
+  const id = c.req.param("id");
+  const rawBody = await c.req.json().catch(() => null);
+  const parsedBody = previewBodySchema.safeParse(rawBody ?? undefined);
+  if (!parsedBody.success) {
+    return c.json({ error: "invalid request body", details: parsedBody.error.flatten() }, 400);
+  }
+  const resolution = await resolveDraftProfile(id, (parsedBody.data ?? {}).profile);
+  if (resolution.status === "not_found") {
+    return c.json({ error: "not found" }, 404);
+  }
+  const { profile, validationWarnings } = resolution.result;
+
+  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true });
+  const filteredRaw = applyNodeFilter(resolved.nodes, profile.node_filter);
+  const sorted = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
+  const uniqued = uniquifyNodeNames(sorted, [], {
+    providerLabels: buildProviderLabels(resolved.providers ?? []),
+    groups: resolved.groups,
+  });
+
+  const groupMembers = buildGroupMemberIndex(uniqued.groups, uniqued.nodes);
+  const groupNames = new Set(uniqued.groups.map((g) => g.name));
+  const analysis = analyzeChainRules(uniqued.nodes, profile, { groupMembers });
+
+  const chainWarnings: string[] = [];
+  const chained = applyChainRules(uniqued.nodes, profile, { groupMembers });
+  const validated = validateChain(chained, { groupNames, warnings: chainWarnings });
+  const paths = resolveChainPaths(validated, { groupNames });
+
+  const nodeNames = new Set(uniqued.nodes.map((n) => n.name));
+  const viaStatus = (via: string): "node" | "group" | "builtin" | "missing" =>
+    CHAIN_BUILTINS.has(via)
+      ? "builtin"
+      : groupNames.has(via)
+        ? "group"
+        : nodeNames.has(via)
+          ? "node"
+          : "missing";
+
+  logger.debug(
+    {
+      profileId: id,
+      ruleCount: analysis.stats.length,
+      nodeCount: uniqued.nodes.length,
+      conflictCount: analysis.conflicts.length,
+    },
+    "Chain preview",
+  );
+
+  return c.json({
+    node_count: uniqued.nodes.length,
+    rules: analysis.stats.map((s) => ({
+      index: s.index,
+      enabled: s.enabled,
+      via: s.via,
+      via_status: viaStatus(s.via),
+      mode: s.mode,
+      matched_count: s.matched.length,
+      effective_count: s.effective.length,
+      kept_existing_count: s.kept_existing.length,
+      sample: s.matched.slice(0, MATCH_SAMPLE_LIMIT),
+    })),
+    unmatched_count: analysis.unmatched.length,
+    conflicts: analysis.conflicts.slice(0, CONFLICT_LIMIT),
+    conflict_count: analysis.conflicts.length,
+    chains: paths,
+    groups: uniqued.groups.map((g) => ({
+      name: g.name,
+      member_count: groupMembers.get(g.name)?.size ?? 0,
+    })),
+    nodes: uniqued.nodes.map((n) => ({
+      name: n.name,
+      type: n.type,
+      region: n.region,
+      source_provider_id: n.source_provider_id,
+    })),
+    warnings: [...validationWarnings, ...chainWarnings],
+    revalidating: (resolved.revalidating?.length ?? 0) > 0,
   });
 });
 

@@ -6,17 +6,62 @@ export interface NodeFilter {
   sort_by_region?: boolean;
 }
 
+/**
+ * 链式规则的作用域。与后端 chainSelectorSchema 一一对应。
+ *
+ * 组合语义:`include_groups` 与 `include_nodes` 之间是 OR(命中任一即落在作用域内),
+ * 与其余条件之间是 AND;全部留空 = 匹配全部节点。详见 backend/src/chain/apply.ts。
+ */
+export interface ChainSelector {
+  include_regex?: string;
+  exclude_regex?: string;
+  /** @deprecated v1 遗留字段,chain 侧从未消费;按组圈定请用 include_groups */
+  include_other_group?: string[];
+  from_providers?: string[];
+  include_type?: string[];
+  exclude_type?: string[];
+  include_region?: string[];
+  include_nodes?: string[];
+  include_groups?: string[];
+}
+
+export type ChainMode = "override" | "fill";
+
 export interface ChainRule {
-  selector: {
-    include_regex?: string;
-    exclude_regex?: string;
-    include_other_group?: string[];
-    from_providers?: string[];
-    exclude_type?: string[];
-    include_region?: string[];
-  };
+  enabled?: boolean;
+  selector: ChainSelector;
   via: string;
+  mode?: ChainMode;
   comment?: string;
+}
+
+export type ChainViaStatus = "node" | "group" | "builtin" | "missing";
+export type ChainTerminal = ChainViaStatus | "cycle";
+
+export interface ChainRuleStat {
+  index: number;
+  enabled: boolean;
+  via: string;
+  via_status: ChainViaStatus;
+  mode: ChainMode;
+  matched_count: number;
+  effective_count: number;
+  kept_existing_count: number;
+  sample: string[];
+}
+
+export interface ChainPreviewResp {
+  node_count: number;
+  rules: ChainRuleStat[];
+  unmatched_count: number;
+  conflicts: { node: string; rules: number[] }[];
+  conflict_count: number;
+  chains: { node: string; path: string[]; terminal: ChainTerminal }[];
+  groups: { name: string; member_count: number }[];
+  nodes: { name: string; type: string; region?: string; source_provider_id?: string }[];
+  warnings: string[];
+  // true = 有机场当前无 cache、正在后台首次拉取,结果稍后可用(前端据此短轮询)。
+  revalidating?: boolean;
 }
 
 export type RuleModuleRef =

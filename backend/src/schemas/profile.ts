@@ -31,9 +31,37 @@ export const ruleModuleRefSchema = z.union([
   }),
 ]);
 
+/**
+ * 链式代理规则的作用域选择器。
+ *
+ * 在 group selector 的基础上加了三个 chain 专属字段:
+ * - `include_groups` — 按策略组成员圈定(存 group **name**);成员由 generators/group-members.ts
+ *   解析,含组的 proxies 显式列表 + selector 动态成员 + nested_groups 递归展开
+ * - `include_nodes`  — 精确节点名清单(大小写敏感,不走正则)
+ * - `include_type`   — 协议白名单,与既有 `exclude_type` 对称
+ *
+ * 组合语义(见 chain/apply.ts matchesSelector):
+ * `include_groups` 与 `include_nodes` 之间是 **OR**(命中任一即算落在作用域内),
+ * 它们与其余条件(from_providers / include_type / exclude_type / include_region / 正则)之间是 **AND**。
+ * 全部留空 = 匹配节点池里的所有节点。
+ */
+export const chainSelectorSchema = selectorSchema.extend({
+  include_groups: z.array(z.string()).default([]),
+  include_nodes: z.array(z.string()).default([]),
+  include_type: z.array(z.string()).default([]),
+});
+
+/**
+ * `mode` 决定命中后如何处理节点**已有**的 chain_via
+ * (机场上游 Clash `dialer-proxy` / Surge `underlying-proxy` 解析进来的值):
+ * - `override` — 覆盖(默认,与 v1 行为一致)
+ * - `fill`     — 只给尚无 chain_via 的节点补,已有的保持不动
+ */
 export const chainRuleSchema = z.object({
-  selector: selectorSchema,
+  enabled: z.boolean().default(true),
+  selector: chainSelectorSchema.default({}),
   via: namedRefSchema,
+  mode: z.enum(["override", "fill"]).default("override"),
   comment: z.string().optional(),
 });
 
@@ -91,3 +119,5 @@ export const profileSchema = z.object({
 });
 
 export type Profile = z.infer<typeof profileSchema>;
+export type ChainRule = z.infer<typeof chainRuleSchema>;
+export type ChainSelector = z.infer<typeof chainSelectorSchema>;

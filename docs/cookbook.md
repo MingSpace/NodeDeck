@@ -275,6 +275,8 @@ surge_flags:
 
 ### 3.2 写 chain_rules
 
+Profile 编辑器 →「链式代理」tab 可以可视化配置(拖拽调优先级、实时看命中数),等价 yaml:
+
 ```yaml
 # data/profiles/home.yaml(节选)
 chain_rules:
@@ -291,7 +293,49 @@ chain_rules:
 
 → 命中节点会被加上 `chain_via: WARP`,Clash 输出 `dialer-proxy: WARP`,Surge 输出 `underlying-proxy=WARP`。
 
-### 3.3 自动校验
+### 3.3 按策略组 / 点名节点分别挂不同的链
+
+作用范围除了正则和机场,还能直接按**策略组成员**或**点名的节点**圈定,这样"AI 组走 WARP、
+流媒体组走日本跳板"就是两条规则的事:
+
+```yaml
+chain_rules:
+  - comment: AI 组走 WARP 落地
+    selector:
+      include_groups: [AI]          # 组 name;成员含该组 selector 动态匹配到的节点
+    via: WARP
+
+  - comment: 流媒体组走 JP 跳板
+    selector:
+      include_groups: [Stream]
+    via: JP-DIP
+
+  - comment: 另外点名两个节点也走 JP 跳板
+    selector:
+      include_nodes:                 # 精确名、大小写敏感,写改名后的最终名
+        - "【主力】Hong Kong 01"
+        - "【主力】Hong Kong 02"
+    via: JP-DIP
+```
+
+`include_groups` 和 `include_nodes` 之间是"或",跟其它条件(机场/地区/协议/正则)之间是"且"。
+候选组只列 `profile.proxy_groups` 已引入的组 —— 没引入的组名在生成时会被判为悬空。
+
+另外两个常用开关:
+
+- `enabled: false` — 临时停用某条规则而不删配置
+- `mode: fill` — 只给"还没有 `chain_via`"的节点补前置,机场原文自带 `dialer-proxy` 的节点保持不动
+  (默认 `override` 是命中即覆盖)
+
+### 3.4 一个节点只能有一条链
+
+`dialer-proxy` / `underlying-proxy` 都是每节点单值,所以同一节点落在多条规则范围内时**只有最靠前的生效**。
+UI 顶部会提示 `N 个节点命中多条规则`,被完全抢走的规则打上「被遮蔽」标记,拖动卡片即可改优先级。
+
+多跳(`A → B → C`)靠"前置自己也挂了链"实现:给 `Landing-A` 写一条 `via: Relay-B`,再给 `Relay-B`
+写一条 `via: Relay-C`。UI 底部「解析后的链路」会展开完整路径便于确认。
+
+### 3.5 自动校验
 
 - **悬空引用**: 如果 `via: WARP` 但 WARP 节点不在最终节点池里(被 `node_filter` 排除/机场没拉到),自动清空该节点的 chain_via 并 warning,不会让客户端加载报错。
 - **环检测**: A→B→A 这种环被发现后,环上节点的 chain_via 都会被清空 + warning。

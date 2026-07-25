@@ -69,6 +69,14 @@ Providers → Fetch + Cache → Parse → Normalize (region/level/line tag)
 - Clash 输出 → `dialer-proxy: <name>`
 - Surge 输出 → `underlying-proxy=<name>`
 
+作用域可按**策略组成员**(`include_groups`)、**点名节点**(`include_nodes`)、机场、地区、协议、
+名称正则圈定;前两者之间是 OR,与其余条件之间是 AND。按组圈定所需的"组 name → 成员节点名"索引由
+`generators/group-members.ts` 的 `buildGroupMemberIndex` 在 generator 入口计算(与写进产物的组成员同源)。
+每条规则另有 `enabled` 开关与 `mode`(`override` 覆盖 / `fill` 仅补空缺)。
+
+由于两端的链式字段都是**每节点单值**,一个节点只能有一条链 —— 命中多条时以最靠前的为准,
+Web UI 会把冲突和"被遮蔽"的规则显式标出来(`POST /api/profiles/:id/chain-preview`)。
+
 generator 入口会做两层校验:
 1. **悬空引用**: chain_via 指向的节点/组若不存在(或被 `node_filter` 排除),自动清空该字段并 warning。
 2. **环检测**: A→B→A 的环被发现后,把环上所有节点的 chain_via 清空并 warning,不再让用户看到 500。

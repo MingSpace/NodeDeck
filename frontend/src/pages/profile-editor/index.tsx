@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, Network, Filter, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Save, Network, Filter, Link as LinkIcon, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,12 +8,13 @@ import { useProfileForm } from "./use-profile-form";
 import { NodeSelector } from "./node-selector";
 import { RulePipeline } from "./rule-pipeline";
 import { ProxyGroupsPicker, AdvancedPanel } from "./right-panel";
+import { ChainPanel } from "./chain-panel";
 import { PreviewPane } from "./preview-pane";
 import { YamlMode, type YamlModeHandle } from "./yaml-mode";
 import type { Profile } from "./types";
 
 type Mode = "visual" | "yaml";
-type Section = "nodes" | "rules" | "advanced";
+type Section = "nodes" | "rules" | "chain" | "advanced";
 
 // 编辑区第二层 tab:下划线风格,区别于顶部「可视化 / YAML」的 pill 风格。
 const sectionTriggerCls =
@@ -146,6 +147,15 @@ export function ProfileEditorPage() {
                     <Filter className="h-3.5 w-3.5" />
                     规则 & 策略组
                   </TabsTrigger>
+                  <TabsTrigger value="chain" className={sectionTriggerCls}>
+                    <LinkIcon className="h-3.5 w-3.5" />
+                    链式代理
+                    {draft.chain_rules.length > 0 && (
+                      <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+                        {draft.chain_rules.length}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
                   <TabsTrigger value="advanced" className={sectionTriggerCls}>
                     <SlidersHorizontal className="h-3.5 w-3.5" />
                     高级输出
@@ -171,6 +181,13 @@ export function ProfileEditorPage() {
                     <RulePipeline draft={draft} onChange={(rules) => update({ rule_modules: rules })} />
                   </div>
                 </div>
+              )}
+              {section === "chain" && (
+                <ChainPanel
+                  profileId={id}
+                  draft={draft}
+                  onChange={(chain_rules) => update({ chain_rules })}
+                />
               )}
               {section === "advanced" && (
                 <AdvancedPanel profileId={id} draft={draft} onChange={update} />

@@ -210,7 +210,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
   1. `applyNodeFilter` — include/exclude/rename
   2. `uniquifyNodeNames` — 同名加 ` #2` 后缀
   3. `escapeSurgeNames` — **仅 Surge** 净化 `=` `,` `"`
-  4. `applyChainRules` — 写 `chain_via`
+  4. `applyChainRules` — 写 `chain_via`;selector 支持按策略组成员(`include_groups`)/ 点名节点(`include_nodes`)圈定,两者 OR、与其余条件 AND,所需的「组 name → 成员节点名」索引由 `generators/group-members.ts` 的 `buildGroupMemberIndex` 在入口现算(与写进产物的组成员同源)。每条规则有 `enabled` 与 `mode`(`override` / `fill`);**一个节点只能有一条链**(两端字段都是每节点单值),命中多条以最靠前为准
   5. `validateChain` — node.chain_via 悬空引用降级 + 环检测
   6. `validateGroupRefs` — group.proxies 显式列表的悬空节点剔除;区分两类诊断 — `nodeDangling`(被 node_filter 过滤的节点,节点池全空时聚合为 1 条总览,否则 per-group 截断为"前 5 个 + 和另外 X 个")与 `notImported`(系统中存在该 group yaml 但当前 profile.proxy_groups 没引入,文案明确指引到 Profile 编辑器加进来);组名 / DIRECT / REJECT 等内置 policy 一律保留
   7. 协议 builder 转字典/INI 行
@@ -283,7 +283,8 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - `[backend/src/generators/node-naming.ts](backend/src/generators/node-naming.ts)` - 节点名去重 + Surge 名称净化
 - `[backend/src/generators/profile-resolver.ts](backend/src/generators/profile-resolver.ts)` - Profile → 资源解析(含 providers 元数据)
 - `[backend/src/schemas/profile.ts](backend/src/schemas/profile.ts)` / `[provider.ts](backend/src/schemas/provider.ts)` / `[ruleset.ts](backend/src/schemas/ruleset.ts)` - 核心实体 schema
-- `[backend/src/chain/apply.ts](backend/src/chain/apply.ts)` - 链式代理应用 + 环检测 + 悬空降级
+- `[backend/src/chain/apply.ts](backend/src/chain/apply.ts)` - 链式代理应用 + 环检测 + 悬空降级 + 命中诊断(`analyzeChainRules` / `resolveChainPaths`,供 Web UI 实时反馈)
+- `[backend/src/generators/group-members.ts](backend/src/generators/group-members.ts)` - selector→节点池筛选 + 组成员索引(clash / surge / chain 三处共用,改这里会同时影响组成员与链式作用域)
 - `[backend/src/generators/group-refs.ts](backend/src/generators/group-refs.ts)` - group.proxies 悬空节点引用清理
 - `[backend/src/routes/sub.ts](backend/src/routes/sub.ts)` - 订阅入口(含 proxy-providers 子路由)
 - `[frontend/src/pages/profile-editor/](frontend/src/pages/profile-editor)` - Web UI 复杂度峰值

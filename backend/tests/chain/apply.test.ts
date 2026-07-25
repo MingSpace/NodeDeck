@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { applyChainRules, matchesSelector, detectChainCycle, validateChain } from "../../src/chain/apply.js";
+import {
+  analyzeChainRules,
+  applyChainRules,
+  matchesSelector,
+  detectChainCycle,
+  resolveChainPaths,
+  validateChain,
+} from "../../src/chain/apply.js";
 import type { Node } from "../../src/schemas/node.js";
 import type { Profile } from "../../src/schemas/profile.js";
 
@@ -104,6 +111,52 @@ describe("matchesSelector", () => {
       }),
     ).toBe(false);
   });
+
+  it("filters by include_type (whitelist, symmetric to exclude_type)", () => {
+    const n = node("X", { type: "trojan" });
+    expect(matchesSelector(n, { include_type: [] })).toBe(true);
+    expect(matchesSelector(n, { include_type: ["trojan"] })).toBe(true);
+    expect(matchesSelector(n, { include_type: ["vmess", "ss"] })).toBe(false);
+    // include_type 与 exclude_type 同时命中时,排除优先(AND 组合下任一为否即否)
+    expect(matchesSelector(n, { include_type: ["trojan"], exclude_type: ["trojan"] })).toBe(false);
+  });
+
+  it("matches by include_nodes with exact, case-sensitive node names", () => {
+    const n = node("🇭🇰 HK-01");
+    expect(matchesSelector(n, { include_nodes: ["🇭🇰 HK-01"] })).toBe(true);
+    expect(matchesSelector(n, { include_nodes: ["other", "🇭🇰 HK-01"] })).toBe(true);
+    expect(matchesSelector(n, { include_nodes: ["HK-01"] })).toBe(false);
+    // 节点名是 Clash/Surge 的主键,精确匹配不做大小写折叠(与 include_regex 相反)
+    expect(matchesSelector(n, { include_nodes: ["🇭🇰 hk-01"] })).toBe(false);
+  });
+
+  it("matches by include_groups through the group member index", () => {
+    const groupMembers = new Map([
+      ["AI", new Set(["HK-01", "JP-01"])],
+      ["Stream", new Set(["US-01"])],
+    ]);
+    const ctx = { groupMembers };
+    expect(matchesSelector(node("HK-01"), { include_groups: ["AI"] }, ctx)).toBe(true);
+    expect(matchesSelector(node("US-01"), { include_groups: ["AI"] }, ctx)).toBe(false);
+    expect(matchesSelector(node("US-01"), { include_groups: ["AI", "Stream"] }, ctx)).toBe(true);
+    // 组名不存在于索引里
+    expect(matchesSelector(node("HK-01"), { include_groups: ["Ghost"] }, ctx)).toBe(false);
+    // 没有传 ctx 时无从判断成员,一律不匹配(而不是匹配全部)
+    expect(matchesSelector(node("HK-01"), { include_groups: ["AI"] })).toBe(false);
+  });
+
+  it("treats include_groups / include_nodes as OR, and ANDs them with the rest", () => {
+    const ctx = { groupMembers: new Map([["AI", new Set(["HK-01"])]]) };
+    // 用户视角:"AI 组的节点 *或* 我点名的 JP-01"
+    const scope = { include_groups: ["AI"], include_nodes: ["JP-01"] };
+    expect(matchesSelector(node("HK-01"), scope, ctx)).toBe(true);
+    expect(matchesSelector(node("JP-01"), scope, ctx)).toBe(true);
+    expect(matchesSelector(node("US-01"), scope, ctx)).toBe(false);
+    // 其余条件仍是 AND:HK-01 在 AI 组里,但协议被排掉
+    expect(
+      matchesSelector(node("HK-01", { type: "ssr" }), { ...scope, exclude_type: ["ssr"] }, ctx),
+    ).toBe(false);
+  });
 });
 
 describe("applyChainRules", () => {
@@ -146,6 +199,135 @@ describe("applyChainRules", () => {
     const nodes = [node("X", { chain_via: "source-via" })];
     const out = applyChainRules(nodes, profile([{ selector: { include_regex: "Y" }, via: "via" }]));
     expect(out[0].chain_via).toBe("source-via");
+  });
+
+  it("skips disabled rules", () => {
+    const nodes = [node("HK-01")];
+    const out = applyChainRules(
+      nodes,
+      profile([
+        { enabled: false, selector: { include_regex: "HK" }, via: "via-off" },
+        { selector: { include_regex: "HK" }, via: "via-on" },
+      ]),
+    );
+    expect(out[0].chain_via).toBe("via-on");
+  });
+
+  it("mode=override replaces the node's own chain_via, mode=fill keeps it", () => {
+    const nodes = [node("A", { chain_via: "source-via" }), node("B")];
+    const overridden = applyChainRules(nodes, profile([{ via: "rule-via", mode: "override" }]));
+    expect(overridden[0].chain_via).toBe("rule-via");
+    expect(overridden[1].chain_via).toBe("rule-via");
+
+    const filled = applyChainRules(nodes, profile([{ via: "rule-via", mode: "fill" }]));
+    expect(filled[0].chain_via).toBe("source-via");
+    expect(filled[1].chain_via).toBe("rule-via");
+  });
+
+  it("mode=fill still consumes the match (later rules do not get a second shot)", () => {
+    const nodes = [node("A", { chain_via: "source-via" })];
+    const out = applyChainRules(
+      nodes,
+      profile([
+        { via: "fill-via", mode: "fill" },
+        { via: "override-via", mode: "override" },
+      ]),
+    );
+    expect(out[0].chain_via).toBe("source-via");
+  });
+
+  it("routes nodes to different chains per group", () => {
+    // 用户的核心诉求:AI 组走 WARP 落地,Stream 组走 JP 跳板,其余不挂链。
+    const nodes = [node("HK-01"), node("HK-02"), node("US-01")];
+    const ctx = {
+      groupMembers: new Map([
+        ["AI", new Set(["HK-01"])],
+        ["Stream", new Set(["HK-02"])],
+      ]),
+    };
+    const out = applyChainRules(
+      nodes,
+      profile([
+        { selector: { include_groups: ["AI"] }, via: "WARP" },
+        { selector: { include_groups: ["Stream"] }, via: "JP-DIP" },
+      ]),
+      ctx,
+    );
+    expect(out[0].chain_via).toBe("WARP");
+    expect(out[1].chain_via).toBe("JP-DIP");
+    expect(out[2].chain_via).toBeUndefined();
+  });
+});
+
+describe("analyzeChainRules", () => {
+  it("reports matched / effective counts, conflicts and unmatched nodes", () => {
+    const nodes = [node("JP-Premium-01"), node("JP-02"), node("US-01")];
+    const analysis = analyzeChainRules(
+      nodes,
+      profile([
+        { selector: { include_regex: "JP" }, via: "via-jp" },
+        { selector: { include_regex: "Premium" }, via: "via-premium" },
+      ]),
+    );
+    expect(analysis.stats[0].matched).toEqual(["JP-Premium-01", "JP-02"]);
+    expect(analysis.stats[0].effective).toEqual(["JP-Premium-01", "JP-02"]);
+    // 第二条也"命中"了 JP-Premium-01,但被第一条抢先,effective 为空 → UI 据此提示规则被遮蔽
+    expect(analysis.stats[1].matched).toEqual(["JP-Premium-01"]);
+    expect(analysis.stats[1].effective).toEqual([]);
+    expect(analysis.conflicts).toEqual([{ node: "JP-Premium-01", rules: [0, 1] }]);
+    expect(analysis.unmatched).toEqual(["US-01"]);
+  });
+
+  it("keeps disabled rules in the stats but never counts hits for them", () => {
+    const analysis = analyzeChainRules(
+      [node("HK-01")],
+      profile([{ enabled: false, selector: {}, via: "via" }]),
+    );
+    expect(analysis.stats[0].enabled).toBe(false);
+    expect(analysis.stats[0].matched).toEqual([]);
+    expect(analysis.unmatched).toEqual(["HK-01"]);
+  });
+
+  it("separates mode=fill nodes that kept their own chain_via", () => {
+    const analysis = analyzeChainRules(
+      [node("A", { chain_via: "source-via" }), node("B")],
+      profile([{ via: "rule-via", mode: "fill" }]),
+    );
+    expect(analysis.stats[0].kept_existing).toEqual(["A"]);
+    expect(analysis.stats[0].effective).toEqual(["B"]);
+  });
+});
+
+describe("resolveChainPaths", () => {
+  it("expands a multi-hop chain into the full path", () => {
+    // 多跳靠"前置本身也挂了 chain_via"形成:A → B → C,C 是最终出口
+    const nodes: Node[] = [
+      node("A", { chain_via: "B" }),
+      node("B", { chain_via: "C" }),
+      node("C"),
+    ];
+    const paths = resolveChainPaths(nodes, { groupNames: new Set() });
+    expect(paths).toEqual([
+      { node: "A", path: ["A", "B", "C"], terminal: "node" },
+      { node: "B", path: ["B", "C"], terminal: "node" },
+    ]);
+  });
+
+  it("marks group / builtin / missing terminals", () => {
+    const nodes: Node[] = [
+      node("A", { chain_via: "MyGroup" }),
+      node("B", { chain_via: "DIRECT" }),
+      node("C", { chain_via: "Ghost" }),
+    ];
+    const paths = resolveChainPaths(nodes, { groupNames: new Set(["MyGroup"]) });
+    expect(paths.map((p) => p.terminal)).toEqual(["group", "builtin", "missing"]);
+  });
+
+  it("marks cycles instead of looping forever", () => {
+    // validateChain 正常会先把环清掉;这里断言"万一在它之前调用"也不会挂
+    const nodes: Node[] = [node("A", { chain_via: "B" }), node("B", { chain_via: "A" })];
+    const paths = resolveChainPaths(nodes, { groupNames: new Set() });
+    expect(paths.every((p) => p.terminal === "cycle")).toBe(true);
   });
 });
 

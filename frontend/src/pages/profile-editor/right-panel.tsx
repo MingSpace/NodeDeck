@@ -1,14 +1,10 @@
-import { useMemo, useState } from "react";
-import { Layers, Puzzle, Settings as SettingsIcon, Link as LinkIcon, Plus, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Layers, Puzzle, Settings as SettingsIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { useEntityList } from "@/api/entities";
-import { useNodePoolPreview } from "./use-profile-form";
-import type { Profile, ChainRule } from "./types";
+import type { Profile } from "./types";
 
 interface NamedItem {
   id: string;
@@ -58,24 +54,10 @@ export function ProxyGroupsPicker({
 }
 
 // 高级 / 输出:Tab「高级」内容,卡片式 2 列平铺(原右栏纵向堆叠太挤)。
-export function AdvancedPanel({ profileId, draft, onChange }: Props) {
+export function AdvancedPanel({ draft, onChange }: Props) {
   const modules = useEntityList<NamedItem>("modules");
   const generals = useEntityList<NamedItem>("generals");
   const providers = useEntityList<NamedItem>("providers");
-  const groups = useEntityList<NamedItem>("groups");
-  const nodePool = useNodePoolPreview(profileId, draft);
-
-  const selectedGroupNames = useMemo(() => {
-    const selected = new Set(draft.proxy_groups);
-    return (groups.data?.items ?? [])
-      .filter((g) => selected.has(g.id))
-      .map((g) => g.name);
-  }, [groups.data, draft.proxy_groups]);
-
-  const nodeNames = useMemo(
-    () => Array.from(new Set((nodePool.data?.nodes ?? []).map((n) => n.name))),
-    [nodePool.data],
-  );
 
   return (
     <div className="h-full min-h-0 overflow-auto">
@@ -114,21 +96,6 @@ export function AdvancedPanel({ profileId, draft, onChange }: Props) {
               ))}
             </SelectContent>
           </Select>
-        </Section>
-
-        <Section
-          className="lg:col-span-2"
-          icon={<LinkIcon className="h-3.5 w-3.5" />}
-          title="链式代理 (chain_rules)"
-          count={String(draft.chain_rules.length)}
-        >
-          <ChainRulesEditor
-            rules={draft.chain_rules}
-            providers={providers.data?.items ?? []}
-            groupNames={selectedGroupNames}
-            nodeNames={nodeNames}
-            onChange={(rules) => onChange({ chain_rules: rules })}
-          />
         </Section>
 
         <Section
@@ -306,129 +273,6 @@ function ChipPicker({
           </button>
         );
       })}
-    </div>
-  );
-}
-
-function ChainRulesEditor({
-  rules,
-  providers,
-  groupNames,
-  nodeNames,
-  onChange,
-}: {
-  rules: ChainRule[];
-  providers: NamedItem[];
-  groupNames: string[];
-  nodeNames: string[];
-  onChange: (rules: ChainRule[]) => void;
-}) {
-  const [draft, setDraft] = useState<ChainRule>({ selector: {}, via: "" });
-
-  const add = () => {
-    if (!draft.via.trim()) return;
-    onChange([...rules, draft]);
-    setDraft({ selector: {}, via: "" });
-  };
-
-  const providerNames = useMemo(() => providers.map((p) => p.id), [providers]);
-
-  return (
-    <div className="space-y-2">
-      {rules.length === 0 && (
-        <div className="text-xs text-muted-foreground">暂无链式规则</div>
-      )}
-      {rules.map((r, i) => (
-        <div key={i} className="border rounded-md p-2 space-y-1.5 bg-muted/20">
-          <div className="flex items-center gap-2">
-            <Badge variant="outline" className="text-[10px]">via</Badge>
-            <span className="text-xs font-mono flex-1 truncate">{r.via}</span>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => onChange(rules.filter((_, idx) => idx !== i))}
-            >
-              <Trash2 className="h-3 w-3 text-destructive" />
-            </Button>
-          </div>
-          <div className="text-[11px] text-muted-foreground space-y-0.5">
-            {r.selector.include_regex && <div>include: <code>{r.selector.include_regex}</code></div>}
-            {r.selector.exclude_regex && <div>exclude: <code>{r.selector.exclude_regex}</code></div>}
-            {(r.selector.from_providers?.length ?? 0) > 0 && (
-              <div>from: {r.selector.from_providers!.join(", ")}</div>
-            )}
-            {(r.selector.exclude_type?.length ?? 0) > 0 && (
-              <div>exclude type: {r.selector.exclude_type!.join(", ")}</div>
-            )}
-          </div>
-        </div>
-      ))}
-
-      <details className="border rounded-md">
-        <summary className="px-2 py-1.5 cursor-pointer text-xs font-medium hover:bg-muted/40">
-          <Plus className="h-3 w-3 inline mr-1" />
-          添加链式规则
-        </summary>
-        <div className="p-2 grid grid-cols-1 sm:grid-cols-3 gap-2 border-t">
-          <div>
-            <label className="text-[11px] block mb-1">via (出口节点/组名)</label>
-            <input
-              list="chain-via-suggestions"
-              value={draft.via}
-              onChange={(e) => setDraft({ ...draft, via: e.target.value })}
-              placeholder="例如: 🇯🇵 JP-DIP"
-              className="flex h-7 w-full rounded-md border border-input bg-background px-3 py-1 text-xs shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            />
-            <datalist id="chain-via-suggestions">
-              {groupNames.map((name) => (
-                <option key={`group-${name}`} value={name} label="策略组" />
-              ))}
-              {nodeNames.map((name) => (
-                <option key={`node-${name}`} value={name} label="节点" />
-              ))}
-            </datalist>
-          </div>
-          <div>
-            <label className="text-[11px] block mb-1">include_regex</label>
-            <Input
-              value={draft.selector.include_regex ?? ""}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  selector: { ...draft.selector, include_regex: e.target.value || undefined },
-                })
-              }
-              placeholder="stream|netflix|disney"
-              className="h-7 text-xs"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] block mb-1">from_providers (逗号分隔)</label>
-            <Input
-              value={(draft.selector.from_providers ?? []).join(", ")}
-              onChange={(e) =>
-                setDraft({
-                  ...draft,
-                  selector: {
-                    ...draft.selector,
-                    from_providers: e.target.value
-                      .split(",")
-                      .map((s) => s.trim())
-                      .filter(Boolean),
-                  },
-                })
-              }
-              placeholder={providerNames.slice(0, 2).join(", ")}
-              className="h-7 text-xs"
-            />
-          </div>
-          <Button size="sm" onClick={add} disabled={!draft.via.trim()} className="w-full h-7 text-xs sm:col-span-3">
-            <Plus className="h-3 w-3" />
-            添加
-          </Button>
-        </div>
-      </details>
     </div>
   );
 }
