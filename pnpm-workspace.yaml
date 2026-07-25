@@ -1,3 +1,9 @@
 packages:
   - backend
   - frontend
+
+# pnpm 10 默认拦截依赖的安装脚本(供应链防护),这里放行 esbuild —— 它的 postinstall
+# 负责把当前平台的原生二进制就位。pnpm 已不再读 package.json 的 `pnpm` 字段,设置只认本文件;
+# 升级到 pnpm 11 时这个键会被 `allowBuilds: { esbuild: true }` 取代。
+onlyBuiltDependencies:
+  - esbuild

@@ -28,7 +28,7 @@ export function useAuth() {
     mutationFn: (payload: { username: string; password: string }) =>
       api.post<MeResponse>("/api/auth/login", payload),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+      void queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
     },
   });
 
@@ -36,7 +36,7 @@ export function useAuth() {
     mutationFn: () => api.post("/api/auth/logout", {}),
     onSuccess: () => {
       queryClient.setQueryData(["auth", "me"], { authenticated: false });
-      navigate("/login");
+      void navigate("/login");
     },
   });
 

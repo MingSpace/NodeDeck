@@ -300,6 +300,7 @@ function buildContentDisposition(displayName: string, ext: string, fallbackBaseN
 function sanitizeFilenameBase(name: string): string {
   return name
     // 控制字符(0x00-0x1F)和 DEL(0x7F)在下载文件名里非法
+    // eslint-disable-next-line no-control-regex -- 这里就是要匹配控制字符本身
     .replace(/[\u0000-\u001F\u007F]/g, "")
     // Windows + 大多数客户端禁止的路径分隔/通配符,统一替换成下划线
     .replace(/[\\/:*?"<>|]/g, "_")

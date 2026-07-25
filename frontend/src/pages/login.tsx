@@ -17,7 +17,7 @@ export function LoginPage() {
   useEffect(() => {
     if (isAuthed) {
       const from = (location.state as { from?: { pathname: string } } | null)?.from?.pathname ?? "/dashboard";
-      navigate(from, { replace: true });
+      void navigate(from, { replace: true });
     }
   }, [isAuthed, location.state, navigate]);
 
@@ -26,7 +26,7 @@ export function LoginPage() {
     setError(null);
     try {
       await login({ username, password });
-      navigate("/dashboard", { replace: true });
+      void navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : "登录失败");
     }

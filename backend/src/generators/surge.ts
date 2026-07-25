@@ -167,7 +167,7 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
       if (rs.surge_flags.force_remote_dns) flags.push("force-remote-dns");
     }
     let policy = r.policy;
-    let extraParams: string[] = [];
+    const extraParams: string[] = [];
     if (rs.surge_reject_options) {
       const subtype = rs.surge_reject_options.type;
       const mapped = REJECT_TYPE_MAP[subtype];

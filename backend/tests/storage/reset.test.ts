@@ -3,7 +3,7 @@ import { mkdir, writeFile, readFile, readdir, unlink } from "node:fs/promises";
 import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-// @ts-ignore
+// @ts-expect-error tests 不在 backend/tsconfig.json 的 include 里,编辑器按默认选项(无 esModuleInterop)会拒绝 CJS 默认导入
 import yaml from "js-yaml";
 
 // reset 走真实 fs:vi.mock 是 hoisted 的,工厂里不能引用 top-level 变量,

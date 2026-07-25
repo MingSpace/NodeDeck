@@ -101,13 +101,13 @@ export function ProvidersPage() {
         description: `刷新 ${data?.count ?? 0} 个`,
         variant: "success",
       });
-      queryClient.invalidateQueries({ queryKey: ["providers", "status"] });
+      void queryClient.invalidateQueries({ queryKey: ["providers", "status"] });
     },
   });
   const refreshOne = useMutation({
     mutationFn: (id: string) => api.post(`/api/providers/${id}/refresh`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["providers", "status"] });
+      void queryClient.invalidateQueries({ queryKey: ["providers", "status"] });
     },
     onError: (err: Error) => {
       toast({ title: "刷新失败", description: err.message ?? "", variant: "error" });

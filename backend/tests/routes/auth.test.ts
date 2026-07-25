@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Hono } from "hono";
-// @ts-ignore
+// @ts-expect-error tests 不在 backend/tsconfig.json 的 include 里,编辑器按默认选项(无 esModuleInterop)会拒绝 CJS 默认导入
 import bcrypt from "bcryptjs";
 
 // mock storage,完全用内存假数据,不碰真实 yaml

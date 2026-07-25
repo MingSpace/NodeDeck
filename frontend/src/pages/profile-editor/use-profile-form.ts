@@ -56,7 +56,7 @@ export function useProfileForm(id: string) {
       setDirty(false);
       // preview 现在以 draft 为输入,保存后无需 invalidate(draft 本就在内存中);
       // node-pool-preview 仍依赖磁盘 provider 状态,保留 invalidate
-      queryClient.invalidateQueries({ queryKey: ["node-pool-preview", id] });
+      void queryClient.invalidateQueries({ queryKey: ["node-pool-preview", id] });
     } catch (err) {
       toast({ title: "保存失败", description: String(err), variant: "error" });
     }
@@ -68,7 +68,7 @@ export function useProfileForm(id: string) {
       const data = await api.post<{ token: string }>(`/api/profiles/${id}/regenerate-token`);
       toast({ title: "Token 已更新", variant: "success" });
       setDraft((prev) => (prev ? { ...prev, token: data.token } : prev));
-      profileQuery.refetch();
+      void profileQuery.refetch();
     } catch (err) {
       toast({ title: "失败", description: String(err), variant: "error" });
     }

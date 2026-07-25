@@ -89,7 +89,7 @@ function ServiceConfigCard() {
     mutationFn: (data: Partial<AppConfigDto>) => api.put("/api/config", data),
     onSuccess: () => {
       toast({ title: "已保存", variant: "success" });
-      queryClient.invalidateQueries({ queryKey: ["config"] });
+      void queryClient.invalidateQueries({ queryKey: ["config"] });
       setDirty(false);
     },
     onError: (err) => toast({ title: "保存失败", description: String(err), variant: "error" }),

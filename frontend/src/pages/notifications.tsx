@@ -78,7 +78,7 @@ export function NotificationsPage() {
     mutationFn: (data: NotificationConfig) => api.put("/api/notification", data),
     onSuccess: () => {
       toast({ title: "已保存", variant: "success" });
-      queryClient.invalidateQueries({ queryKey: ["notification"] });
+      void queryClient.invalidateQueries({ queryKey: ["notification"] });
       setDirty(false);
     },
     onError: (err) => toast({ title: "保存失败", description: String(err), variant: "error" }),

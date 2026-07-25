@@ -245,7 +245,7 @@ describe("/sub route", () => {
     const cd = res.headers.get("Content-Disposition") ?? "";
     // 三类非法字符(/ * ")都应该被替换成 _,且不出现在 ASCII filename 里
     expect(cd).toContain('filename="Home _ Backup _bak_v2_.conf"');
-    expect(cd).not.toMatch(/filename=".*[\/*"].*"/);
+    expect(cd).not.toMatch(/filename=".*[/*"].*"/);
   });
 });
 

@@ -54,7 +54,7 @@ export function HostRowsEditor({ value, onChange }: Props) {
     if (JSON.stringify(value ?? {}) !== JSON.stringify(rowsToMap(rows))) {
       setRows(mapToRows(value));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // 依赖刻意只留 value:把 rows 加进来会在每次编辑后自比对,反而抖动
   }, [value]);
 
   const commit = (next: Row[]) => {
