@@ -96,7 +96,18 @@ export function ProxyListEditor({
   const nestedGroups = nestedGroupsProp ?? [];
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
-  const items = proxies.map((p, i) => ({ id: `proxy-${i}-${p}`, idx: i, name: p }));
+  // @business_rule: sortable id 必须与数组顺序无关 — 掺了下标的 id 在 arrayMove 之后会整片变化,
+  // 既让 React 按 key 重挂载,也让 dnd-kit 认不出被拖的行,落位动画会退化成回弹。
+  // proxies 里的节点名正常唯一(togglePin/pinAllVisible 都去重),手改 YAML 可能带进重复项,
+  // 所以按出现次数补后缀兜底。
+  const items = useMemo(() => {
+    const seen = new Map<string, number>();
+    return proxies.map((p, i) => {
+      const nth = (seen.get(p) ?? 0) + 1;
+      seen.set(p, nth);
+      return { id: nth === 1 ? `proxy:${p}` : `proxy:${p}#${nth}`, idx: i, name: p };
+    });
+  }, [proxies]);
 
   const candidateNamesSet = useMemo(() => {
     const s = new Set<string>();

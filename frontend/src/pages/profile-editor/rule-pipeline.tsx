@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -43,6 +43,25 @@ interface ProxyGroupItem {
   name: string;
 }
 
+let rowIdSeq = 0;
+
+// dnd-kit 靠 sortable id 在列表里的位置变化来判断"这一行换位置了"。若 id 按下标现算
+// (row-0/row-1/...),arrayMove 之后 id 序列原封不动,dnd-kit 会认为被拖的行没动过,
+// 于是跳过落位补偿、把拖拽位移直接动画回 0 —— 视觉上就是松手后回弹。
+// rule_modules 的元素没有天然唯一键(final / geoip 行连 ref 都没有),所以这里维护一份
+// 与数组等长的 uid,由改变数组长度/顺序的 handler 负责同步。
+function useRowIds(count: number) {
+  const ref = useRef<string[]>([]);
+  if (ref.current.length !== count) {
+    // 只有"末尾追加"和外部整体替换会走到这里;删除与排序由各自 handler 精确维护,
+    // 否则删掉中间一行会让后续所有行的 id 前移导致整片重挂载。
+    const next = ref.current.slice(0, count);
+    while (next.length < count) next.push(`rule-row-${++rowIdSeq}`);
+    ref.current = next;
+  }
+  return ref;
+}
+
 export function RulePipeline({ draft, onChange }: Props) {
   const rulesetList = useEntityList<RuleSetItem>("rules");
   const groupList = useEntityList<ProxyGroupItem>("groups");
@@ -72,7 +91,11 @@ export function RulePipeline({ draft, onChange }: Props) {
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
-  const items = useMemo(() => draft.rule_modules.map((r, i) => ({ id: `row-${i}`, idx: i, rule: r })), [draft.rule_modules]);
+  const rowIds = useRowIds(draft.rule_modules.length);
+  const items = useMemo(
+    () => draft.rule_modules.map((r, i) => ({ id: rowIds.current[i], idx: i, rule: r })),
+    [draft.rule_modules, rowIds],
+  );
 
   const onDragEnd = (e: DragEndEvent) => {
     const { active, over } = e;
@@ -80,6 +103,7 @@ export function RulePipeline({ draft, onChange }: Props) {
     const oldIdx = items.findIndex((i) => i.id === active.id);
     const newIdx = items.findIndex((i) => i.id === over.id);
     if (oldIdx === -1 || newIdx === -1) return;
+    rowIds.current = arrayMove(rowIds.current, oldIdx, newIdx);
     onChange(arrayMove(draft.rule_modules, oldIdx, newIdx));
   };
 
@@ -89,6 +113,7 @@ export function RulePipeline({ draft, onChange }: Props) {
     onChange(next);
   };
   const removeRow = (idx: number) => {
+    rowIds.current = rowIds.current.filter((_, i) => i !== idx);
     onChange(draft.rule_modules.filter((_, i) => i !== idx));
   };
   const addRow = (kind: "ruleset" | "final" | "geoip") => {
