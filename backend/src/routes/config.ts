@@ -3,6 +3,7 @@ import { z } from "zod";
 import { loadConfig, saveConfig } from "../storage/config-store.js";
 import { resetData } from "../storage/reset.js";
 import { isValidAllowlistEntry } from "../auth/middleware.js";
+import { setLogRetentionDays } from "../log-store.js";
 import { logger } from "../logger.js";
 
 export const configRouter = new Hono();
@@ -23,6 +24,7 @@ const updateSchema = z.object({
   ip_allowlist: ipAllowlistSchema.optional(),
   public_base_url: z.string().url().optional().or(z.literal("")),
   default_user_agent: z.string().min(1).optional(),
+  log_retention_days: z.number().int().min(0).max(90).optional(),
 });
 
 // 必须打这个口令才执行,防止误触发(类似 GitHub 删仓库的 confirmation)
@@ -55,6 +57,7 @@ configRouter.get("/", async (c) => {
     ip_allowlist: cfg.ip_allowlist,
     public_base_url: cfg.public_base_url ?? "",
     default_user_agent: cfg.default_user_agent,
+    log_retention_days: cfg.logs.retention_days,
   });
 });
 
@@ -73,12 +76,19 @@ configRouter.put("/", async (c) => {
         ? undefined
         : (parsed.data.public_base_url ?? current.public_base_url),
     default_user_agent: parsed.data.default_user_agent ?? current.default_user_agent,
+    logs: {
+      ...current.logs,
+      retention_days: parsed.data.log_retention_days ?? current.logs.retention_days,
+    },
   });
+  // 落盘保留策略是进程内状态,保存后立刻同步,不用等维护定时器那一轮(改完不重启即生效)。
+  setLogRetentionDays(updated.logs.retention_days);
   logger.info(
     {
       ip_allowlist: updated.ip_allowlist,
       public_base_url: updated.public_base_url ?? null,
       default_user_agent: updated.default_user_agent,
+      log_retention_days: updated.logs.retention_days,
     },
     "Config updated",
   );
@@ -86,6 +96,7 @@ configRouter.put("/", async (c) => {
     ip_allowlist: updated.ip_allowlist,
     public_base_url: updated.public_base_url ?? "",
     default_user_agent: updated.default_user_agent,
+    log_retention_days: updated.logs.retention_days,
   });
 });
 

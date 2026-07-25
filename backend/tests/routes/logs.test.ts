@@ -109,4 +109,54 @@ describe("GET /api/logs/stream", () => {
       // 忽略
     }
   });
+
+  it("带 Last-Event-ID 重连时只补该 id 之后的 backlog", async () => {
+    const first = logBuffer.push({ ts: 1, level: 30, levelLabel: "info", msg: "seen", raw: "{}" });
+    logBuffer.push({ ts: 2, level: 30, levelLabel: "info", msg: "missed", raw: "{}" });
+
+    const app = buildApp();
+    const abort = new AbortController();
+    const res = await app.fetch(
+      new Request("http://test/api/logs/stream", {
+        signal: abort.signal,
+        headers: { "Last-Event-ID": String(first.id) },
+      }),
+    );
+    const reader = res.body!.getReader();
+
+    const text = await readUntil(reader, "backlog-end", 3000);
+    expect(text).toContain("missed");
+    expect(text).not.toContain("seen");
+
+    abort.abort();
+    try {
+      await reader.cancel();
+    } catch {
+      // 忽略
+    }
+  });
+
+  it("Last-Event-ID 超出当前最大 id(后端重启过)时退回全量推送", async () => {
+    logBuffer.push({ ts: 1, level: 30, levelLabel: "info", msg: "from-disk", raw: "{}" });
+
+    const app = buildApp();
+    const abort = new AbortController();
+    const res = await app.fetch(
+      new Request("http://test/api/logs/stream", {
+        signal: abort.signal,
+        headers: { "Last-Event-ID": "99999" },
+      }),
+    );
+    const reader = res.body!.getReader();
+
+    const text = await readUntil(reader, "backlog-end", 3000);
+    expect(text).toContain("from-disk");
+
+    abort.abort();
+    try {
+      await reader.cancel();
+    } catch {
+      // 忽略
+    }
+  });
 });

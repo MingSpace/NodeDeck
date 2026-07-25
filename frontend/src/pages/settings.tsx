@@ -24,6 +24,7 @@ interface AppConfigDto {
   ip_allowlist: string[];
   public_base_url: string;
   default_user_agent: string;
+  log_retention_days: number;
 }
 
 export function SettingsPage() {
@@ -119,6 +120,7 @@ function ServiceConfigCard() {
       ip_allowlist: allowlist,
       public_base_url: draft.public_base_url,
       default_user_agent: draft.default_user_agent,
+      log_retention_days: draft.log_retention_days,
     });
   };
 
@@ -126,7 +128,7 @@ function ServiceConfigCard() {
     <Card>
       <CardHeader>
         <CardTitle>服务</CardTitle>
-        <CardDescription>影响订阅 URL、Provider 拉取与 Web UI 访问</CardDescription>
+        <CardDescription>影响订阅 URL、Provider 拉取、日志留存与 Web UI 访问</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
@@ -152,6 +154,23 @@ function ServiceConfigCard() {
           />
           <p className="text-xs text-muted-foreground mt-1">
             Provider 未指定 user_agent 时使用。
+          </p>
+        </div>
+
+        <div>
+          <Label className="text-xs">日志保留天数</Label>
+          <Input
+            type="number"
+            min={0}
+            max={90}
+            step={1}
+            value={draft.log_retention_days}
+            onChange={(e) => update({ log_retention_days: clampRetention(e.target.value) })}
+            className="mt-1"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            日志按天写入 <code>data/logs/</code>,超期文件自动删除;重启后会自动恢复最近的日志。
+            0 = 只留内存(重启清空)。今天算 1 天,最大 90。
           </p>
         </div>
 
@@ -216,6 +235,13 @@ function ServiceConfigCard() {
   );
 }
 
+// 后端 schema 限制 0..90 的整数;这里先夹一遍,免得输入框里敲个 "1e5" 或空串直接被 400 打回。
+function clampRetention(raw: string): number {
+  const n = Number.parseInt(raw, 10);
+  if (Number.isNaN(n)) return 0;
+  return Math.min(90, Math.max(0, n));
+}
+
 // @business_rule 还原范围细分到每一类资源,默认全选,管理员账号不在选项里(永远不会被删)。
 // @business_rule 任何一项与文件落盘强相关,确认操作不可撤销,因此走"输入 RESET 二次确认"流程。
 interface ResetScope {
@@ -243,7 +269,7 @@ const RESET_OPTIONS: ResetOption[] = [
   { key: "modules", label: "Surge 模块", description: "所有 Surge module 配置" },
   { key: "general", label: "通用预设", description: "所有 general preset 配置" },
   { key: "profiles", label: "订阅配置文件 (Profiles)", description: "所有 Profile 及对应的订阅 token" },
-  { key: "service_settings", label: "服务设置", description: "IP 白名单 / PUBLIC_BASE_URL / 默认 User-Agent" },
+  { key: "service_settings", label: "服务设置", description: "IP 白名单 / PUBLIC_BASE_URL / 默认 User-Agent / 日志保留天数" },
 ];
 
 function defaultScope(checked = true): ResetScope {

@@ -16,6 +16,16 @@ export const loginRateLimitSchema = z
 
 export type LoginRateLimitConfig = z.infer<typeof loginRateLimitSchema>;
 
+// 日志落盘保留天数(按本地日期切文件,今天算 1 天)。
+// 3 天足够回溯一次夜间 provider 刷新异常,又不会让 data/logs 无限膨胀;0 = 只留内存。
+export const logsConfigSchema = z
+  .object({
+    retention_days: z.number().int().min(0).max(90).default(3),
+  })
+  .default({});
+
+export type LogsConfig = z.infer<typeof logsConfigSchema>;
+
 export const appConfigSchema = z.object({
   admin: z.object({
     username: z.string().min(1).default("admin"),
@@ -31,6 +41,7 @@ export const appConfigSchema = z.object({
     .transform((list) => list.map((entry) => entry.trim()).filter((entry) => entry.length > 0)),
   public_base_url: z.string().url().optional(),
   default_user_agent: z.string().default("Surge/2400"),
+  logs: logsConfigSchema,
   auth: z
     .object({
       login_rate_limit: loginRateLimitSchema,

@@ -161,11 +161,24 @@ Caddy 会自动申请 Let's Encrypt 证书。
 cd data
 # 注意 config.yaml 中的 password_hash 是敏感信息
 git init
-git add . ':!cache' ':!config.yaml'
+git add . ':!cache' ':!logs' ':!config.yaml'
 git commit -m "config snapshot"
 ```
 
-> `data/cache/` 是订阅源缓存,不需要备份。
+> `data/cache/` 是订阅源缓存、`data/logs/` 是进程日志,都不需要备份。
+
+---
+
+## 日志
+
+进程日志同时写三处:容器 stdout(`docker logs`)、内存环形 buffer(Web UI 的「日志」页,SSE 实时推送)、
+`data/logs/YYYY-MM-DD.log`(NDJSON,每行一条 pino 记录,已按 redact 规则脱敏)。
+
+- 保留天数在 Web UI 设置页的「日志保留天数」调整(落到 `config.yaml` 的 `logs.retention_days`,默认 `3`,
+  今天算 1 天),超期文件在跨天写入与每小时的维护轮次中自动删除;改完立即生效,不用重启容器。
+- 填 `0` = 关闭落盘并清空 `data/logs/`,退回「只留内存、重启清空」的老行为。
+- 容器重启后,Web UI 会自动回填磁盘上最近的日志(条数上限 = `LOG_BUFFER_SIZE`,默认 2000)。
+- HTTP access log 只进 stdout,不落盘也不进 Web UI,避免把业务日志顶掉。
 
 ---
 

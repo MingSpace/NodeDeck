@@ -83,6 +83,21 @@ class LogBuffer {
     };
   }
 
+  /**
+   * 用磁盘上的历史日志回填 buffer:历史条目排在当前进程已产生的条目之前,
+   * id 全部重新分配以保持"buffer 内顺序 = id 递增"这一 SSE Last-Event-ID 前提。
+   *
+   * 只在进程启动、还没有任何 SSE 订阅者时调用(此时 push 的广播是空操作),
+   * 运行期调用会让已连接的客户端收到乱序 id。
+   */
+  restore(historical: Omit<LogEntry, "id">[]): void {
+    if (historical.length === 0) return;
+    const current = this.snapshot();
+    this._reset();
+    for (const entry of historical) this.push(entry);
+    for (const entry of current) this.push(entry);
+  }
+
   /** 仅供单元测试使用,生产代码不要调用。 */
   _reset(): void {
     this.writeIdx = 0;
@@ -98,7 +113,19 @@ class LogBuffer {
 
 export const logBuffer = new LogBuffer(env.LOG_BUFFER_SIZE);
 
-function parseLine(line: string): LogEntry | null {
+/**
+ * 落盘钩子。由 log-store 在被 import 时注册(默认 null = 只留内存),
+ * 这样 log-buffer 本身不依赖 fs / DATA_DIR,单元测试里也不会意外写文件。
+ */
+type LineSink = (line: string, ts: number) => void;
+
+let lineSink: LineSink | null = null;
+
+export function setLogLineSink(sink: LineSink | null): void {
+  lineSink = sink;
+}
+
+export function parseLine(line: string): LogEntry | null {
   const trimmed = line.trim();
   if (!trimmed) return null;
   try {
@@ -152,7 +179,10 @@ class RingStream extends Writable {
     this.tail = lines.pop() ?? "";
     for (const line of lines) {
       const entry = parseLine(line);
-      if (entry) logBuffer.push(entry);
+      if (!entry) continue;
+      logBuffer.push(entry);
+      // 落盘写原始行(已脱敏),回填时用同一个 parseLine 解析,内存与磁盘形态完全一致。
+      lineSink?.(entry.raw, entry.ts);
     }
     callback();
   }

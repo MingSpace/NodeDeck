@@ -44,9 +44,13 @@ export function useLogStream(maxEntries = 5000): UseLogStreamResult {
         return;
       }
       setEntries((prev) => {
-        if (prev.length < maxEntries) return [...prev, entry];
-        const dropped = prev.length - maxEntries + 1;
-        return [...prev.slice(dropped), entry];
+        // 后端重启后 id 会从 1 重新计数,同时把磁盘上的历史整段重推。此时本地列表已经
+        // 过期(且 id 会与新流撞车导致 React key 重复),直接以新流为准重建。
+        const last = prev[prev.length - 1];
+        const base = last && entry.id <= last.id ? [] : prev;
+        if (base.length < maxEntries) return [...base, entry];
+        const dropped = base.length - maxEntries + 1;
+        return [...base.slice(dropped), entry];
       });
     };
 

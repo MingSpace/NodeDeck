@@ -44,3 +44,16 @@ export function entityPath(sub: SubDir, id: string): string {
 export function cachePath(providerId: string): string {
   return dataPath("cache", `${providerId}.json`);
 }
+
+/**
+ * 日志落盘目录。不放进 SUBDIRS:它不是实体目录(没有 repo / 不参与 chokidar 缓存失效),
+ * 由 log-store 在首次写入时按需创建。
+ */
+export function logsDir(): string {
+  return dataPath("logs");
+}
+
+/** @param day 本地日期,格式 YYYY-MM-DD */
+export function logFilePath(day: string): string {
+  return dataPath("logs", `${day}.log`);
+}

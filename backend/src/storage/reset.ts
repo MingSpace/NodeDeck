@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { logger } from "../logger.js";
+import { DEFAULT_LOG_RETENTION_DAYS, setLogRetentionDays } from "../log-store.js";
 import {
   dataPath,
   entityDir,
@@ -15,7 +16,8 @@ import { loadConfig, saveConfig } from "./config-store.js";
  *
  * @business_rule 管理员账号(用户名/密码 hash/必修改密码标记)永远不会被重置,
  * 否则用户会被锁在外面无法登录。`service_settings` 仅清掉
- * `ip_allowlist` / `public_base_url` / `default_user_agent` 这些可重建的部分。
+ * `ip_allowlist` / `public_base_url` / `default_user_agent` / `logs.retention_days`
+ * 这些可重建的部分。
  */
 export interface ResetScope {
   providers?: boolean;
@@ -95,7 +97,9 @@ export async function resetData(scope: ResetScope): Promise<ResetResult> {
       ip_allowlist: [],
       public_base_url: undefined,
       default_user_agent: "Surge/2400",
+      logs: { retention_days: DEFAULT_LOG_RETENTION_DAYS },
     });
+    setLogRetentionDays(DEFAULT_LOG_RETENTION_DAYS);
     removed.service_settings = true;
   }
 

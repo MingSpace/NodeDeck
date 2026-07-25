@@ -8,7 +8,8 @@ const isDev = env.NODE_ENV !== "production";
 /*
  * 用 pino.multistream 同时输出到:
  * 1. 终端(dev 用 pino-pretty 染色,prod 直接 JSON 到 stdout)
- * 2. 内存 ring buffer(供 Web UI /api/logs/stream 消费)
+ * 2. 内存 ring buffer(供 Web UI /api/logs/stream 消费),由 log-store 再按天落盘到
+ *    data/logs/,重启后回填,保留天数见 config.yaml 的 logs.retention_days
  *
  * 注意: multistream 与 transport 选项互斥。dev 下使用 pino-pretty 的同步 transform-stream
  * 用法(非 worker thread),功能与原先 transport 写法等价,且能与 multistream 共存。

@@ -30,6 +30,7 @@ data/
   general/*.yaml           # General + Host + SSID + DNS + MITM 预设
   profiles/*.yaml          # Profile 拼装单元
   cache/<provider>.json    # 订阅源 fetch 缓存(节点 + Subscription-UserInfo)
+  logs/YYYY-MM-DD.log      # 进程日志(NDJSON,按本地日期切分,保留天数见 config.yaml 的 logs.retention_days)
 ```
 
 > 注: 手动添加节点 / 从其它客户端导入的节点 一律走 `type: inline` Provider —

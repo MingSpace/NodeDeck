@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Pause, Play, ScrollText, Trash2, Wifi, WifiOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLogStream, type LogEntry, type StreamStatus } from "@/api/logs";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const LEVELS = ["trace", "debug", "info", "warn", "error", "fatal"] as const;
@@ -27,6 +29,11 @@ const LEVEL_NUM: Record<Level, number> = {
 
 export function LogsPage() {
   const { entries, status, clear } = useLogStream();
+  const cfgQuery = useQuery<{ log_retention_days: number }>({
+    queryKey: ["config"],
+    queryFn: () => api.get("/api/config"),
+  });
+  const retentionDays = cfgQuery.data?.log_retention_days;
   const [minLevel, setMinLevel] = useState<Level>("trace");
   const [filter, setFilter] = useState("");
   const [autoScroll, setAutoScroll] = useState(true);
@@ -69,9 +76,7 @@ export function LogsPage() {
     <div className="flex flex-col h-screen p-6 max-w-[1800px] mx-auto w-full">
       <header className="mb-4 shrink-0">
         <h1 className="text-2xl font-bold tracking-tight">日志</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          实时进程日志(内存,重启清空)
-        </p>
+        <p className="text-sm text-muted-foreground mt-1">{retentionHint(retentionDays)}</p>
       </header>
 
       <div className="flex flex-wrap items-center gap-2 mb-3 shrink-0">
@@ -137,6 +142,12 @@ export function LogsPage() {
       </div>
     </div>
   );
+}
+
+function retentionHint(retentionDays: number | undefined): string {
+  if (retentionDays === undefined) return "实时进程日志";
+  if (retentionDays <= 0) return "实时进程日志(仅内存,重启后清空 — 可在设置中开启落盘保留)";
+  return `实时进程日志 · 落盘保留 ${retentionDays} 天,重启后自动恢复`;
 }
 
 function StatusBadge({ status }: { status: StreamStatus }) {
@@ -212,7 +223,9 @@ function LevelTag({ label }: { label: string }) {
 function formatTs(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+  const date = `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`;
+  return `${date} ${time}`;
 }
 
 function prettify(raw: string): string {
