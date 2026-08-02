@@ -5,6 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
+import { LabeledField, ToggleRow, InfoHint } from "@/components/config-fields";
 import {
   Dialog,
   DialogContent,
@@ -83,40 +84,57 @@ export function MitmSection({ data, update }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="text-xs text-muted-foreground">仅 Surge 输出生效</div>
+      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        仅 Surge 输出生效 · 解密指定域名的 HTTPS 流量
+        <InfoHint>
+          中间人(MITM)会用下方 CA 证书解密命中域名的 TLS 流量,供脚本 / 重写读取内容。需在设备上安装并信任该 CA 证书。
+        </InfoHint>
+      </div>
 
-      <label className="flex items-center gap-2 text-xs cursor-pointer">
-        <input type="checkbox" checked={mitm.enable} onChange={(e) => setMitm({ enable: e.target.checked })} />
-        启用 MITM
-      </label>
+      <ToggleRow
+        label="启用 MITM"
+        checked={mitm.enable}
+        onChange={(v) => setMitm({ enable: v })}
+      />
 
-      <div>
-        <Label className="text-xs">hostname (每行一个)</Label>
+      <LabeledField
+        label="解密域名"
+        raw="hostname"
+        hint="需要 MITM 解密的域名列表,支持通配符 *;前缀 - 表示排除(如 -pinned.example.com 跳过证书绑定的域名)。每行一个。"
+      >
         <textarea
           value={mitm.hostname.join("\n")}
           onChange={(e) => setMitm({ hostname: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean) })}
-          className="mt-1 w-full min-h-[80px] border rounded-md p-2 text-xs font-mono"
-          placeholder="*.example.com\n-pinned.api.com"
+          className="w-full min-h-[80px] border rounded-md p-2 text-xs font-mono"
+          placeholder={"*.example.com\n-pinned.api.com"}
         />
-      </div>
+      </LabeledField>
 
-      <div className="flex items-center gap-3">
-        <label className="flex items-center gap-2 text-xs cursor-pointer">
-          <input type="checkbox" checked={mitm.h2} onChange={(e) => setMitm({ h2: e.target.checked })} />
-          h2 (HTTP/2)
-        </label>
-        <label className="flex items-center gap-2 text-xs cursor-pointer">
-          <input type="checkbox" checked={mitm.tcp_connection} onChange={(e) => setMitm({ tcp_connection: e.target.checked })} />
-          tcp_connection
-        </label>
-        <label className="flex items-center gap-2 text-xs cursor-pointer">
-          <input
-            type="checkbox"
-            checked={mitm.skip_server_cert_verify}
-            onChange={(e) => setMitm({ skip_server_cert_verify: e.target.checked })}
-          />
-          skip_server_cert_verify
-        </label>
+      <div className="divide-y rounded-md border">
+        <ToggleRow
+          label="HTTP/2 解密"
+          raw="h2"
+          hint="对 HTTP/2 连接启用 MITM 解密。"
+          checked={mitm.h2}
+          onChange={(v) => setMitm({ h2: v })}
+          className="px-2.5"
+        />
+        <ToggleRow
+          label="TCP 连接解密"
+          raw="tcp-connection"
+          hint="对非 HTTP 的普通 TCP over TLS 连接也尝试 MITM,用于抓取部分私有协议。"
+          checked={mitm.tcp_connection}
+          onChange={(v) => setMitm({ tcp_connection: v })}
+          className="px-2.5"
+        />
+        <ToggleRow
+          label="跳过服务器证书校验"
+          raw="skip-server-cert-verify"
+          hint="MITM 时不校验上游服务器证书。有安全风险,仅在调试自签名 / 过期证书时开启。"
+          checked={mitm.skip_server_cert_verify}
+          onChange={(v) => setMitm({ skip_server_cert_verify: v })}
+          className="px-2.5"
+        />
       </div>
 
       <div className="border rounded-md p-3 space-y-2 bg-muted/20">
@@ -165,9 +183,8 @@ export function MitmSection({ data, update }: Props) {
             </>
           )}
         </div>
-        <div>
-          <Label className="text-xs">ca_passphrase</Label>
-          <div className="relative mt-1">
+        <LabeledField label="证书密码" raw="ca-passphrase" hint="导入上方 .p12 证书时使用的 PKCS#12 密码。自动生成时会一并填好。">
+          <div className="relative">
             <Input
               type={showPassphrase ? "text" : "password"}
               value={mitm.ca_passphrase ?? ""}
@@ -185,7 +202,7 @@ export function MitmSection({ data, update }: Props) {
               {showPassphrase ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
-        </div>
+        </LabeledField>
       </div>
 
       <GenerateCaDialog

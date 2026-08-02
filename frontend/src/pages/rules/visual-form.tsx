@@ -1,6 +1,9 @@
+import { Flag, Ban } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { FieldGroup, LabeledField, ToggleRow } from "@/components/config-fields";
 
 export interface RuleSetData {
   id: string;
@@ -59,7 +62,10 @@ export function RuleSetVisualForm({ data, update }: Props) {
       </Field>
 
       <div className="grid grid-cols-3 gap-3">
-        <Field label="类型">
+        <Field
+          label="类型"
+          hint="规则集来源:remote_url 远程订阅链接;inline_list 手写规则;geosite / geoip 地理数据库分类;surge_internal Surge 内置集(SYSTEM / LAN)。"
+        >
           <Select value={data.type} onValueChange={(v) => update({ type: v as RuleSetData["type"] })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -71,7 +77,10 @@ export function RuleSetVisualForm({ data, update }: Props) {
             </SelectContent>
           </Select>
         </Field>
-        <Field label="behavior">
+        <Field
+          label="behavior"
+          hint="规则集内容形态:domain 纯域名;ipcidr 纯 IP 网段;classical 混合(带 DOMAIN-SUFFIX / IP-CIDR 前缀的完整规则)。需与来源内容匹配。"
+        >
           <Select value={data.behavior} onValueChange={(v) => update({ behavior: v as RuleSetData["behavior"] })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -172,7 +181,10 @@ export function RuleSetVisualForm({ data, update }: Props) {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Clash 输出方式">
+        <Field
+          label="Clash 输出方式"
+          hint="rule-provider:输出为独立的 rule-provider 引用,客户端远程拉取、可定时更新(推荐)。inline:把规则直接内联展开写进主配置。"
+        >
           <Select value={data.clash_format} onValueChange={(v) => update({ clash_format: v as RuleSetData["clash_format"] })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -181,7 +193,10 @@ export function RuleSetVisualForm({ data, update }: Props) {
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Surge 输出方式">
+        <Field
+          label="Surge 输出方式"
+          hint="RULE-SET:输出为 RULE-SET 远程引用(推荐)。inline ruleset:内联展开为多条规则。DOMAIN-SET:输出为纯域名集合文件(仅域名类可用,匹配更快)。"
+        >
           <Select value={data.surge_format} onValueChange={(v) => update({ surge_format: v as RuleSetData["surge_format"] })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -210,36 +225,71 @@ export function RuleSetVisualForm({ data, update }: Props) {
         </Field>
       </div>
 
-      <fieldset className="border rounded-md p-3">
-        <legend className="text-xs font-medium px-1">Surge flags</legend>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <FlagCheck label="no-resolve" checked={flags.no_resolve ?? false} onChange={(v) => update({ surge_flags: { ...flags, no_resolve: v } })} />
-          <FlagCheck label="extended-matching" checked={flags.extended_matching ?? false} onChange={(v) => update({ surge_flags: { ...flags, extended_matching: v } })} />
-          <FlagCheck label="pre-matching" checked={flags.pre_matching ?? false} onChange={(v) => update({ surge_flags: { ...flags, pre_matching: v } })} />
-          <FlagCheck label="dns-failed (FINAL only)" checked={flags.dns_failed ?? false} onChange={(v) => update({ surge_flags: { ...flags, dns_failed: v } })} />
-          <FlagCheck label="force-remote-dns" checked={flags.force_remote_dns ?? false} onChange={(v) => update({ surge_flags: { ...flags, force_remote_dns: v } })} />
+      <FieldGroup
+        icon={<Flag className="h-3.5 w-3.5" />}
+        title="Surge 规则修饰符"
+        hint="附加在规则末尾的可选修饰符,微调匹配 / 解析行为。除 no-resolve 外均为 Surge 专属。"
+      >
+        <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
+          <ToggleRow
+            label="no-resolve"
+            hint="IP 类规则匹配时不触发 DNS 解析,避免为域名提前解析 IP。仅对 IP-CIDR / GEOIP 等 IP 规则有意义。Clash 与 Surge 均支持。"
+            checked={flags.no_resolve ?? false}
+            onChange={(v) => update({ surge_flags: { ...flags, no_resolve: v } })}
+          />
+          <ToggleRow
+            label="extended-matching"
+            hint="启用扩展匹配(结合 SNI / Host),提升域名规则命中率。Surge 专属。"
+            checked={flags.extended_matching ?? false}
+            onChange={(v) => update({ surge_flags: { ...flags, extended_matching: v } })}
+          />
+          <ToggleRow
+            label="pre-matching"
+            hint="在建立连接前预匹配规则,可降低延迟。Surge 专属。"
+            checked={flags.pre_matching ?? false}
+            onChange={(v) => update({ surge_flags: { ...flags, pre_matching: v } })}
+          />
+          <ToggleRow
+            label="dns-failed"
+            badge={<Badge variant="outline" className="px-1 py-0 text-[9px] font-normal text-muted-foreground">FINAL</Badge>}
+            hint="仅用于 FINAL 规则:DNS 解析失败的流量交给该策略处理。Surge 专属。"
+            checked={flags.dns_failed ?? false}
+            onChange={(v) => update({ surge_flags: { ...flags, dns_failed: v } })}
+          />
+          <ToggleRow
+            label="force-remote-dns"
+            hint="命中的域名强制使用远程 DNS 解析(走代理侧解析)。Surge 专属。"
+            checked={flags.force_remote_dns ?? false}
+            onChange={(v) => update({ surge_flags: { ...flags, force_remote_dns: v } })}
+          />
         </div>
-      </fieldset>
+      </FieldGroup>
 
-      <fieldset className="border rounded-md p-3">
-        <legend className="text-xs font-medium px-1 flex items-center gap-2">
-          Surge REJECT 选项
-          <input
-            type="checkbox"
+      <FieldGroup
+        icon={<Ban className="h-3.5 w-3.5" />}
+        title="Surge REJECT 行为"
+        hint="当该规则集的策略为 REJECT 时,自定义拒绝方式与通知。仅 Surge 生效。"
+        trailing={
+          <Switch
             checked={!!reject}
-            onChange={(e) =>
+            onCheckedChange={(v) =>
               update({
-                surge_reject_options: e.target.checked
+                surge_reject_options: v
                   ? { type: "REJECT", notification_text: undefined, notification_interval: undefined }
                   : undefined,
               })
             }
+            aria-label="启用 Surge REJECT 行为"
           />
-          <span className="text-muted-foreground font-normal">启用</span>
-        </legend>
-        {reject && (
-          <div className="space-y-2">
-            <Field label="类型">
+        }
+      >
+        {reject ? (
+          <>
+            <LabeledField
+              label="拒绝方式"
+              raw="type"
+              hint="REJECT 返回错误 / 断开;REJECT-DROP 静默丢包更省电;REJECT-NO-DROP 发 RST 立即断开;REJECT-TINYGIF 返回 1x1 透明图,适合图片广告位。"
+            >
               <Select
                 value={reject.type}
                 onValueChange={(v) =>
@@ -250,20 +300,20 @@ export function RuleSetVisualForm({ data, update }: Props) {
               >
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="REJECT">REJECT</SelectItem>
-                  <SelectItem value="REJECT-DROP">REJECT-DROP</SelectItem>
-                  <SelectItem value="REJECT-NO-DROP">REJECT-NO-DROP</SelectItem>
-                  <SelectItem value="REJECT-TINYGIF">REJECT-TINYGIF</SelectItem>
+                  <SelectItem value="REJECT">REJECT · 返回错误 / 断开</SelectItem>
+                  <SelectItem value="REJECT-DROP">REJECT-DROP · 静默丢弃</SelectItem>
+                  <SelectItem value="REJECT-NO-DROP">REJECT-NO-DROP · 发送 RST 断开</SelectItem>
+                  <SelectItem value="REJECT-TINYGIF">REJECT-TINYGIF · 返回 1x1 透明图</SelectItem>
                 </SelectContent>
               </Select>
-            </Field>
-            <Field label="notification-text">
+            </LabeledField>
+            <LabeledField label="通知文案" raw="notification-text" hint="触发拒绝时弹出的系统通知内容,留空则不通知。">
               <Input
                 value={reject.notification_text ?? ""}
                 onChange={(e) => update({ surge_reject_options: { ...reject, notification_text: e.target.value || undefined } })}
               />
-            </Field>
-            <Field label="notification-interval (秒)">
+            </LabeledField>
+            <LabeledField label="通知间隔 (秒)" raw="notification-interval" hint="同一条拒绝通知的最小间隔,防止频繁弹出刷屏。">
               <Input
                 type="number"
                 value={reject.notification_interval ?? ""}
@@ -276,28 +326,20 @@ export function RuleSetVisualForm({ data, update }: Props) {
                   })
                 }
               />
-            </Field>
-          </div>
+            </LabeledField>
+          </>
+        ) : (
+          <div className="text-[11px] italic text-muted-foreground">未启用 — 命中 REJECT 策略时使用客户端默认行为</div>
         )}
-      </fieldset>
+      </FieldGroup>
     </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: React.ReactNode; hint?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div>
-      <Label className="text-xs">{label}</Label>
-      <div className="mt-1">{children}</div>
-    </div>
-  );
-}
-
-function FlagCheck({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
-      <span>{label}</span>
-    </label>
+    <LabeledField label={label} hint={hint}>
+      {children}
+    </LabeledField>
   );
 }

@@ -2,6 +2,7 @@ import { Layers, Puzzle, Settings as SettingsIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { InfoHint } from "@/components/config-fields";
 import { cn } from "@/lib/utils";
 import { useEntityList } from "@/api/entities";
 import type { Profile } from "./types";
@@ -62,7 +63,12 @@ export function AdvancedPanel({ draft, onChange }: Props) {
   return (
     <div className="h-full min-h-0 overflow-auto">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 p-4">
-        <Section icon={<Puzzle className="h-3.5 w-3.5" />} title="Surge 模块" count={`${draft.surge_modules.length}/${modules.data?.items.length ?? 0}`}>
+        <Section
+          icon={<Puzzle className="h-3.5 w-3.5" />}
+          title="Surge 模块"
+          hint="Surge 专属:选中的模块会以 #!MODULE 或 [Module] 形式写入 .conf,用于注入脚本 / 重写 / MITM 等高级功能。仅影响 Surge 输出,Clash 侧忽略。"
+          count={`${draft.surge_modules.length}/${modules.data?.items.length ?? 0}`}
+        >
           <ChipPicker
             items={modules.data?.items ?? []}
             selected={draft.surge_modules}
@@ -164,7 +170,10 @@ export function AdvancedPanel({ draft, onChange }: Props) {
         <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="Clash 输出选项">
           <div className="space-y-2">
             <div>
-              <label className="text-xs block mb-1">flag (客户端方言)</label>
+              <label className="mb-1 flex items-center gap-1.5 text-xs">
+                flag (客户端方言)
+                <InfoHint>选择 Clash 配置面向的客户端内核:mihomo(Clash Meta)或 stash。影响部分字段的方言写法。</InfoHint>
+              </label>
               <Select
                 value={draft.clash_options.flag}
                 onValueChange={(v) =>
@@ -192,6 +201,7 @@ export function AdvancedPanel({ draft, onChange }: Props) {
                 className="h-3.5 w-3.5"
               />
               使用 proxy-providers (远程拉取)
+              <InfoHint>开启后节点以 proxy-providers 形式远程拉取,而非把节点明文写进配置;便于自动更新、减小配置体积。</InfoHint>
             </label>
           </div>
         </Section>
@@ -203,6 +213,7 @@ export function AdvancedPanel({ draft, onChange }: Props) {
 function Section({
   icon,
   title,
+  hint,
   count,
   trailing,
   collapsed,
@@ -212,6 +223,7 @@ function Section({
 }: {
   icon: React.ReactNode;
   title: string;
+  hint?: React.ReactNode;
   count?: string;
   trailing?: React.ReactNode;
   collapsed?: boolean;
@@ -223,7 +235,11 @@ function Section({
     <div className={cn("rounded-lg border bg-card overflow-hidden self-start", className)}>
       <div className="px-4 py-2.5 bg-muted/30 border-b flex items-center gap-2 text-xs font-medium text-muted-foreground">
         {icon}
-        <span className="flex-1">{title}</span>
+        <span className="flex items-center gap-1.5">
+          {title}
+          {hint && <InfoHint>{hint}</InfoHint>}
+        </span>
+        <span className="flex-1" />
         {count && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{count}</Badge>}
         {trailing}
       </div>

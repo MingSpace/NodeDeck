@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Save, Plus, Trash2, AlertTriangle, RotateCcw } from "lucide-react";
+import { Save, Plus, Trash2, AlertTriangle, RotateCcw, Server, User, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -41,7 +41,10 @@ export function SettingsPage() {
         <div className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>账户</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <User className="h-5 w-5" />
+                账户
+              </CardTitle>
               <CardDescription>当前登录: {username ?? "-"}</CardDescription>
             </CardHeader>
             <CardContent>
@@ -54,7 +57,10 @@ export function SettingsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>关于</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Info className="h-5 w-5" />
+                关于
+              </CardTitle>
               <CardDescription>NodeDeck v1.0.0</CardDescription>
             </CardHeader>
             <CardContent className="text-sm text-muted-foreground space-y-1">
@@ -127,7 +133,10 @@ function ServiceConfigCard() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>服务</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Server className="h-5 w-5" />
+          服务
+        </CardTitle>
         <CardDescription>影响订阅 URL、Provider 拉取、日志留存与 Web UI 访问</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

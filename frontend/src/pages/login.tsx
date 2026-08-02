@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { Boxes } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -36,6 +37,9 @@ export function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
+          <div className="mx-auto mb-1 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Boxes className="h-6 w-6" />
+          </div>
           <CardTitle className="text-2xl">NodeDeck</CardTitle>
           <CardDescription>订阅转换 + 配置中心</CardDescription>
         </CardHeader>

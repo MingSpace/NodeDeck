@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Dices, Eye, EyeOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { LabeledField, ToggleRow, InfoHint } from "@/components/config-fields";
 import type { GeneralPresetData } from "../types";
 
 interface Props {
@@ -42,31 +42,33 @@ export function MtprotoSection({ data, update }: Props) {
 
   return (
     <div className="space-y-3">
-      <div className="text-xs text-muted-foreground">
-        仅 Surge 生效(iOS 5.21+ / Mac 6.8+)。Surge 作为 Telegram 专用 MTProto 入站代理,
-        Telegram 客户端直连该端口,DC 选路与出站策略仍走 Surge 规则(可配合{" "}
-        <code className="text-[10px]">PROTOCOL,MTProto</code> 规则匹配)
+      <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
+
+        <span>
+          仅 Surge 生效(iOS 5.21+ / Mac 6.8+)· 把 Surge 当作 Telegram 专用 MTProto 入站代理
+          <InfoHint>
+            Telegram 客户端直连该端口,DC 选路与出站策略仍走 Surge 规则(可配合{" "}
+            <code className="text-[10px]">PROTOCOL,MTProto</code> 规则匹配)。
+          </InfoHint>
+        </span>
       </div>
-      <label className="flex items-center gap-2 text-xs cursor-pointer">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setMt({ enable: e.target.checked })}
-        />
-        启用 MTProto 代理
-      </label>
+      <ToggleRow
+        label="启用 MTProto 代理"
+        checked={enabled}
+        onChange={(v) => setMt({ enable: v })}
+      />
       {enabled && (
-        <>
+        <div className="space-y-3 rounded-lg border bg-card/50 p-3">
           <div className="grid grid-cols-2 gap-3">
-            <Field label="interface (监听地址)">
+            <LabeledField label="监听地址" raw="interface" hint="MTProto 入站监听的本地地址。若需局域网其他设备连入可填 0.0.0.0。">
               <Input
                 value={mt.interface}
                 onChange={(e) => setMt({ interface: e.target.value })}
                 placeholder="127.0.0.1"
                 className="text-xs"
               />
-            </Field>
-            <Field label="port (监听端口)">
+            </LabeledField>
+            <LabeledField label="监听端口" raw="port" hint="Telegram 客户端连接的端口。">
               <Input
                 type="number"
                 value={mt.port}
@@ -77,9 +79,13 @@ export function MtprotoSection({ data, update }: Props) {
                 placeholder="5753"
                 className="text-xs"
               />
-            </Field>
+            </LabeledField>
           </div>
-          <Field label="secret (32 位十六进制,可带 dd 前缀)">
+          <LabeledField
+            label="Secret"
+            raw="secret"
+            hint="32 位十六进制字符(可选 dd 前缀)。Telegram 客户端连接时需填写相同值;非法时 Surge 会跳过整段。"
+          >
             <div className="flex gap-1.5">
               <div className="relative flex-1">
                 <Input
@@ -115,40 +121,32 @@ export function MtprotoSection({ data, update }: Props) {
                 secret 必须是 32 位十六进制字符(可选 dd 前缀),否则 Surge 输出会跳过该段
               </div>
             )}
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <label className="flex items-center gap-2 text-xs cursor-pointer pt-5">
-              <input
-                type="checkbox"
-                checked={mt.ipv6 ?? false}
-                onChange={(e) => setMt({ ipv6: e.target.checked })}
-              />
-              ipv6 (强制走 Telegram IPv6 DC)
-            </label>
-            <Field label="dc-config-url (自定义 DC 映射,可选)">
-              <Input
-                value={mt.dc_config_url ?? ""}
-                onChange={(e) => setMt({ dc_config_url: e.target.value || undefined })}
-                placeholder="https://.../mtproto-dc-config.json"
-                className="text-xs"
-              />
-            </Field>
-          </div>
+          </LabeledField>
+          <ToggleRow
+            label="强制 IPv6 DC"
+            raw="ipv6"
+            hint="强制走 Telegram 的 IPv6 数据中心(DC)。"
+            checked={mt.ipv6 ?? false}
+            onChange={(v) => setMt({ ipv6: v })}
+          />
+          <LabeledField
+            label="自定义 DC 映射"
+            raw="dc-config-url"
+            hint="可选。自定义 Telegram DC 地址映射表的下载链接,一般留空即可。"
+          >
+            <Input
+              value={mt.dc_config_url ?? ""}
+              onChange={(e) => setMt({ dc_config_url: e.target.value || undefined })}
+              placeholder="https://.../mtproto-dc-config.json"
+              className="text-xs"
+            />
+          </LabeledField>
           <div className="text-[11px] text-muted-foreground border-t pt-2">
             Telegram 客户端填:服务器 = 可达 interface 的地址,端口 = {mt.port},secret 同上;
             或使用链接 <code className="text-[10px]">tg://proxy?server=&lt;host&gt;&amp;port={mt.port}&amp;secret=&lt;secret&gt;</code>
           </div>
-        </>
+        </div>
       )}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <Label className="text-xs">{label}</Label>
-      <div className="mt-1">{children}</div>
     </div>
   );
 }
