@@ -255,6 +255,57 @@ describe("generateSurgeConfig", () => {
     expect(asiaLine).not.toContain("Unknown-01");
   });
 
+  it("hidden_nodes: 节点留在 [Proxy] 且能当 underlying-proxy,但不进组的 selector 成员", () => {
+    const nodes: Node[] = [
+      { name: "HK 中转-01", type: "ss", server: "h.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "HK", tags: [] },
+      { name: "JP 落地-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", chain_via: "HK 中转-01", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "Auto",
+        name: "Auto",
+        type: "url-test",
+        proxies: [],
+        nested_groups: [],
+        selector: { from_providers: [], exclude_type: [], include_region: [] },
+      },
+      {
+        id: "Landing",
+        name: "Landing",
+        type: "select",
+        proxies: ["JP 落地-01"],
+        nested_groups: [],
+      },
+    ];
+    const out = generateSurgeConfig({
+      profile: baseProfile({
+        proxy_groups: ["Auto", "Landing"],
+        hidden_nodes: {
+          include_regex: "落地",
+          from_providers: [],
+          include_region: [],
+          include_type: [],
+          exclude_type: [],
+          include_nodes: [],
+        },
+      }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Auto" },
+      surgeModules: [],
+      warnings: [],
+    });
+    const lines = out.split(/\r?\n/);
+    // [Proxy] 段仍有这个节点,且链式参数完好
+    const proxyLine = lines.find((l) => l.startsWith("JP 落地-01 = "))!;
+    expect(proxyLine).toContain("underlying-proxy=HK 中转-01");
+    // selector 动态匹配的组不再收纳隐藏节点
+    expect(lines.find((l) => l.startsWith("Auto = "))!).not.toContain("JP 落地-01");
+    // 显式点名保留
+    expect(lines.find((l) => l.startsWith("Landing = "))!).toContain("JP 落地-01");
+  });
+
   it("nested_groups: 把其它组作为嵌套引用加进 [Proxy Group] 行的成员段", () => {
     // 跟 clash 的同名测试对称 — 验证 v2 nested_groups 字段在 surge 端的契约。
     // Surge 客户端把每个组成员段(逗号分隔)里的"组名"识别成嵌套引用,

@@ -212,6 +212,40 @@ chain_rules:
 
 ---
 
+## 让落地节点不能被直接选择(`hidden_nodes`)
+
+落地节点通常只应该作为链的出口:直连它慢、容易被风控,也没必要出现在客户端的节点列表里。
+`Profile.hidden_nodes` 就是给这种节点用的:
+
+```yaml
+# data/profiles/home.yaml
+hidden_nodes:
+  include_regex: "落地|家宽"
+  # 也可用 from_providers / include_region / include_type / exclude_type / include_nodes,
+  # 字段名与 chain_rules 的 selector 一致,条件之间是「且」
+```
+
+命中的节点:
+
+| 行为 | 说明 |
+|---|---|
+| 写进 `proxies:` / `[Proxy]` | 照常输出 —— 否则 `dialer-proxy` / `underlying-proxy` 会悬空 |
+| 可以作为 `chain_rules.via` | 不受影响 |
+| 被策略组 selector 动态匹配 | **不再收纳**(地区组 / 自动测速组里都看不到) |
+| 被组的 `proxies` 显式点名 | **保留** —— 建一个组把落地节点列进去,从那个组选中它就是走完整的链 |
+
+与 `chain_rules.selector` 的唯一语义差异:**所有条件留空 = 不隐藏任何节点**(链式规则留空是"匹配全部")。
+Profile 编辑器 →「链式代理」tab 顶部有可视化配置区,实时显示命中了哪些节点。
+
+两种"隐藏会失效"的情况:
+
+- Clash `use_proxy_providers` 模式下,隐藏节点来自 proxy-provider 机场 —— 组靠 `use: [机场]`
+  引用、成员由客户端展开,本地挡不住(生成时给 warning)
+- Surge 组手动开了 `include_all_proxies=true` / `policy_regex_filter` —— 成员同样由客户端从
+  `[Proxy]` 段展开
+
+---
+
 ## 故障排查
 
 | 症状 | 检查 |
@@ -224,3 +258,5 @@ chain_rules:
 | 订阅头出现 `# WARN: Chain cycle detected` | chain_rules 形成了 A→B 又 B→A 的环,环上节点已被自动降级为直连;修正规则消除环即可恢复 |
 | 订阅头出现 `# WARN: Chain dangling` | `via` 指向的节点/组不在过滤后的节点池里(被 node_filter 过滤,或该组没加进 profile.proxy_groups) |
 | 链式生效但延迟很高 | WARP/前置节点本身慢;考虑用 url-test pool |
+| 配了 `hidden_nodes` 但客户端里还能选到 | ① 某个组的 `proxies` 显式点名了它(设计如此,显式优先);② Clash `use_proxy_providers` 模式(看订阅头 warning);③ Surge 组开了 `include_all_proxies` |
+| 配了 `hidden_nodes` 后策略组空了 | 条件写太宽把普通节点也隐藏了;到「链式代理」tab 顶部看命中样例 |

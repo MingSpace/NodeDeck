@@ -11,6 +11,7 @@ import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, buildProviderLabels, escapeSurgeNames } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
 import { buildGroupMemberIndex, filterNodesBySelector } from "./group-members.js";
+import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { buildSurgeHostLines } from "./hosts.js";
 
@@ -45,10 +46,13 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   });
   // Surge 专属:把 = , " 等会破坏 INI 行解析的字符替换掉,且同步改写所有引用。
   const escaped = escapeSurgeNames(uniqued.nodes, uniqued.groups, input.warnings);
+  // hidden_nodes 在 escape 之后算:用户点名的节点名与最终产物里的一致。
+  // 这些节点照常进 [Proxy](underlying-proxy 指得到),只是不参与组 selector 的动态匹配。
+  const hiddenNodes = resolveHiddenNodeNames(escaped.nodes, profile.hidden_nodes);
   // chain_rules 的 selector.include_groups 需要"组 → 成员节点名"索引。
   // 用 escape 之后的节点/组算,保证组名与 Surge 产物里的一致。
   const chained = applyChainRules(escaped.nodes, profile, {
-    groupMembers: buildGroupMemberIndex(escaped.groups, escaped.nodes),
+    groupMembers: buildGroupMemberIndex(escaped.groups, escaped.nodes, { hiddenNodes }),
   });
   const groupNames = new Set(escaped.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
@@ -148,7 +152,7 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   if (sanitizedGroups.length > 0) {
     lines.push("[Proxy Group]");
     for (const g of sanitizedGroups) {
-      lines.push(buildSurgeProxyGroup(g, filteredNodes));
+      lines.push(buildSurgeProxyGroup(g, filteredNodes, hiddenNodes));
     }
     lines.push("");
   }
@@ -642,8 +646,8 @@ function escapeValue(v: string): string {
   return v;
 }
 
-function buildSurgeProxyGroup(g: ProxyGroup, allNodes: Node[]): string {
-  const members = resolveSurgeGroupMembers(g, allNodes);
+function buildSurgeProxyGroup(g: ProxyGroup, allNodes: Node[], hiddenNodes: Set<string>): string {
+  const members = resolveSurgeGroupMembers(g, allNodes, hiddenNodes);
   const params: string[] = [];
   if (g.url) params.push(`url=${g.url}`);
   if (g.interval !== undefined) params.push(`interval=${g.interval}`);
@@ -664,7 +668,7 @@ function buildSurgeProxyGroup(g: ProxyGroup, allNodes: Node[]): string {
   return `${g.name} = ${type},${memberStr}${paramStr}`;
 }
 
-function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
+function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[], hiddenNodes: Set<string>): string[] {
   const members = new Set<string>(g.proxies);
   // nested_groups:把其它策略组作为单个 proxy 项嵌套引用加进 [Proxy Group] 行的成员段。
   // 与顶层 g.include_other_group(Surge 原生 include-other-group 参数,语义是平铺
@@ -674,7 +678,11 @@ function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[]): string[] {
   // 但测试里手动构造的 ProxyGroup literal 可能漏写。
   for (const otherGroup of g.nested_groups ?? []) members.add(otherGroup);
   if (g.selector) {
-    for (const n of filterNodesBySelector(allNodes, g.selector)) members.add(n.name);
+    // 隐藏节点只挡 selector 动态匹配;上面 g.proxies 的显式点名是用户的明确意图,保留。
+    // 注意 include-all-proxies / policy-regex-filter 由 Surge 客户端自己展开 [Proxy] 段,
+    // 本地过滤不到 —— 那类组仍会把隐藏节点列出来。
+    const selectable = hiddenNodes.size > 0 ? allNodes.filter((n) => !hiddenNodes.has(n.name)) : allNodes;
+    for (const n of filterNodesBySelector(selectable, g.selector)) members.add(n.name);
   }
   if (members.size === 0) members.add("DIRECT");
   return Array.from(members);

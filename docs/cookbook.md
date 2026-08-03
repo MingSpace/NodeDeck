@@ -335,7 +335,44 @@ UI 顶部会提示 `N 个节点命中多条规则`,被完全抢走的规则打�
 多跳(`A → B → C`)靠"前置自己也挂了链"实现:给 `Landing-A` 写一条 `via: Relay-B`,再给 `Relay-B`
 写一条 `via: Relay-C`。UI 底部「解析后的链路」会展开完整路径便于确认。
 
-### 3.5 自动校验
+### 3.5 让落地节点「只能经链式使用」,不出现在选择列表里
+
+落地节点(家宽 / IEPL / 原生 IP 那类)常常不希望被直接选中 —— 直连它要么慢要么容易被风控,
+只应该作为链的出口。`hidden_nodes` 干的就是这件事:
+
+```yaml
+# data/profiles/home.yaml(节选)
+hidden_nodes:
+  include_regex: "落地|家宽"       # 也支持 from_providers / include_region / include_type / include_nodes
+```
+
+命中的节点:
+
+- **照常写进** Clash `proxies:` / Surge `[Proxy]` —— 所以 `chain_via` 指得到,链式照常工作
+- **不再被任何策略组的 selector 动态匹配收纳** —— 地区组、自动测速组里都看不到它们
+- **组的 `proxies` 显式点名仍然保留** —— 这是有意的:你专门建一个组把落地节点列进去,
+  客户端从那个组选中它 = 走完整的链;而"顺手被自动组捞进来直连"的路被堵掉了
+
+于是典型配置长这样:落地节点写在一个显式组里(`Landing`),链式规则把它挂到中转节点上,
+其余自动组只剩中转/普通节点。
+
+```yaml
+# data/groups/landing.yaml
+proxies: ["JP 落地-01", "JP 落地-02"]   # 显式点名,不受 hidden_nodes 影响
+```
+
+选择器语义与链式规则的「作用范围」完全一致(条件之间是"且",正则大小写不敏感),
+唯一的差别是:**所有条件留空 = 不隐藏任何节点**(链式规则留空是"匹配全部")。
+Profile 编辑器 →「链式代理」tab 顶部有可视化配置区,能实时看到命中了哪些节点。
+
+两个失效场景要留意:
+
+- 开了 `clash_options.use_proxy_providers` 且隐藏节点来自 proxy-provider 机场时,组是靠
+  `use: [机场]` 引用的、成员由客户端展开 —— 隐藏挡不住,生成时会给一条 warning
+- Surge 组手动开了 `include_all_proxies=true`(或配了 `policy_regex_filter`)时,成员同样由
+  客户端从 `[Proxy]` 段展开,隐藏节点会重新出现
+
+### 3.6 自动校验
 
 - **悬空引用**: 如果 `via: WARP` 但 WARP 节点不在最终节点池里(被 `node_filter` 排除/机场没拉到),自动清空该节点的 chain_via 并 warning,不会让客户端加载报错。
 - **环检测**: A→B→A 这种环被发现后,环上节点的 chain_via 都会被清空 + warning。

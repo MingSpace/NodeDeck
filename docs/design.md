@@ -48,6 +48,7 @@ Providers → Fetch + Cache → Parse → Normalize (region/level/line tag)
          → [可选] sort_by_region 地区聚类
          → uniquifyNodeNames (撞名加来源前缀)
          → [仅 Surge] escapeSurgeNames (净化 = , ")
+         → resolveHiddenNodeNames (hidden_nodes: 算出"仅供链式使用"的节点)
          → applyChainRules (写 chain_via)
          → validateChain (悬空降级 + 环检测)
          → validateGroupRefs (剔除 group.proxies 里的悬空引用)
@@ -80,6 +81,11 @@ Web UI 会把冲突和"被遮蔽"的规则显式标出来(`POST /api/profiles/:i
 generator 入口会做两层校验:
 1. **悬空引用**: chain_via 指向的节点/组若不存在(或被 `node_filter` 排除),自动清空该字段并 warning。
 2. **环检测**: A→B→A 的环被发现后,把环上所有节点的 chain_via 清空并 warning,不再让用户看到 500。
+
+`Profile.hidden_nodes`(`generators/hidden-nodes.ts`)解决"落地节点只想经链式使用"的诉求:
+命中的节点照常写进 `proxies:` / `[Proxy]`(所以 chain_via 指得到),但不参与任何策略组
+selector 的动态匹配 —— 组的 `proxies` 显式点名仍保留,这是用户使用链式落地的入口。
+选择器字段与 chain selector 同名同义(判定复用 `matchesSelector`),唯独**全空 = 不隐藏**。
 
 详见 [`chain-proxy.md`](chain-proxy.md)。
 

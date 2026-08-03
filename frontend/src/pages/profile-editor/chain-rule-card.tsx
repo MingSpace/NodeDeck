@@ -193,7 +193,7 @@ export function ChainRuleCard({
 
       {expanded && (
         <div className="space-y-3 border-t px-3 py-3">
-          <Row label="作用范围" hint="按策略组和指定节点是「或」的关系,与下面其它条件是「且」">
+          <SelectorRow label="作用范围" hint="按策略组和指定节点是「或」的关系,与下面其它条件是「且」">
             <div className="space-y-1.5">
               <div className="flex items-start gap-2">
                 <span className="mt-0.5 inline-flex w-14 shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
@@ -227,9 +227,9 @@ export function ChainRuleCard({
                 </div>
               </div>
             </div>
-          </Row>
+          </SelectorRow>
 
-          <Row label="节点来源" hint="留空 = 不限机场(含以后新增的)">
+          <SelectorRow label="节点来源" hint="留空 = 不限机场(含以后新增的)">
             <SearchMultiSelect
               options={providerOptions}
               selected={selector.from_providers ?? []}
@@ -239,18 +239,18 @@ export function ChainRuleCard({
               searchPlaceholder="搜索机场…"
               noOptionsHint="暂无节点源"
             />
-          </Row>
+          </SelectorRow>
 
-          <Row label="地区白名单" hint="留空 = 不限地区">
+          <SelectorRow label="地区白名单" hint="留空 = 不限地区">
             <ChipToggles
               options={regionOptions}
               selected={selector.include_region ?? []}
               onChange={(v) => patchSelector({ include_region: v })}
               emptyLabel="当前节点池没有可识别地区的节点"
             />
-          </Row>
+          </SelectorRow>
 
-          <Row label="协议">
+          <SelectorRow label="协议">
             <div className="space-y-1.5">
               <div className="flex items-start gap-2">
                 <span className="mt-0.5 w-8 shrink-0 text-[11px] text-muted-foreground">仅</span>
@@ -276,9 +276,9 @@ export function ChainRuleCard({
                 </div>
               </div>
             </div>
-          </Row>
+          </SelectorRow>
 
-          <Row label="名称正则" hint="默认大小写不敏感,不要写 (?i)">
+          <SelectorRow label="名称正则" hint="默认大小写不敏感,不要写 (?i)">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Input
                 value={selector.include_regex ?? ""}
@@ -293,9 +293,9 @@ export function ChainRuleCard({
                 className="h-7 font-mono text-xs"
               />
             </div>
-          </Row>
+          </SelectorRow>
 
-          <Row label="已有链式" hint="节点从机场原文带来的 dialer-proxy / underlying-proxy">
+          <SelectorRow label="已有链式" hint="节点从机场原文带来的 dialer-proxy / underlying-proxy">
             <div className="flex flex-wrap items-center gap-1">
               <ModeButton
                 active={(rule.mode ?? "override") === "override"}
@@ -315,16 +315,16 @@ export function ChainRuleCard({
                 </span>
               )}
             </div>
-          </Row>
+          </SelectorRow>
 
-          <Row label="备注">
+          <SelectorRow label="备注">
             <Input
               value={rule.comment ?? ""}
               onChange={(e) => onUpdate({ comment: e.target.value || undefined })}
               placeholder="给这条规则起个名字,例如「AI 组走 WARP 落地」"
               className="h-7 text-xs"
             />
-          </Row>
+          </SelectorRow>
 
           {stat && stat.sample.length > 0 && (
             <div className="rounded-md bg-muted/40 px-2.5 py-2">
@@ -356,7 +356,7 @@ export function ChainRuleCard({
   );
 }
 
-function Row({
+export function SelectorRow({
   label,
   hint,
   children,

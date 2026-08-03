@@ -11,6 +11,7 @@ import { applyNodeFilter } from "../generators/node-filter.js";
 import { sortNodesByRegion } from "../generators/node-sort.js";
 import { uniquifyNodeNames, buildProviderLabels } from "../generators/node-naming.js";
 import { buildGroupMemberIndex } from "../generators/group-members.js";
+import { resolveHiddenNodeNames } from "../generators/hidden-nodes.js";
 import {
   analyzeChainRules,
   applyChainRules,
@@ -296,7 +297,8 @@ profilePreviewRouter.post("/:id/chain-preview", async (c) => {
     groups: resolved.groups,
   });
 
-  const groupMembers = buildGroupMemberIndex(uniqued.groups, uniqued.nodes);
+  const hiddenNodes = resolveHiddenNodeNames(uniqued.nodes, profile.hidden_nodes);
+  const groupMembers = buildGroupMemberIndex(uniqued.groups, uniqued.nodes, { hiddenNodes });
   const groupNames = new Set(uniqued.groups.map((g) => g.name));
   const analysis = analyzeChainRules(uniqued.nodes, profile, { groupMembers });
 
@@ -352,6 +354,8 @@ profilePreviewRouter.post("/:id/chain-preview", async (c) => {
       region: n.region,
       source_provider_id: n.source_provider_id,
     })),
+    hidden_count: hiddenNodes.size,
+    hidden_sample: [...hiddenNodes].slice(0, MATCH_SAMPLE_LIMIT),
     warnings: [...validationWarnings, ...chainWarnings],
     revalidating: (resolved.revalidating?.length ?? 0) > 0,
   });

@@ -25,6 +25,24 @@ export interface ChainSelector {
   include_groups?: string[];
 }
 
+/**
+ * 「仅供链式使用」的节点选择器。与后端 hiddenNodeSelectorSchema 保持同步
+ * (backend/src/schemas/profile.ts)。
+ *
+ * 命中的节点照常写进订阅的节点段(所以能当链式出口、也能被组显式点名),
+ * 但不会被任何策略组的 selector 动态匹配收纳。注意与 ChainSelector 相反:
+ * **所有条件留空 = 不隐藏任何节点**。
+ */
+export interface HiddenNodeSelector {
+  include_regex?: string;
+  exclude_regex?: string;
+  from_providers?: string[];
+  include_region?: string[];
+  include_type?: string[];
+  exclude_type?: string[];
+  include_nodes?: string[];
+}
+
 export type ChainMode = "override" | "fill";
 
 export interface ChainRule {
@@ -59,6 +77,9 @@ export interface ChainPreviewResp {
   chains: { node: string; path: string[]; terminal: ChainTerminal }[];
   groups: { name: string; member_count: number }[];
   nodes: { name: string; type: string; region?: string; source_provider_id?: string }[];
+  /** profile.hidden_nodes 命中的节点数(这些节点在客户端选不到,只能经链式或组显式点名使用) */
+  hidden_count: number;
+  hidden_sample: string[];
   warnings: string[];
   // true = 有机场当前无 cache、正在后台首次拉取,结果稍后可用(前端据此短轮询)。
   revalidating?: boolean;
@@ -77,6 +98,8 @@ export interface Profile {
   providers: string[];
   node_filter: NodeFilter;
   chain_rules: ChainRule[];
+  // 后端是 optional:没配过这功能的 profile 里根本没有这个键
+  hidden_nodes?: HiddenNodeSelector;
   proxy_groups: string[];
   rule_modules: RuleModuleRef[];
   surge_modules: string[];

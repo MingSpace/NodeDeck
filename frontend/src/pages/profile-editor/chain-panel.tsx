@@ -28,8 +28,9 @@ import { cn } from "@/lib/utils";
 import { useEntityList } from "@/api/entities";
 import { useChainPreview } from "./use-profile-form";
 import { ChainRuleCard } from "./chain-rule-card";
+import { HiddenNodesCard, isHiddenSelectorEmpty } from "./hidden-nodes-card";
 import type { PickerOption } from "./chain-pickers";
-import type { ChainRule, ChainTerminal, Profile } from "./types";
+import type { ChainRule, ChainTerminal, HiddenNodeSelector, Profile } from "./types";
 
 interface NamedItem {
   id: string;
@@ -40,6 +41,7 @@ interface Props {
   profileId: string;
   draft: Profile;
   onChange: (rules: ChainRule[]) => void;
+  onHiddenNodesChange: (selector: HiddenNodeSelector | undefined) => void;
 }
 
 // 协议全表(与 backend/src/schemas/node.ts nodeTypeSchema 同步)。
@@ -59,13 +61,15 @@ const TERMINAL_LABEL: Record<ChainTerminal, string> = {
   cycle: "成环",
 };
 
-export function ChainPanel({ profileId, draft, onChange }: Props) {
+export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: Props) {
   const groups = useEntityList<NamedItem>("groups");
   const providers = useEntityList<NamedItem>("providers");
   const preview = useChainPreview(profileId, draft, true);
   // 新加的规则默认展开(用户马上要填),既有规则默认折叠(避免一屏塞不下)。
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
   const [pathsOpen, setPathsOpen] = useState(false);
+  // 已经配过就默认展开:用户回到这页多半是来调它的
+  const [hiddenOpen, setHiddenOpen] = useState(!isHiddenSelectorEmpty(draft.hidden_nodes));
 
   const rules = draft.chain_rules;
   const data = preview.data;
@@ -231,6 +235,21 @@ export function ChainPanel({ profileId, draft, onChange }: Props) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-3">
+        <div className="mb-2">
+          <HiddenNodesCard
+            value={draft.hidden_nodes}
+            onChange={onHiddenNodesChange}
+            open={hiddenOpen}
+            onToggleOpen={() => setHiddenOpen((v) => !v)}
+            hiddenCount={data?.hidden_count}
+            hiddenSample={data?.hidden_sample}
+            nodeOptions={nodeOptions}
+            providerOptions={providerOptions}
+            regionOptions={regionOptions}
+            typeOptions={typeOptions}
+          />
+        </div>
+
         {rules.length === 0 ? (
           <EmptyState onAdd={addRule} />
         ) : (

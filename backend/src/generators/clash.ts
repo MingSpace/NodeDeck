@@ -11,6 +11,7 @@ import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, buildProviderLabels } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
 import { buildGroupMemberIndex, filterNodesBySelector } from "./group-members.js";
+import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { splitClashHosts } from "./hosts.js";
@@ -66,10 +67,13 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     providerLabels: buildProviderLabels(input.providers ?? []),
     groups: input.groups,
   });
+  // hidden_nodes 在改名之后算:用户点名的节点名与最终产物里的一致。
+  // 这些节点照常进 proxies(chain_via 指得到),只是不参与组 selector 的动态匹配。
+  const hiddenNodes = resolveHiddenNodeNames(uniqued.nodes, profile.hidden_nodes);
   // chain_rules 的 selector.include_groups 需要"组 → 成员节点名"索引。
   // 用改名后的节点/组算(uniqued),这样规则里写的组名与最终产物一致。
   const chained = applyChainRules(uniqued.nodes, profile, {
-    groupMembers: buildGroupMemberIndex(uniqued.groups, uniqued.nodes),
+    groupMembers: buildGroupMemberIndex(uniqued.groups, uniqued.nodes, { hiddenNodes }),
   });
   const groupNames = new Set(uniqued.groups.map((g) => g.name));
   const filteredNodes = validateChain(chained, { groupNames, warnings: input.warnings });
@@ -94,8 +98,21 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     ? filteredNodes.filter((n) => !n.source_provider_id || !eligibleProviderIds.has(n.source_provider_id))
     : filteredNodes;
 
+  // proxy-providers 模式下,组是通过 `use: [provider_id]` 引用整个机场的,
+  // 客户端自己展开成员 → 我们在本地剔除的隐藏节点会被重新捞回选择列表。
+  if (hiddenNodes.size > 0 && eligibleProviderIds.size > 0) {
+    const leaked = filteredNodes.filter(
+      (n) => hiddenNodes.has(n.name) && n.source_provider_id && eligibleProviderIds.has(n.source_provider_id),
+    );
+    if (leaked.length > 0) {
+      input.warnings.push(
+        `use_proxy_providers 已开启,${leaked.length} 个隐藏节点来自 proxy-provider 机场,组靠 use: 引用整个机场,这些节点在客户端仍可被直接选择`,
+      );
+    }
+  }
+
   const proxies = inlineNodes.map((n) => buildClashProxy(n, input.warnings)).filter((p): p is Record<string, unknown> => p !== null);
-  const proxyGroups = sanitizedGroups.map((g) => buildClashProxyGroup(g, filteredNodes, eligibleProviderIds));
+  const proxyGroups = sanitizedGroups.map((g) => buildClashProxyGroup(g, filteredNodes, eligibleProviderIds, hiddenNodes));
   const ruleProviders: Record<string, unknown> = {};
 
   const proxyProviders: Record<string, unknown> = {};
@@ -472,6 +489,7 @@ function buildClashProxyGroup(
   g: ProxyGroup,
   allNodes: Node[],
   proxyProviderIds: Set<string>,
+  hiddenNodes: Set<string>,
 ): Record<string, unknown> {
   // proxy-providers 模式下:
   // - 来自 eligible providers 的节点不在主订阅 proxies 段,group 通过 use: [provider_id] 引用
@@ -488,7 +506,7 @@ function buildClashProxyGroup(
     }
   }
 
-  const proxies = resolveGroupMembers(g, allNodes, proxyProviderIds);
+  const proxies = resolveGroupMembers(g, allNodes, proxyProviderIds, hiddenNodes);
   const out: Record<string, unknown> = {
     name: g.name,
     type: g.type === "smart" ? "url-test" : g.type === "ssid" ? "select" : g.type,
@@ -508,6 +526,7 @@ function resolveGroupMembers(
   g: ProxyGroup,
   allNodes: Node[],
   proxyProviderIds: Set<string>,
+  hiddenNodes: Set<string>,
 ): string[] {
   const members = new Set<string>(g.proxies);
   // 顶层 include_other_group(Surge 风格的单组引用)在 Clash 端没有原生字段,
@@ -526,7 +545,9 @@ function resolveGroupMembers(
       proxyProviderIds.size > 0
         ? allNodes.filter((n) => !n.source_provider_id || !proxyProviderIds.has(n.source_provider_id))
         : allNodes;
-    for (const n of filterNodesBySelector(base, g.selector)) members.add(n.name);
+    // 隐藏节点只挡 selector 动态匹配;上面 g.proxies 的显式点名是用户的明确意图,保留。
+    const selectable = hiddenNodes.size > 0 ? base.filter((n) => !hiddenNodes.has(n.name)) : base;
+    for (const n of filterNodesBySelector(selectable, g.selector)) members.add(n.name);
   }
   // proxy-providers 模式下,group 可以仅靠 use 引用,proxies 列表允许为空(mihomo 接受);
   // 否则保持原行为,空就回退到 DIRECT。

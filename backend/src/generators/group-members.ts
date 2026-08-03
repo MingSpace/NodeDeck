@@ -65,10 +65,19 @@ export function filterNodesBySelector<T extends Node>(nodes: T[], selector: Node
  * - 内置 policy(DIRECT / REJECT*)与不存在的引用一律丢弃
  * - `nested_groups` / `include_other_group` 递归展开成对方组的节点(组引用成环时断环)
  * - `proxies` 里若写的是组名(历史数据把组名混进显式列表)也按组引用展开
+ *
+ * `options.hiddenNodes`(profile.hidden_nodes 的解析结果)必须与两端 generator 的
+ * resolveGroupMembers 用同一套口径:只从 selector 动态匹配里剔除,显式 `proxies` 点名保留。
  */
-export function buildGroupMemberIndex(groups: ProxyGroup[], nodes: Node[]): Map<string, Set<string>> {
+export function buildGroupMemberIndex(
+  groups: ProxyGroup[],
+  nodes: Node[],
+  options?: { hiddenNodes?: Set<string> },
+): Map<string, Set<string>> {
   const nodeNames = new Set(nodes.map((n) => n.name));
   const knownGroups = new Set(groups.map((g) => g.name));
+  const hidden = options?.hiddenNodes;
+  const selectable = hidden && hidden.size > 0 ? nodes.filter((n) => !hidden.has(n.name)) : nodes;
 
   const direct = new Map<string, { own: Set<string>; refs: string[] }>();
   for (const g of groups) {
@@ -79,7 +88,7 @@ export function buildGroupMemberIndex(groups: ProxyGroup[], nodes: Node[]): Map<
       else if (knownGroups.has(p)) refs.push(p);
     }
     if (g.selector) {
-      for (const n of filterNodesBySelector(nodes, g.selector)) own.add(n.name);
+      for (const n of filterNodesBySelector(selectable, g.selector)) own.add(n.name);
     }
     // `?? []` 是 defensive — 经 schema parse 的 group 一定有这个字段(default []),
     // 但测试里手动构造的 ProxyGroup literal 可能漏写。

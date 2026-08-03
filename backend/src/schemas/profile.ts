@@ -52,6 +52,29 @@ export const chainSelectorSchema = selectorSchema.extend({
 });
 
 /**
+ * 「隐藏节点」选择器:命中的节点照常写进 Clash `proxies:` / Surge `[Proxy]`,所以仍然是
+ * chain_via(clash `dialer-proxy` / surge `underlying-proxy`)的合法目标 —— 但不会被任何
+ * 策略组的 selector 动态匹配捞进去。效果是客户端里选不到它们,只能经链式使用,
+ * 或由某个组的 `proxies` 显式点名(显式点名视为用户的明确意图,不剔除)。
+ *
+ * 与 chain / group selector 的关键差异:**所有条件留空 = 不隐藏任何节点**。
+ * chain selector 留空是"匹配全部",这里若沿用会导致字段一存在就全量隐藏,
+ * 判定见 generators/hidden-nodes.ts 的 `resolveHiddenNodeNames`。
+ *
+ * 字段名与 chainSelectorSchema 对齐(可直接喂给 chain/apply.ts 的 matchesSelector),
+ * 唯独不提供 `include_groups` — 组成员的计算本身依赖隐藏结果,互相咬尾。
+ */
+export const hiddenNodeSelectorSchema = z.object({
+  include_regex: z.string().optional(),
+  exclude_regex: z.string().optional(),
+  from_providers: z.array(z.string()).default([]),
+  include_region: z.array(z.string()).default([]),
+  include_type: z.array(z.string()).default([]),
+  exclude_type: z.array(z.string()).default([]),
+  include_nodes: z.array(z.string()).default([]),
+});
+
+/**
  * `mode` 决定命中后如何处理节点**已有**的 chain_via
  * (机场上游 Clash `dialer-proxy` / Surge `underlying-proxy` 解析进来的值):
  * - `override` — 覆盖(默认,与 v1 行为一致)
@@ -79,6 +102,10 @@ export const profileSchema = z.object({
 
   // chain proxy
   chain_rules: z.array(chainRuleSchema).default([]),
+
+  // 仅供链式使用、不进策略组动态成员的节点。
+  // 刻意用 optional 而不是 default({}):没配过这功能的 profile 落盘时不会多出一段空选择器噪音。
+  hidden_nodes: hiddenNodeSelectorSchema.optional(),
 
   // groups
   proxy_groups: z.array(idSchema).default([]),
@@ -121,3 +148,4 @@ export const profileSchema = z.object({
 export type Profile = z.infer<typeof profileSchema>;
 export type ChainRule = z.infer<typeof chainRuleSchema>;
 export type ChainSelector = z.infer<typeof chainSelectorSchema>;
+export type HiddenNodeSelector = z.infer<typeof hiddenNodeSelectorSchema>;

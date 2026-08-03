@@ -104,6 +104,17 @@ describe("buildGroupMemberIndex", () => {
     expect([...index.get("B")!].sort()).toEqual(["HK-01", "JP-01"]);
   });
 
+  it("drops hidden nodes from selector matches but keeps explicit ones", () => {
+    // 与两端 generator 的 resolveGroupMembers 同一套口径:隐藏只挡动态匹配。
+    const groups = [
+      group("Auto", { selector: { include_region: ["JP"] } as ProxyGroup["selector"] }),
+      group("Landing", { proxies: ["JP-01"] }),
+    ];
+    const index = buildGroupMemberIndex(groups, nodes, { hiddenNodes: new Set(["JP-01"]) });
+    expect([...index.get("Auto")!]).toEqual([]);
+    expect([...index.get("Landing")!]).toEqual(["JP-01"]);
+  });
+
   it("treats a group name written into proxies as a group reference", () => {
     const groups = [
       group("Pool", { proxies: ["JP-01"] }),

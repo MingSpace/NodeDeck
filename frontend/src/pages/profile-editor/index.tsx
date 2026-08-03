@@ -187,6 +187,7 @@ export function ProfileEditorPage() {
                   profileId={id}
                   draft={draft}
                   onChange={(chain_rules) => update({ chain_rules })}
+                  onHiddenNodesChange={(hidden_nodes) => update({ hidden_nodes })}
                 />
               )}
               {section === "advanced" && (

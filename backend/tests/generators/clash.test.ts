@@ -6,6 +6,7 @@ import type { Node } from "../../src/schemas/node.js";
 import type { ProxyGroup } from "../../src/schemas/proxy-group.js";
 import type { RuleSet } from "../../src/schemas/ruleset.js";
 import { generalPresetSchema } from "../../src/schemas/general-preset.js";
+import { providerSchema } from "../../src/schemas/provider.js";
 
 function baseProfile(overrides: Partial<Profile> = {}): Profile {
   return {
@@ -337,6 +338,96 @@ describe("generateClashConfig", () => {
     const parsed = yaml.load(out) as Record<string, unknown>;
     const proxies = parsed.proxies as Record<string, unknown>[];
     expect(proxies[1]["dialer-proxy"]).toBe("WARP");
+  });
+
+  it("hidden_nodes: 节点留在 proxies 且能当 dialer-proxy,但不进组的 selector 成员", () => {
+    const nodes: Node[] = [
+      { name: "HK 中转-01", type: "ss", server: "hk.example.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "HK", tags: [] },
+      { name: "JP 落地-01", type: "ss", server: "jp.example.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", chain_via: "HK 中转-01", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "Auto",
+        name: "Auto",
+        type: "url-test",
+        proxies: [],
+        nested_groups: [],
+        selector: { from_providers: [], exclude_type: [], include_region: [] },
+      },
+      {
+        id: "Landing",
+        name: "Landing",
+        type: "select",
+        proxies: ["JP 落地-01"],
+        nested_groups: [],
+      },
+    ];
+    const out = generateClashConfig({
+      profile: baseProfile({
+        proxy_groups: ["Auto", "Landing"],
+        hidden_nodes: {
+          include_regex: "落地",
+          from_providers: [],
+          include_region: [],
+          include_type: [],
+          exclude_type: [],
+          include_nodes: [],
+        },
+      }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Auto" },
+      warnings: [],
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const proxies = parsed.proxies as Record<string, unknown>[];
+    // 仍然写进 proxies,否则 dialer-proxy / 显式点名都会悬空
+    expect(proxies.map((p) => p.name)).toEqual(["HK 中转-01", "JP 落地-01"]);
+    expect(proxies[1]["dialer-proxy"]).toBe("HK 中转-01");
+
+    const proxyGroups = parsed["proxy-groups"] as Array<Record<string, unknown>>;
+    // selector 动态匹配的组不再收纳隐藏节点
+    expect(proxyGroups.find((g) => g.name === "Auto")!.proxies).toEqual(["HK 中转-01"]);
+    // 显式点名保留 —— 用户就是靠这种组来使用链式落地的
+    expect(proxyGroups.find((g) => g.name === "Landing")!.proxies).toEqual(["JP 落地-01"]);
+  });
+
+  it("hidden_nodes: proxy-providers 模式下会 warn 隐藏在客户端失效", () => {
+    const warnings: string[] = [];
+    const nodes: Node[] = [
+      { name: "JP 落地-01", type: "ss", server: "jp.example.com", port: 8388, cipher: "aes-128-gcm", password: "x", source_provider_id: "air", tags: [] },
+    ];
+    generateClashConfig({
+      profile: baseProfile({
+        clash_options: { use_proxy_providers: true, flag: "mihomo", group_style: "flow" },
+        hidden_nodes: {
+          include_regex: "落地",
+          from_providers: [],
+          include_region: [],
+          include_type: [],
+          exclude_type: [],
+          include_nodes: [],
+        },
+      }),
+      nodes,
+      groups: [],
+      rules: [],
+      finalRule: { policy: "DIRECT" },
+      providers: [
+        providerSchema.parse({
+          id: "air",
+          name: "Air",
+          type: "http",
+          url: "https://example.com/sub",
+          clash_proxy_provider: { enabled: true },
+        }),
+      ],
+      baseUrl: "https://nodedeck.example.com",
+      profileToken: "abcdefghij12",
+      warnings,
+    });
+    expect(warnings.some((w) => w.includes("use_proxy_providers") && w.includes("仍可被直接选择"))).toBe(true);
   });
 
   it("routes host server: to dns.proxy-server-nameserver-policy with fallback from general", () => {
