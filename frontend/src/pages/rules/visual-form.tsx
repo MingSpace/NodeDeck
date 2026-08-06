@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Flag, Ban } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -114,10 +115,10 @@ export function RuleSetVisualForm({ data, update }: Props) {
 
       {data.type === "inline_list" && (
         <Field label="payload (每行一条规则)">
-          <textarea
-            value={(data.payload ?? []).join("\n")}
-            onChange={(e) => update({ payload: e.target.value.split("\n").filter(Boolean) })}
-            className="w-full min-h-[120px] border rounded-md p-2 text-sm font-mono"
+          <PayloadTextarea
+            value={data.payload ?? []}
+            onChange={(payload) => update({ payload })}
+            className="min-h-[120px]"
             placeholder="DOMAIN-SUFFIX,example.com"
           />
         </Field>
@@ -133,10 +134,10 @@ export function RuleSetVisualForm({ data, update }: Props) {
             />
           </Field>
           <Field label="Surge fallback payload (Surge 无原生 GEOSITE,可手写 inline 规则备用)">
-            <textarea
-              value={(data.payload ?? []).join("\n")}
-              onChange={(e) => update({ payload: e.target.value.split("\n").filter(Boolean) })}
-              className="w-full min-h-[80px] border rounded-md p-2 text-sm font-mono"
+            <PayloadTextarea
+              value={data.payload ?? []}
+              onChange={(payload) => update({ payload })}
+              className="min-h-[80px]"
               placeholder="DOMAIN-SUFFIX,google.com"
             />
           </Field>
@@ -341,5 +342,39 @@ function Field({ label, hint, children }: { label: React.ReactNode; hint?: React
     <LabeledField label={label} hint={hint}>
       {children}
     </LabeledField>
+  );
+}
+
+// payload 是 string[],但直接把 join/split+filter(Boolean) 放进受控 textarea 会导致:
+// 每次按回车产生的空行在 onChange 里被立刻过滤掉,重渲染后换行消失 —— 用户根本敲不出回车。
+// 这里保留一份本地原始文本,允许自由换行(含空行);只把过滤后的数组同步给父级,
+// 落盘数据仍然干净。仅当外部 value(切 YAML 模式 / 重开条目)与当前过滤结果不一致时才回填。
+function PayloadTextarea({
+  value,
+  onChange,
+  className,
+  placeholder,
+}: {
+  value: string[];
+  onChange: (next: string[]) => void;
+  className?: string;
+  placeholder?: string;
+}) {
+  const [text, setText] = useState(() => value.join("\n"));
+  useEffect(() => {
+    if (value.join("\n") !== text.split("\n").filter(Boolean).join("\n")) {
+      setText(value.join("\n"));
+    }
+  }, [value]);
+  return (
+    <textarea
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(e.target.value.split("\n").filter(Boolean));
+      }}
+      className={`w-full border rounded-md p-2 text-sm font-mono ${className ?? ""}`}
+      placeholder={placeholder}
+    />
   );
 }
