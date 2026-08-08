@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { generateSurgeConfig } from "../../src/generators/surge.js";
+import { importSurgeConf } from "../../src/import/surge.js";
 import type { Profile } from "../../src/schemas/profile.js";
 import type { Node } from "../../src/schemas/node.js";
 import type { ProxyGroup } from "../../src/schemas/proxy-group.js";
@@ -44,7 +45,7 @@ describe("generateSurgeConfig", () => {
         tcp_connection: true,
         skip_server_cert_verify: true,
         ca_p12: "BASE64==",
-        ca_passphrase: "MINGCA",
+        ca_passphrase: "example-ca-pass",
       },
     };
     const nodes: Node[] = [
@@ -166,7 +167,7 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("[MITM]");
     expect(out).toContain("enable = true");
     expect(out).toContain("hostname = *.google.cn");
-    expect(out).toContain("ca-passphrase = MINGCA");
+    expect(out).toContain("ca-passphrase = example-ca-pass");
     expect(out).toContain("ca-p12 = BASE64==");
   });
 
@@ -465,5 +466,32 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("^https?://(www.)?(g|google)\\.?(cn|com.hk) https://www.google.com 302");
     expect(out).toContain("[MITM]");
     expect(out).toContain("hostname = %APPEND% *.google.cn");
+  });
+
+  // 手册: `http-api = key@ip:port`,key 是不可再切分的整串密钥。含 `^` 的 key 曾被
+  // 当成 user/password 分隔符拆开、再用 `:` 拼回,导致 key 静默改变、Surge 侧 X-Key
+  // 失配。这里锁住"导入再回写必须逐字符还原"。
+  it("round-trips the http-api key verbatim through import → generate", () => {
+    for (const key of ["alpha^bravo", "onlykey", "user:pw", "k^e:y"]) {
+      const parsed = importSurgeConf(`[General]\nhttp-api = ${key}@0.0.0.0:8890\n`).general?.http_api;
+      const out = generateSurgeConfig({
+        profile: baseProfile(),
+        nodes: [],
+        groups: [],
+        rules: [],
+        general: {
+          id: "g",
+          name: "g",
+          allow_lan: false,
+          mode: "rule",
+          log_level: "notify",
+          ipv6: false,
+          http_api: parsed,
+        },
+        surgeModules: [],
+        warnings: [],
+      });
+      expect(out).toContain(`http-api = ${key}@0.0.0.0:8890`);
+    }
   });
 });

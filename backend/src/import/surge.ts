@@ -133,9 +133,12 @@ function parseGeneralSection(text: string, fileName?: string): GeneralPreset | u
 }
 
 /**
- * 解析 `http-api = user^password@host:port`(Surge manual 写法)。
- * 兼容 `user:password@host:port`(NodeDeck generator 当前用 `:`)与无 user 形式
- * `password@host:port`。listen 用 `lastIndexOf('@')` 切,避免 password 里含 `@` 时崩。
+ * 解析 `http-api = key@ip:port`(https://manual.nssurge.com/profile/general.html)。
+ * 手册里 key 是一整串密钥,没有用户名概念。只按 `:` 拆 user —— 那是 NodeDeck 早期
+ * generator 自造的形态,拆开后回写仍用 `:` 拼回,能原样还原。刻意不按 `^` 拆:`^` 在
+ * 手册里没有任何含义,而按它拆之后会被回写成 `:`,key 静默改变,Surge 侧 X-Key 直接失配。
+ * 拆不出分隔符时整串都当 password,也绝不凭空补用户名(同样会给 key 加上不存在的前缀)。
+ * listen 用 `lastIndexOf('@')` 切,避免 key 里含 `@` 时崩。
  *
  * `http-api-tls` 用户在 conf 里写错成 `flase` 是常见现象;这里只把字面 "true" 当 true,
  * 其它一律 false,与 Surge 客户端宽松行为对齐。
@@ -148,9 +151,7 @@ function parseHttpApi(kv: Record<string, string>): GeneralPreset["http_api"] | u
   const cred = raw.slice(0, atIdx);
   const listen = raw.slice(atIdx + 1).trim();
   if (!listen) return undefined;
-  const caretIdx = cred.indexOf("^");
-  const colonIdx = cred.indexOf(":");
-  const sepIdx = caretIdx >= 0 ? caretIdx : colonIdx;
+  const sepIdx = cred.indexOf(":");
   let user: string | undefined;
   let password = cred;
   if (sepIdx > 0) {
@@ -158,7 +159,7 @@ function parseHttpApi(kv: Record<string, string>): GeneralPreset["http_api"] | u
     password = cred.slice(sepIdx + 1);
   }
   return {
-    user: user ?? "M1ing",
+    user,
     password,
     listen,
     web_dashboard: kv["http-api-web-dashboard"] === "true",

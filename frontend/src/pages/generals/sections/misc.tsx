@@ -355,11 +355,11 @@ export function SurgeOnlySection({ data, update }: Props) {
 export function HttpApiSection({ data, update }: Props) {
   const [showPwd, setShowPwd] = useState(false);
   const enabled = !!data.http_api;
+  // 与 backend/src/schemas/general-preset.ts 的 httpApiSchema 默认值保持同步
   const api = data.http_api ?? {
-    user: "M1ing",
     password: "",
     listen: "0.0.0.0:8890",
-    web_dashboard: true,
+    web_dashboard: false,
     tls: false,
   };
 
@@ -387,10 +387,23 @@ export function HttpApiSection({ data, update }: Props) {
       {enabled && (
         <div className="space-y-3 rounded-lg border bg-card/50 p-3">
           <div className="grid grid-cols-2 gap-3">
-            <LabeledField label="用户名" raw="user">
-              <Input value={api.user} onChange={(e) => setApi({ user: e.target.value })} placeholder="M1ing" className="text-xs" />
+            <LabeledField
+              label="用户名"
+              raw="user"
+              hint="Surge 的 http-api 只接受一整串密钥,没有用户名概念。留空即手册标准写法;仅当旧配置写成「用户名:密码@地址」需要原样保留时才填。"
+            >
+              <Input
+                value={api.user ?? ""}
+                onChange={(e) => setApi({ user: e.target.value || undefined })}
+                placeholder="留空(推荐)"
+                className="text-xs"
+              />
             </LabeledField>
-            <LabeledField label="密码" raw="password" hint="访问控制台 API 的密钥,请勿留空。">
+            <LabeledField
+              label="密码"
+              raw="password"
+              hint="访问控制台 API 的密钥。留空会生成畸形的 http-api 行,保存时后端会拒绝。"
+            >
               <div className="relative">
                 <Input
                   type={showPwd ? "text" : "password"}
@@ -409,6 +422,11 @@ export function HttpApiSection({ data, update }: Props) {
                   {showPwd ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                 </button>
               </div>
+              {api.password.length === 0 && (
+                <div className="text-[11px] text-destructive mt-1">
+                  密钥不能为空,否则会生成畸形的 http-api 行,保存时后端会拒绝
+                </div>
+              )}
             </LabeledField>
           </div>
           <LabeledField label="监听地址" raw="listen" hint="控制台 API 监听的地址与端口。0.0.0.0 表示允许局域网访问。">

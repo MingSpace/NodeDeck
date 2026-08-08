@@ -56,12 +56,18 @@ const mitmSchema = z
   })
   .optional();
 
+// Surge `http-api = key@ip:port`(https://manual.nssurge.com/profile/general.html):
+// key 是一整串密钥,协议里没有用户名概念。user 只为兼容历史导入落下的数据保留,
+// 留空时 generator 直接把 password 当 key 输出,这才是手册里的标准形态。
 const httpApiSchema = z
   .object({
-    user: z.string().default("M1ing"),
-    password: z.string(),
+    user: z.string().optional(),
+    // 空串会产出畸形的 `http-api = @0.0.0.0:8890`,Surge 加载时直接报错,所以必须非空。
+    password: z.string().min(1, "HTTP API 密钥不能为空"),
     listen: z.string().default("0.0.0.0:8890"),
-    web_dashboard: z.boolean().default(true),
+    // 与 Surge 手册的默认值对齐(默认 false)。网页控制台会挂在 http-api 的 listener 上,
+    // 而 listen 默认是 0.0.0.0,默认开启等于把控制台暴露到整个局域网。
+    web_dashboard: z.boolean().default(false),
     tls: z.boolean().default(false),
   })
   .optional();

@@ -151,11 +151,12 @@ describe("importSurgeConf", () => {
 
   // http-api / ipv6-vif / wifi 系列 / always-real-ip 历史上没解析过,
   // 用户拿原配置一键导入会丢字段。这里固化解析行为,防止以后回归。
-  // http-api 兼容 Surge 官方 `^` 与 NodeDeck generator 当前的 `:` 两种分隔。
+  // http-api 手册形态是 `key@ip:port`(无用户名);只有 `:` 会被当成分隔符,那是
+  // NodeDeck 早期 generator 自造的形态,拆开再拼回无损。
   it("parses http-api / ipv6-vif / wifi-assist / allow-hotspot-access / always-real-ip", () => {
     const text = `
 [General]
-http-api = M1ing^secret@0.0.0.0:8890
+http-api = alpha^bravo@0.0.0.0:8890
 http-api-web-dashboard = true
 http-api-tls = flase
 ipv6-vif = off
@@ -168,9 +169,11 @@ geoip-maxmind-url = https://example.com/cn.mmdb
 show-error-page-for-reject = true
 `;
     const r = importSurgeConf(text);
+    // `^` 在手册里没有含义,整串都是 key。若按 `^` 拆成 user/password,回写时会用 `:`
+    // 拼回,key 从 `alpha^bravo` 变成 `alpha:bravo`,Surge 侧 X-Key 直接失配。
     expect(r.general?.http_api).toEqual({
-      user: "M1ing",
-      password: "secret",
+      user: undefined,
+      password: "alpha^bravo",
       listen: "0.0.0.0:8890",
       web_dashboard: true,
       tls: false,
@@ -186,11 +189,15 @@ show-error-page-for-reject = true
   });
 
   it("parses http-api with `:` separator (NodeDeck generator style) and without user", () => {
+    // `:` 是 NodeDeck 早期 generator 自造的形态,拆开后回写仍拼成 `user:pw`,无损。
     const r1 = importSurgeConf(`[General]\nhttp-api = user:pw@127.0.0.1:8080\n`);
     expect(r1.general?.http_api).toMatchObject({ user: "user", password: "pw", listen: "127.0.0.1:8080" });
 
+    // 无分隔符时整串都是 key,不能凭空补用户名 —— 否则回写成 `<补的名>:onlypassword@`
+    // 会改掉 key,Surge 侧 X-Key 失配。
     const r2 = importSurgeConf(`[General]\nhttp-api = onlypassword@127.0.0.1:8080\n`);
-    expect(r2.general?.http_api).toMatchObject({ user: "M1ing", password: "onlypassword", listen: "127.0.0.1:8080" });
+    expect(r2.general?.http_api).toMatchObject({ password: "onlypassword", listen: "127.0.0.1:8080" });
+    expect(r2.general?.http_api?.user).toBeUndefined();
   });
 
   // Surge 内置 ruleset SYSTEM/LAN (manual.nssurge.com/rule/ruleset.html#internal-ruleset)

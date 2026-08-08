@@ -27,7 +27,7 @@ export interface GeneralPresetData {
   show_error_page_for_reject?: boolean;
   block_quic?: "per-policy" | "all-proxy" | "all" | "always-allow";
   http_api?: {
-    user: string;
+    user?: string;
     password: string;
     listen: string;
     web_dashboard: boolean;
