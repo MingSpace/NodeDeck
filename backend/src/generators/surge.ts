@@ -10,7 +10,7 @@ import { sortNodesByRegion } from "./node-sort.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, buildProviderLabels, escapeSurgeNames } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
-import { buildGroupMemberIndex, filterNodesBySelector } from "./group-members.js";
+import { buildGroupMemberIndex, resolveGroupMemberEntries } from "./group-members.js";
 import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { buildSurgeHostLines } from "./hosts.js";
@@ -669,21 +669,13 @@ function buildSurgeProxyGroup(g: ProxyGroup, allNodes: Node[], hiddenNodes: Set<
 }
 
 function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[], hiddenNodes: Set<string>): string[] {
-  const members = new Set<string>(g.proxies);
-  // nested_groups:把其它策略组作为单个 proxy 项嵌套引用加进 [Proxy Group] 行的成员段。
-  // 与顶层 g.include_other_group(Surge 原生 include-other-group 参数,语义是平铺
-  // 展开其它组成员节点)互补——后者保留为 params。
-  // schema transform 已把老的 selector.include_other_group 迁移到这里,不再从 selector 读取。
-  // `?? []` 是 defensive — 经 schema parse 的 group 一定有这个字段(default []),
-  // 但测试里手动构造的 ProxyGroup literal 可能漏写。
-  for (const otherGroup of g.nested_groups ?? []) members.add(otherGroup);
-  if (g.selector) {
-    // 隐藏节点只挡 selector 动态匹配;上面 g.proxies 的显式点名是用户的明确意图,保留。
-    // 注意 include-all-proxies / policy-regex-filter 由 Surge 客户端自己展开 [Proxy] 段,
-    // 本地过滤不到 —— 那类组仍会把隐藏节点列出来。
-    const selectable = hiddenNodes.size > 0 ? allNodes.filter((n) => !hiddenNodes.has(n.name)) : allNodes;
-    for (const n of filterNodesBySelector(selectable, g.selector)) members.add(n.name);
-  }
-  if (members.size === 0) members.add("DIRECT");
-  return Array.from(members);
+  // 顶层 g.include_other_group 是 Surge 原生 include-other-group 参数(语义是平铺展开其它组的
+  // 成员节点),保留为 params 而不是成员,故 inlineIncludeOtherGroup=false。
+  // 注意 include-all-proxies / policy-regex-filter 由 Surge 客户端自己展开 [Proxy] 段,
+  // 本地过滤不到 —— 那类组仍会把隐藏节点列出来。
+  return resolveGroupMemberEntries(g, allNodes, {
+    hiddenNodes,
+    inlineIncludeOtherGroup: false,
+    emptyFallback: true,
+  }).map((m) => m.name);
 }

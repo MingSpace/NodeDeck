@@ -10,7 +10,7 @@ import { sortNodesByRegion } from "./node-sort.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, buildProviderLabels } from "./node-naming.js";
 import { validateGroupRefs } from "./group-refs.js";
-import { buildGroupMemberIndex, filterNodesBySelector } from "./group-members.js";
+import { buildGroupMemberIndex, resolveGroupMemberEntries } from "./group-members.js";
 import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
@@ -528,29 +528,14 @@ function resolveGroupMembers(
   proxyProviderIds: Set<string>,
   hiddenNodes: Set<string>,
 ): string[] {
-  const members = new Set<string>(g.proxies);
   // 顶层 include_other_group(Surge 风格的单组引用)在 Clash 端没有原生字段,
   // 这里直接当成"成员组名"展开,与 Surge 把它放进 params 的语义对齐。
-  if (g.include_other_group) members.add(g.include_other_group);
-  // nested_groups:把其它策略组作为单个 proxy 项嵌套引用加进 yaml proxies 列表。
-  // 与 mihomo 原生写法(yaml proxies 数组里直接放组名)一致;客户端点开该项会
-  // 跳转到那个组的子选择器。schema transform 已把老的 selector.include_other_group
-  // 迁移到这里,不再从 selector 读取。
-  // `?? []` 是 defensive — 经 schema parse 的 group 一定有这个字段(default []),
-  // 但测试里手动构造的 ProxyGroup literal 可能漏写。
-  for (const otherGroup of g.nested_groups ?? []) members.add(otherGroup);
-  if (g.selector) {
-    // proxy-providers 模式:剥离掉 use 段引用的 provider 节点,避免重复
-    const base =
-      proxyProviderIds.size > 0
-        ? allNodes.filter((n) => !n.source_provider_id || !proxyProviderIds.has(n.source_provider_id))
-        : allNodes;
-    // 隐藏节点只挡 selector 动态匹配;上面 g.proxies 的显式点名是用户的明确意图,保留。
-    const selectable = hiddenNodes.size > 0 ? base.filter((n) => !hiddenNodes.has(n.name)) : base;
-    for (const n of filterNodesBySelector(selectable, g.selector)) members.add(n.name);
-  }
-  // proxy-providers 模式下,group 可以仅靠 use 引用,proxies 列表允许为空(mihomo 接受);
+  // proxy-providers 模式下 group 可以仅靠 use 引用,proxies 列表允许为空(mihomo 接受);
   // 否则保持原行为,空就回退到 DIRECT。
-  if (members.size === 0 && proxyProviderIds.size === 0) members.add("DIRECT");
-  return Array.from(members);
+  return resolveGroupMemberEntries(g, allNodes, {
+    hiddenNodes,
+    excludeProviderIds: proxyProviderIds,
+    inlineIncludeOtherGroup: true,
+    emptyFallback: proxyProviderIds.size === 0,
+  }).map((m) => m.name);
 }
