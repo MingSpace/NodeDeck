@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { Link, useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, Network, Filter, Link as LinkIcon, SlidersHorizontal } from "lucide-react";
+import { ArrowLeft, Save, Network, Filter, Link as LinkIcon, SlidersHorizontal, Waypoints } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,12 +9,13 @@ import { NodeSelector } from "./node-selector";
 import { RulePipeline } from "./rule-pipeline";
 import { ProxyGroupsPicker, AdvancedPanel } from "./right-panel";
 import { ChainPanel } from "./chain-panel";
+import { FlowPanel } from "./flow-panel";
 import { PreviewPane } from "./preview-pane";
 import { YamlMode, type YamlModeHandle } from "./yaml-mode";
 import type { Profile } from "./types";
 
 type Mode = "visual" | "yaml";
-type Section = "nodes" | "rules" | "chain" | "advanced";
+type Section = "nodes" | "rules" | "chain" | "flow" | "advanced";
 
 // 编辑区第二层 tab:下划线风格,区别于顶部「可视化 / YAML」的 pill 风格。
 const sectionTriggerCls =
@@ -156,6 +157,10 @@ export function ProfileEditorPage() {
                       </Badge>
                     )}
                   </TabsTrigger>
+                  <TabsTrigger value="flow" className={sectionTriggerCls}>
+                    <Waypoints className="h-3.5 w-3.5" />
+                    流转
+                  </TabsTrigger>
                   <TabsTrigger value="advanced" className={sectionTriggerCls}>
                     <SlidersHorizontal className="h-3.5 w-3.5" />
                     高级输出
@@ -190,6 +195,7 @@ export function ProfileEditorPage() {
                   onHiddenNodesChange={(hidden_nodes) => update({ hidden_nodes })}
                 />
               )}
+              {section === "flow" && <FlowPanel profileId={id} draft={draft} />}
               {section === "advanced" && (
                 <AdvancedPanel profileId={id} draft={draft} onChange={update} />
               )}

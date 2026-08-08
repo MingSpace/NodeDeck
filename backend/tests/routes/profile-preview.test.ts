@@ -20,7 +20,7 @@ vi.mock("../../src/storage/config-store.js", () => ({
   loadConfig: vi.fn(),
 }));
 
-import { profileRepo, providerRepo, proxyGroupRepo } from "../../src/storage/repos.js";
+import { profileRepo, providerRepo, proxyGroupRepo, rulesetRepo } from "../../src/storage/repos.js";
 import { buildNodePool } from "../../src/providers/pool.js";
 import { loadConfig } from "../../src/storage/config-store.js";
 import { profilePreviewRouter } from "../../src/routes/profile-preview.js";
@@ -28,6 +28,7 @@ import { profilePreviewRouter } from "../../src/routes/profile-preview.js";
 const mockedProfileGet = profileRepo.get as unknown as ReturnType<typeof vi.fn>;
 const mockedProviderGet = providerRepo.get as unknown as ReturnType<typeof vi.fn>;
 const mockedGroupGet = proxyGroupRepo.get as unknown as ReturnType<typeof vi.fn>;
+const mockedRulesetGet = rulesetRepo.get as unknown as ReturnType<typeof vi.fn>;
 const mockedBuildNodePool = buildNodePool as unknown as ReturnType<typeof vi.fn>;
 const mockedLoadConfig = loadConfig as unknown as ReturnType<typeof vi.fn>;
 
@@ -501,6 +502,168 @@ describe("POST /api/profiles/:id/chain-preview", () => {
   it("profile 不存在且无 draft → 404", async () => {
     mockedProfileGet.mockResolvedValue(null);
     const res = await buildApp().request("/api/profiles/missing/chain-preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(404);
+  });
+});
+
+interface FlowPreviewJson {
+  entries: { kind: string; label: string; policy: string; policy_kind: string }[];
+  groups: {
+    name: string;
+    type: string;
+    members: { name: string; kind: string; origin: string; chain_path?: string[] }[];
+    node_total: number;
+    notes: { level: string; text: string }[];
+  }[];
+  node_count: number;
+  chain_count: number;
+  warnings: string[];
+}
+
+describe("POST /api/profiles/:id/flow-preview", () => {
+  function postFlow(id: string, body: unknown): Promise<Response> {
+    return buildApp().request(`/api/profiles/${id}/flow-preview`, {
+      method: "POST",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  /**
+   * 复刻「AI 网站优先走 机场→落地,落地挂了回退机场直连」这套配置:
+   *   AI      = fallback, [Landing(点名), JP-Auto(嵌套)]
+   *   JP-Auto = smart, selector 捞 JP 节点
+   *   chain   : Landing 的前置 = JP-Auto
+   * 断言重点是 fallback 的成员**顺序**(顺序即优先级)与链路标注。
+   */
+  it("fallback 组 → 成员按 点名 → 嵌套 排序,链式成员带出完整链路", async () => {
+    mockedBuildNodePool.mockResolvedValue({
+      nodes: [fakeNode("Landing", "prov-a"), fakeNode("JP 01", "prov-a"), fakeNode("JP 02", "prov-a")],
+      byProvider: new Map(),
+      revalidating: [],
+    });
+    mockedProviderGet.mockResolvedValue(providerEntry("prov-a", "Aurora"));
+    mockedGroupGet.mockImplementation((gid: string) =>
+      Promise.resolve(
+        gid === "ai"
+          ? {
+              id: "ai",
+              path: "",
+              mtimeMs: 0,
+              data: {
+                id: "ai",
+                name: "AI",
+                type: "fallback",
+                proxies: ["Landing"],
+                nested_groups: ["JP-Auto"],
+                interval: 300,
+              },
+            }
+          : groupEntry("jp", "JP-Auto", "^JP"),
+      ),
+    );
+    mockedRulesetGet.mockResolvedValue({
+      id: "ai-list",
+      path: "",
+      mtimeMs: 0,
+      data: {
+        id: "ai-list",
+        name: "AI 网站",
+        type: "remote_url",
+        url: "https://example.com/ai.list",
+        behavior: "classical",
+        format: "yaml",
+        clash_format: "rule_provider",
+        surge_format: "rule_set",
+        update_interval: 86400,
+      },
+    });
+    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
+
+    const draft = fakeProfile({
+      providers: ["prov-a"],
+      proxy_groups: ["ai", "jp"],
+      rule_modules: [{ ref: "ai-list", policy: "AI", enabled: true }, { final: "AI" }],
+      chain_rules: [
+        {
+          enabled: true,
+          selector: {
+            include_groups: [],
+            include_nodes: ["Landing"],
+            include_type: [],
+            include_other_group: [],
+            from_providers: [],
+            exclude_type: [],
+            include_region: [],
+          },
+          via: "JP-Auto",
+          mode: "override",
+        },
+      ],
+    });
+
+    const res = await postFlow("home", { profile: draft });
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as FlowPreviewJson;
+
+    expect(json.entries).toEqual([
+      { kind: "ruleset", label: "AI 网站", detail: "https://example.com/ai.list", policy: "AI", policy_kind: "group" },
+      { kind: "final", label: "FINAL", detail: "兜底", policy: "AI", policy_kind: "group" },
+    ]);
+
+    const ai = json.groups.find((g) => g.name === "AI");
+    expect(ai?.type).toBe("fallback");
+    // 顺序即优先级:落地节点必须排在兜底组前面
+    expect(ai?.members).toEqual([
+      { name: "Landing", kind: "node", origin: "explicit", chain_path: ["Landing", "JP-Auto"] },
+      { name: "JP-Auto", kind: "group", origin: "nested" },
+    ]);
+    expect(ai?.node_total).toBe(3);
+    expect(json.chain_count).toBe(1);
+    expect(json.warnings).toEqual([]);
+  });
+
+  it("smart 组里塞了嵌套组 → warn 提示 Surge 会静默忽略", async () => {
+    mockedBuildNodePool.mockResolvedValue({
+      nodes: [fakeNode("JP 01", "prov-a")],
+      byProvider: new Map(),
+      revalidating: [],
+    });
+    mockedProviderGet.mockResolvedValue(providerEntry("prov-a", "Aurora"));
+    mockedGroupGet.mockImplementation((gid: string) =>
+      Promise.resolve(
+        gid === "bad"
+          ? {
+              id: "bad",
+              path: "",
+              mtimeMs: 0,
+              data: {
+                id: "bad",
+                name: "Bad",
+                type: "smart",
+                proxies: [],
+                nested_groups: ["JP-Auto"],
+              },
+            }
+          : groupEntry("jp", "JP-Auto", "^JP"),
+      ),
+    );
+    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
+
+    const res = await postFlow("home", {
+      profile: fakeProfile({ providers: ["prov-a"], proxy_groups: ["bad", "jp"] }),
+    });
+    const json = (await res.json()) as FlowPreviewJson;
+    const bad = json.groups.find((g) => g.name === "Bad");
+    expect(bad?.notes.some((n) => n.level === "warn" && n.text.includes("静默忽略"))).toBe(true);
+  });
+
+  it("profile 不存在且无 draft → 404", async () => {
+    mockedProfileGet.mockResolvedValue(null);
+    const res = await buildApp().request("/api/profiles/missing/flow-preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });

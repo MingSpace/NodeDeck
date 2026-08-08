@@ -10,7 +10,7 @@ import type { ProxyGroup } from "../schemas/proxy-group.js";
  * - PASS / COMPATIBLE 是 mihomo 专属,Surge 没有,但写在 Surge group 里只会被
  *   当成不存在的代理名,这里宁可保留(用户故意写)也不删
  */
-const GROUP_BUILTIN_POLICIES: ReadonlySet<string> = new Set([
+export const GROUP_BUILTIN_POLICIES: ReadonlySet<string> = new Set([
   "DIRECT",
   "REJECT",
   "REJECT-DROP",

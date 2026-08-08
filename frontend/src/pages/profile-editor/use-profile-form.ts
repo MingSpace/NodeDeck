@@ -10,6 +10,7 @@ import type {
   RuleModuleRef,
   ChainRule,
   ChainPreviewResp,
+  FlowPreviewResp,
 } from "./types";
 
 export function useProfileForm(id: string) {
@@ -191,6 +192,35 @@ export function useChainPreview(id: string, draft: Profile | null, enabled: bool
     staleTime: 30_000,
     refetchOnWindowFocus: false,
     // SWR:机场首次无 cache 时后端回 revalidating=true,短轮询直到节点池就绪。
+    refetchInterval: (query) => (query.state.data?.revalidating ? 2000 : false),
+  });
+}
+
+/**
+ * 「流转」视图专用预览:规则 → 策略组 → 成员(含嵌套组与链式前置)的完整图。
+ * 与 chain-preview 一样以 draft 为输入,改完不用保存就能看到新的走向。
+ */
+export function useFlowPreview(id: string, draft: Profile | null, enabled: boolean) {
+  // 同 useChainPreview:未填出口的链式规则过不了后端 zod,会让整份 draft 回退到磁盘版并静默误导。
+  const normalized = useMemo(() => {
+    if (!draft) return null;
+    if (draft.chain_rules.every((r) => r.via.trim().length > 0)) return draft;
+    return {
+      ...draft,
+      chain_rules: draft.chain_rules.map((r) =>
+        r.via.trim().length > 0 ? r : { ...r, via: "DIRECT", enabled: false },
+      ),
+    };
+  }, [draft]);
+  const debouncedDraft = useDebounced(normalized, 400);
+  return useQuery<FlowPreviewResp>({
+    queryKey: ["flow-preview", id, debouncedDraft],
+    queryFn: ({ signal }) =>
+      api.post<FlowPreviewResp>(`/api/profiles/${id}/flow-preview`, { profile: debouncedDraft }, { signal }),
+    enabled: enabled && !!debouncedDraft,
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    refetchOnWindowFocus: false,
     refetchInterval: (query) => (query.state.data?.revalidating ? 2000 : false),
   });
 }

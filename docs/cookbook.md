@@ -372,7 +372,53 @@ Profile 编辑器 →「链式代理」tab 顶部有可视化配置区,能实时
 - Surge 组手动开了 `include_all_proxies=true`(或配了 `policy_regex_filter`)时,成员同样由
   客户端从 `[Proxy]` 段展开,隐藏节点会重新出现
 
-### 3.6 自动校验
+### 3.6 优先走落地,落地挂了自动回退直连
+
+最常见的诉求:AI 站点优先走「机场 → 落地」拿固定 IP,落地一挂就退回普通机场节点,不要断网。
+关键点是**外层组必须是 `fallback`** —— Surge 的 `fallback` 组按声明顺序取第一个可用的成员,
+顺序就是优先级;而 `smart` 组是按实测质量打分选的,链式节点天然多一跳、分数更差,
+放进 smart 组等于永远选不中。
+
+```yaml
+# data/groups/ai-entry.yaml —— 机场节点池,同时充当「落地的前置」和「落地挂了的兜底」
+id: ai-entry
+name: AI-机场
+type: smart
+selector:
+  include_regex: "日本|Japan"
+  exclude_regex: "Landing"       # 必须排掉落地自己,否则前置成环
+
+# data/groups/ai.yaml —— 对规则暴露的入口
+id: ai
+name: AI
+type: fallback
+proxies: ["Landing"]             # 优先级 1:链式落地
+nested_groups: ["AI-机场"]        # 优先级 2:兜底直连
+interval: 300                    # 不写默认 600 秒才复测,落地挂了最长要等这么久
+timeout: 5
+```
+
+```yaml
+# data/profiles/home.yaml(节选)—— 前置指向**策略组**而不是单个节点,前置本身也能自动故障转移
+chain_rules:
+  - selector: { include_nodes: ["Landing"] }
+    via: AI-机场
+```
+
+成员顺序由 `proxies` → `nested_groups` → selector 固定决定(见 `generators/group-members.ts`
+的 `resolveGroupMemberEntries`),所以「落地在前、兜底在后」是可控的,不会随机漂移。
+
+两个必须知道的边界:
+
+- `fallback` 只检测「连不连得通」。落地 IP 被目标站风控(返回 403 而不是连接失败)时测试照样通过,
+  不会回退 —— 这是协议层面的限制,配置解决不了
+- `smart` 组**不能**嵌套其它策略组:Surge 会静默忽略嵌套组与 `DIRECT` 等内置策略。
+  Profile 编辑器的「流转」tab 会对这种配置直接给红字提示
+
+配好之后到 Profile 编辑器 →「流转」tab 可以逐层展开确认:规则命中哪个组、组按什么语义选成员、
+每个成员的优先级序号、以及链式节点的完整出站路径。
+
+### 3.7 自动校验
 
 - **悬空引用**: 如果 `via: WARP` 但 WARP 节点不在最终节点池里(被 `node_filter` 排除/机场没拉到),自动清空该节点的 chain_via 并 warning,不会让客户端加载报错。
 - **环检测**: A→B→A 这种环被发现后,环上节点的 chain_via 都会被清空 + warning。

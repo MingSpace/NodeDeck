@@ -11,6 +11,7 @@ import { applyNodeFilter } from "../generators/node-filter.js";
 import { sortNodesByRegion } from "../generators/node-sort.js";
 import { uniquifyNodeNames, buildProviderLabels } from "../generators/node-naming.js";
 import { buildGroupMemberIndex } from "../generators/group-members.js";
+import { buildFlowGraph } from "../generators/flow-graph.js";
 import { resolveHiddenNodeNames } from "../generators/hidden-nodes.js";
 import {
   analyzeChainRules,
@@ -356,6 +357,68 @@ profilePreviewRouter.post("/:id/chain-preview", async (c) => {
     })),
     hidden_count: hiddenNodes.size,
     hidden_sample: [...hiddenNodes].slice(0, MATCH_SAMPLE_LIMIT),
+    warnings: [...validationWarnings, ...chainWarnings],
+    revalidating: (resolved.revalidating?.length ?? 0) > 0,
+  });
+});
+
+/**
+ * 「流转」视图专用预览:规则 → 策略组 → 成员(含嵌套组与链式前置)的完整图。
+ *
+ * 与 /chain-preview 共用同一套前置管线(filter → sort → uniquify → hidden → chain),
+ * 保证视图里的名字、成员顺序与真正下发的订阅一致 —— 尤其是 fallback 组的成员顺序就是优先级。
+ */
+profilePreviewRouter.post("/:id/flow-preview", async (c) => {
+  const id = c.req.param("id");
+  const rawBody = await c.req.json().catch(() => null);
+  const parsedBody = previewBodySchema.safeParse(rawBody ?? undefined);
+  if (!parsedBody.success) {
+    return c.json({ error: "invalid request body", details: parsedBody.error.flatten() }, 400);
+  }
+  const resolution = await resolveDraftProfile(id, (parsedBody.data ?? {}).profile);
+  if (resolution.status === "not_found") {
+    return c.json({ error: "not found" }, 404);
+  }
+  const { profile, validationWarnings } = resolution.result;
+
+  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true });
+  const filteredRaw = applyNodeFilter(resolved.nodes, profile.node_filter);
+  const sorted = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
+  const uniqued = uniquifyNodeNames(sorted, [], {
+    providerLabels: buildProviderLabels(resolved.providers ?? []),
+    groups: resolved.groups,
+  });
+
+  const hiddenNodes = resolveHiddenNodeNames(uniqued.nodes, profile.hidden_nodes);
+  const groupMembers = buildGroupMemberIndex(uniqued.groups, uniqued.nodes, { hiddenNodes });
+  const groupNames = new Set(uniqued.groups.map((g) => g.name));
+
+  const chainWarnings: string[] = [];
+  const chained = applyChainRules(uniqued.nodes, profile, { groupMembers });
+  const validated = validateChain(chained, { groupNames, warnings: chainWarnings });
+  const chains = resolveChainPaths(validated, { groupNames });
+
+  const graph = buildFlowGraph({
+    groups: uniqued.groups,
+    nodes: validated,
+    chains,
+    groupMembers,
+    hiddenNodes,
+    rules: resolved.rules,
+    geoipFallback: resolved.geoipFallback,
+    finalRule: resolved.finalRule,
+  });
+
+  logger.debug(
+    { profileId: id, groupCount: graph.groups.length, entryCount: graph.entries.length },
+    "Flow preview",
+  );
+
+  return c.json({
+    ...graph,
+    node_count: uniqued.nodes.length,
+    hidden_count: hiddenNodes.size,
+    chain_count: chains.length,
     warnings: [...validationWarnings, ...chainWarnings],
     revalidating: (resolved.revalidating?.length ?? 0) > 0,
   });

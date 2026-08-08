@@ -85,6 +85,58 @@ export interface ChainPreviewResp {
   revalidating?: boolean;
 }
 
+/** 与 backend/src/generators/flow-graph.ts 保持同步 */
+export type FlowMemberKind = "node" | "group" | "builtin" | "missing";
+export type FlowMemberOrigin = "explicit" | "other_group" | "nested" | "selector" | "fallback";
+
+export interface FlowMember {
+  name: string;
+  kind: FlowMemberKind;
+  origin: FlowMemberOrigin;
+  /** `[自身, 前置, ...]`,末项是真正的出口 */
+  chain_path?: string[];
+}
+
+export interface FlowNote {
+  level: "info" | "warn";
+  text: string;
+}
+
+export interface FlowGroup {
+  name: string;
+  type: string;
+  clash_type: string;
+  members: FlowMember[];
+  selector_omitted: number;
+  node_total: number;
+  url?: string;
+  interval?: number;
+  timeout?: number;
+  tolerance?: number;
+  include_other_group?: string;
+  include_all_proxies?: boolean;
+  policy_regex_filter?: string;
+  notes: FlowNote[];
+}
+
+export interface FlowEntry {
+  kind: "ruleset" | "geoip" | "final";
+  label: string;
+  detail?: string;
+  policy: string;
+  policy_kind: "group" | "builtin" | "unknown";
+}
+
+export interface FlowPreviewResp {
+  entries: FlowEntry[];
+  groups: FlowGroup[];
+  node_count: number;
+  hidden_count: number;
+  chain_count: number;
+  warnings: string[];
+  revalidating?: boolean;
+}
+
 export type RuleModuleRef =
   | { ref: string; policy: string; enabled?: boolean; note?: string }
   | { final: string; dns_failed?: boolean }
