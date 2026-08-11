@@ -373,17 +373,23 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 | 写法 | Clash `hosts:` | Surge `[Host]` |
 |---|---|---|
 | 直接 IP | 支持 `domain: 1.2.3.4` | 支持 `domain = 1.2.3.4` |
-| 多个 IP / 多上游 | 支持 `domain: [1.1.1.1, 2.2.2.2]` | 同 key 展开多行 `domain = v` |
-| 域名别名(CNAME) | 支持(仅允许单个别名) | 支持 `domain = other.com` |
+| 多个 IP / 多上游 | 支持 `domain: [1.1.1.1, 2.2.2.2]` | 同 key 合并一行 `domain = v1, v2` |
+| 域名别名(CNAME) | 支持(仅允许单个别名) | 支持 `domain = other.com`(**不级联**,见下) |
 | 通配符 | `*` / `+` / `.`(mihomo 语义) | `*` / `?`(Surge 语义,原样透传) |
 | 指定 DNS `server:` | → `dns.proxy-server-nameserver-policy`(需 `proxy-server-nameserver` 非空) | 支持 `domain = server:8.8.8.8`(含 `server:system`/`syslib`) |
 | `DOMAIN-SET:` / `RULE-SET:` 批量绑定 | 跳过 + warning | 原样输出 |
 
 **Clash 拆分**(`splitClashHosts`):value 含 `server:` 的条目 → `dns.proxy-server-nameserver-policy`(key 做 `*.`→`+.`,值剥 `server:` 前缀;`server:system`→`system`,`server:syslib` 无等价跳过);`DOMAIN-SET:`/`RULE-SET:` key → Clash 无等价,跳过 + warning;其余纯 IP / CNAME → 顶层 `hosts:`。
 
-**server: → Clash DNS policy**:机场给节点域名指定 DoH(如 `*.example.com = server:https://doh/dns-query`)时,Surge 走 `[Host]` 多行、Clash 走 `dns.proxy-server-nameserver-policy`(**按域名匹配,多机场合并不串台**)。mihomo 要求 `proxy-server-nameserver` 非空 policy 才生效,故需在 generals DNS 配 `proxy_server_nameserver`([C],兜底通用解析器);为空时 generator 发 warning 且前端 DNS 表单红色标记。
+**server: → Clash DNS policy**:机场给节点域名指定 DoH(如 `*.example.com = server:https://doh/dns-query`)时,Surge 走 `[Host]` 一行逗号列表、Clash 走 `dns.proxy-server-nameserver-policy`(**按域名匹配,多机场合并不串台**)。mihomo 要求 `proxy-server-nameserver` 非空 policy 才生效,故需在 generals DNS 配 `proxy_server_nameserver`([C],兜底通用解析器);为空时 generator 发 warning 且前端 DNS 表单红色标记。
 
-**同 key 多值**:value 含逗号或为数组时,Clash 顶层 `hosts:` 输出 YAML 数组(mihomo `config.go::parseHosts` / `NewHostValue` 支持);Surge `[Host]` 把每个值**展开成多行** `key = value` —— 支持给同一域名指定多个 `server:` 上游 DNS(机场常借此规避封锁),多 IP 同理。
+**同 key 多值**:value 含逗号或为数组时,Clash 顶层 `hosts:` 输出 YAML 数组(mihomo `config.go::parseHosts` / `NewHostValue` 支持);Surge `[Host]` **合并成一行逗号列表**(多 IP `a.com = 1.2.3.4, 5.6.7.8`;多 DNS 上游 `a.com = server:8.8.8.8,1.1.1.1`,`server:` 前缀只出现一次)—— **不能拆多行**,`[Host]` 自上而下求值、首条命中即止,拆开后第二行起永远不生效。
+
+**别名不级联**:Surge 的别名(CNAME 式)只重写一次 —— 查找对象换成别名目标后**不会再匹配一遍 `[Host]`**,而是直接交给上游 DNS。所以「`a = b` + `b = 1.2.3.4`」这种两级写法里的第二条永远不生效。真机实测(Surge Mac 6.x,用 RFC 保留的 `.invalid` 域名做对照,报错为 `Empty DNS answer for b from servers: <上游>`),**普通目标域名与代理服务器域名两条路径行为一致**;把 `b` 写在 `a` 之后仍不命中,可排除条目顺序因素。
+
+顺带纠正一处手册与实现的出入:手册 Local DNS Mapping 开头称「proxy server 的 hostname 永远不匹配 `[Host]`,以避免解析循环」,但实测 IP 映射与 `server:` 对节点域名**均生效**(把节点 `server` 写成一个只在 `[Host]` 里有映射的 `.invalid` 域名,可正常连通与测速)。本项目按实测行为设计。
+
+**server: 与 IP/别名混用**:合并多来源 hosts 时同一 key 可能既有别名/IP 又有 `server:` —— 典型是机场 `[Host]` 给节点域名配了别名,而它的 `encrypted-dns-server` 又被 `deriveProviderHostOverrides` 推导成同 key 的 `server:`。一个 `[Host]` 条目只能是一种形态,又因上述「别名不级联」无法拆成两条兼得,故固定**保留 `server:`**、对被丢弃的值发 warning:保留 `server:` 才能让机场自己的 DoH 直接解析原域名、保住抗污染;反过来保别名则会退回全局 `dns-server` 解析节点域名。别名那层间接通常指向同一入口(实测两个域名解析到同一 IP),绕过它不影响连通。
 
 **provider 级 host**:每个 provider 可配 `hosts` + `emit_hosts`(默认 `true`)。`profile-resolver` 用 `mergeHostMaps` 把三类来源去重合并后交给两端 generator:① `general.hosts`;② 所有启用且 `emit_hosts` 的 provider 手动 `hosts`;③ 这些 provider 刷新时自动解析出的 `cache.extracted_hosts`(仅与节点域名相关的上游 host,见 `import/extract-hosts.ts`)。导入 Surge conf 时 `[Host]` 段同一 key 的多行会保留为数组。
 

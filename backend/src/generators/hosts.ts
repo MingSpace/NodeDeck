@@ -83,9 +83,16 @@ const SERVER_PREFIX = "server:";
  * 而不是每个值各带一个前缀 —— 后者不是手册给的语法。
  *
  * 一个 `[Host]` 条目只能是一种映射:要么给 IP / 别名,要么用 `server:` 指定解析器,
- * 两者无法写进同一行。合并多来源 hosts(general + 各 provider)时可能出现混用,
- * 此时保留 `server:`(它才是机场配这条 host 的意图),被丢弃的值发 warning ——
- * 否则静态 IP 映射会在 Surge 侧无声消失。
+ * 两者无法写进同一行。合并多来源 hosts(general + 各 provider)时可能出现混用
+ * (典型:机场 `[Host]` 里给节点域名配了别名,同时 `encrypted-dns-server` 又被
+ * `deriveProviderHostOverrides` 推导成同 key 的 `server:`)。
+ *
+ * 此时固定保留 `server:` 而不是别名/IP,原因是二者无法靠拆成两条来兼得 —— Surge Mac
+ * 实测(6.x,用 `.invalid` 域名做的对照:`a = b` + `b = <IP>`,报错为
+ * "Empty DNS answer for b from servers: <上游>")确认**别名重启查找不会二次匹配
+ * `[Host]`**,所以「别名 + 给别名目标配 server:」里的后一条永远命中不了,DoH 会失效、
+ * 退回全局 dns-server 解析节点域名,反而丢掉抗污染。保留 `server:` 则是让机场自己的
+ * DoH 直接解析原域名,别名那层间接可以安全绕过。被丢弃的值仍发 warning,避免静默。
  */
 function joinSurgeHostValues(key: string, values: string[], warnings?: string[]): string {
   const servers = values.filter((v) => v.startsWith(SERVER_PREFIX));
@@ -93,8 +100,10 @@ function joinSurgeHostValues(key: string, values: string[], warnings?: string[])
   const dropped = values.filter((v) => !v.startsWith(SERVER_PREFIX));
   if (dropped.length > 0) {
     warnings?.push(
-      `Host "${key}" 同时有 server: 与非 server: 值,Surge 的一个 [Host] 条目只能是一种映射;`
-        + `已保留 server: 解析器,丢弃 [${dropped.join(", ")}]`,
+      `Host "${key}" 同时有 server: 解析器与普通映射(IP/别名),Surge 一个 [Host] 条目只能是一种形态,`
+        + `且别名重启查找不会二次匹配 [Host],两者无法拆成两条兼得;`
+        + `已按「保住 DNS 抗污染」取舍:保留 server:(用来源自带 DoH 直接解析该域名),`
+        + `丢弃 [${dropped.join(", ")}](通常是机场给同一入口配的别名,绕过它不影响连通)`,
     );
   }
   const resolvers = servers.map((v) => v.slice(SERVER_PREFIX.length).trim()).filter((v) => v.length > 0);
