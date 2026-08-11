@@ -4,6 +4,7 @@ import { useEntityList } from "@/api/entities";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useDebouncedWithStaleFlag } from "@/lib/use-debounced";
+import { filterNodesBySelector } from "@/lib/group-composition";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,6 +42,12 @@ export interface ProxyGroupData {
   policy_regex_filter?: string;
   no_alert?: boolean;
   include_all_proxies?: boolean;
+  /**
+   * [S] Surge 原生 include-other-group:把另一个组的成员**平铺展开**进本组(客户端侧展开)。
+   * 与顶层 nested_groups(嵌套引用,成员里就是那个组名)不是一回事。可视化表单不编辑它,
+   * 声明出来是为了让列表页的成员摘要能识别"本地数不全"的情形。
+   */
+  include_other_group?: string;
   lazy?: boolean;
   disable_udp?: boolean;
   ssid_params?: {
@@ -118,44 +125,16 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
   // 无需重新请求后端。pipeline 顺序与后端 clash.ts / surge.ts 保持一致:
   //   from_providers → include_region → exclude_type → include_regex → exclude_regex
   const candidateNodes = useMemo<NodeCandidate[]>(() => {
-    const all = nodePool.data?.nodes ?? [];
-    let filtered: NodePoolResp["nodes"];
-    if (sel.from_providers.length === 0) {
-      filtered = all;
-    } else {
-      const allow = new Set(sel.from_providers);
-      filtered = all.filter((n) => n.source_provider_id && allow.has(n.source_provider_id));
-    }
-    if (sel.include_region.length > 0) {
-      const allowRegions = new Set(sel.include_region);
-      // 白名单:region 未识别(undefined)的节点也排除,与后端 clash.ts / surge.ts 行为一致。
-      filtered = filtered.filter((n) => n.region && allowRegions.has(n.region));
-    }
-    let list = filtered.map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
-    if (sel.exclude_type.length > 0) {
-      const blocked = new Set(sel.exclude_type);
-      list = list.filter((n) => !blocked.has(n.type));
-    }
-    // 与后端 applyNodeFilter / chain/apply.ts / clash.ts / surge.ts 一致,
-    // include/exclude_regex 一律带 "i" flag 大小写不敏感,避免用户在 placeholder 看到 (?i) 字面量后照抄
-    // 却踩到 JS RegExp 不支持 PCRE 内联标志的坑(语法上会抛 SyntaxError 被 try/catch 静默吞掉)。
-    if (debouncedRegex.include) {
-      try {
-        const re = new RegExp(debouncedRegex.include, "i");
-        list = list.filter((n) => re.test(n.name));
-      } catch {
-        // invalid regex 静默忽略;UI 上保持上一轮可用结果,避免输入到一半瞬间清空
-      }
-    }
-    if (debouncedRegex.exclude) {
-      try {
-        const re = new RegExp(debouncedRegex.exclude, "i");
-        list = list.filter((n) => !re.test(n.name));
-      } catch {
-        // 同上
-      }
-    }
-    return list;
+    // 筛选逻辑与列表页共用 lib/group-composition.ts(那边对齐后端 group-members.ts),
+    // 这样"编辑器里看到几个候选"和"列表行显示几个成员"永远不会各算各的。
+    const filtered = filterNodesBySelector(nodePool.data?.nodes ?? [], {
+      from_providers: sel.from_providers,
+      include_region: sel.include_region,
+      exclude_type: sel.exclude_type,
+      include_regex: debouncedRegex.include || undefined,
+      exclude_regex: debouncedRegex.exclude || undefined,
+    });
+    return filtered.map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
   }, [
     nodePool.data?.nodes,
     sel.from_providers,
