@@ -292,7 +292,9 @@ describe("/sub/provider/:id/clash.yaml route", () => {
         },
       }),
     });
-    mockedLoadProviderNodes.mockResolvedValue({ nodes: [sampleNode], revalidating: false });
+    // 这条路由输出的是全量池的一个切片,节点来自 resolveProfile → buildNodePool,
+    // 不是单独去 loadProviderNodes(命名/链式必须与主订阅同源,见 routes/sub.ts 的注释)。
+    mockedBuildNodePool.mockResolvedValue({ nodes: [sampleNode], byProvider: new Map() });
 
     const app = buildApp();
     const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
@@ -308,6 +310,79 @@ describe("/sub/provider/:id/clash.yaml route", () => {
     // 不应包含 proxy-groups / rules
     expect(body).not.toContain("proxy-groups:");
     expect(body).not.toContain("rules:");
+  });
+
+  it("节点名与 chain_via 跟主订阅同源:撞名前缀按全量池算,链式规则照常生效", async () => {
+    // 回归:早先这条路由只看本机场自己的节点,既不应用 chain_rules,改名也算不出
+    // 跨机场撞名的 `【标识】` 前缀 —— 结果是 use_proxy_providers 模式下链式整体失效,
+    // 且 provider yaml 里的名字与主订阅对不上。
+    const dup = (providerId: string): Node => ({
+      name: "🇯🇵 JP-01",
+      type: "ss",
+      server: `${providerId}.example.com`,
+      port: 8388,
+      cipher: "aes-128-gcm",
+      password: "pwd",
+      source_provider_id: providerId,
+      tags: [],
+    });
+    mockedProfileGet.mockResolvedValue({
+      id: "home",
+      path: "",
+      mtimeMs: 0,
+      data: fakeProfile({
+        providers: ["airport-a", "airport-b"],
+        chain_rules: [
+          {
+            enabled: true,
+            mode: "override",
+            selector: {
+              include_regex: "",
+              exclude_regex: "",
+              include_other_group: [],
+              from_providers: [],
+              exclude_type: [],
+              include_region: [],
+              include_groups: [],
+              include_nodes: [],
+              include_type: [],
+            },
+            via: "Landing",
+          },
+        ],
+      }),
+    });
+    mockedProviderGet.mockImplementation((id: string) =>
+      Promise.resolve({
+        id,
+        path: "",
+        mtimeMs: 0,
+        data: fakeProvider({
+          id,
+          name: id === "airport-a" ? "Alpha" : "Beta",
+          clash_proxy_provider: {
+            enabled: true,
+            health_check_url: "http://cp.cloudflare.com/generate_204",
+            health_check_interval: 300,
+          },
+        }),
+      }),
+    );
+    mockedBuildNodePool.mockResolvedValue({
+      nodes: [dup("airport-a"), dup("airport-b")],
+      byProvider: new Map(),
+    });
+
+    const app = buildApp();
+    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
+    expect(res.status).toBe(200);
+    const body = await res.text();
+    // 只切出本机场的那一个节点
+    expect(body.match(/name:/g)).toHaveLength(1);
+    // 撞名前缀取自 provider 名(Alpha → 【A】),与主订阅算出来的一致
+    expect(body).toContain("【A】🇯🇵 JP-01");
+    // chain_rules 在这条路由上同样生效
+    expect(body).toContain("dialer-proxy: Landing");
   });
 
   it("404 when providerId not in profile.providers (即使该 provider 启用了 clash_proxy_provider)", async () => {

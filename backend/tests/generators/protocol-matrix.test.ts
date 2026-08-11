@@ -474,7 +474,7 @@ describe("protocol matrix snapshot", () => {
     expect(surge).not.toMatch(/TJ = trojan[^\n]*tls=/);
   });
 
-  it("shadow-tls: ss 两端对称输出;非 ss 在 Clash 端丢弃 + warning", () => {
+  it("shadow-tls: ss 走 plugin,其余 TLS 系走通用 shadow-tls-opts(mihomo 已通用化)", () => {
     const ssNode: Node = {
       name: "SS-STLS",
       type: "ss",
@@ -508,9 +508,11 @@ describe("protocol matrix snapshot", () => {
     expect(clash).toContain("plugin: shadow-tls");
     expect(clash).toContain("host: cloud.tencent.com");
     expect(clash).toContain("version: 3");
-    // trojan 无 mihomo 对应写法:字段丢弃 + warning,节点本体仍输出
+    // trojan 走通用 shadow-tls-opts(wiki.metacubex.one/config/proxies/tls):该写法没有 host 键,
+    // SNI 取节点通用的 sni,所以这里只有 password,且不再有丢弃 warning。
     expect(clash).toContain("name: TJ-STLS");
-    expect(warnings.some((w) => w.includes("TJ-STLS") && w.includes("shadow-tls"))).toBe(true);
+    expect(clash).toContain("shadow-tls-opts: {password: stls2}");
+    expect(warnings.some((w) => w.includes("TJ-STLS"))).toBe(false);
 
     const surge = generateSurgeConfig({
       profile: emptyProfile(),

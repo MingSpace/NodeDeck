@@ -1,15 +1,28 @@
 import { z } from "zod";
 import { idSchema } from "./common.js";
 
+/**
+ * Surge 的策略组只有 6 种(manual.nssurge.com/policy-groups/overview.html):
+ * select / url-test / fallback / load-balance / smart / subnet,其中 `ssid` 是 `subnet`
+ * 的兼容别名,仍可作为类型关键字输出。
+ *
+ * **`external` 不在其中** —— 它是 `[Proxy]` 段的策略类型(且 Mac 独占),写进 `[Proxy Group]`
+ * Surge 会解析失败。"引入外部策略列表"的正确做法是给任意组加 `policy_path`。
+ * 存量 yaml 里若有该值,由下面的 transform 迁移成 `select`。
+ */
 export const proxyGroupTypeSchema = z.enum([
   "select", // [CS]
   "url-test", // [CS]
   "fallback", // [CS]
   "load-balance", // [CS]
   "smart", // [S] iOS 5.14+ Surge Smart
-  "ssid", // [S]
-  "external", // [S] external proxy program
+  "ssid", // [S] subnet 的兼容别名
 ]);
+
+/** 历史上错误地放进类型枚举的值 → 迁移目标。 */
+const LEGACY_GROUP_TYPES: Record<string, z.infer<typeof proxyGroupTypeSchema>> = {
+  external: "select",
+};
 
 export const selectorSchema = z.object({
   include_regex: z.string().optional(),
@@ -33,7 +46,10 @@ export const selectorSchema = z.object({
 const proxyGroupBaseSchema = z.object({
   id: idSchema,
   name: z.string().min(1),
-  type: proxyGroupTypeSchema.default("select"),
+  type: z.preprocess(
+    (v) => (typeof v === "string" && v in LEGACY_GROUP_TYPES ? LEGACY_GROUP_TYPES[v] : v),
+    proxyGroupTypeSchema.default("select"),
+  ),
 
   // explicit list — 仅放 *节点名* 与内置 policy (DIRECT / REJECT*);
   // 其它策略组的嵌套引用走专门的 nested_groups 字段,不要混进来。
@@ -71,10 +87,46 @@ const proxyGroupBaseSchema = z.object({
   include_all_proxies: z.boolean().optional(),
   include_other_group: z.string().optional(), // [S] alternate way
 
+  /**
+   * [S] 组级链式代理:组内每个**代理成员**都经此策略出站,等价于给每个成员单独写
+   * `underlying-proxy`,且覆盖成员自带的同名参数。成员里的策略组不受影响(嵌套组可自己声明),
+   * DIRECT / REJECT 等内置策略原样放行。值为节点名或策略组名。
+   *
+   * 与 `node.chain_via` 的分工:chain_via 是"某个节点走某个前置"(两端都支持);
+   * 这个字段是"某个组的全体成员走同一个前置",Clash 没有等价物 —— mihomo 的 dialer-proxy
+   * 只能写在单个 proxy 上,proxy-group 不支持,故 Clash 输出忽略该字段 + warning。
+   */
+  underlying_proxy: z.string().optional(),
+
+  /**
+   * [CS] 策略组图标 URL。clash:`icon`(mihomo 代理组通用字段)/ surge:`icon-url`(Mac 6.5.0+)。
+   * 两端都只是展示用,不影响选路。
+   */
+  icon_url: z.string().optional(),
+
+  /**
+   * [S] Smart 组的成员加权,格式 `"正则:系数;正则:系数"`(系数 <1 更优先,>1 更不优先)。
+   * 这是 Surge Smart 组唯一的调参手段;iOS 5.21.0 / Mac 6.8.0 起 0 与负值会被拒绝。
+   * mihomo 没有原生 smart 组(那是 vernesong 分支的东西),Clash 端忽略。
+   */
+  policy_priority: z.string().optional(),
+
   // [C] clash-only
   lazy: z.boolean().optional(),
   disable_udp: z.boolean().optional(),
   use: z.array(z.string()).optional(), // proxy-provider ids
+
+  /**
+   * [C] mihomo 组级成员筛选,由**客户端**在展开成员时执行。
+   *
+   * 与 `selector` 的分工:`selector` 是 NodeDeck 在**服务端**算好成员再写进 proxies 列表;
+   * 这三个是把筛选条件下发给客户端。`use_proxy_providers` 模式下组靠 `use:` 引用整个机场、
+   * 成员由客户端展开,服务端算的 selector 落不了地 —— 那时只有这几个字段能生效。
+   */
+  filter: z.string().optional(),
+  exclude_filter: z.string().optional(),
+  /** 协议类型黑名单,mihomo 语法是 `|` 分隔的字符串(如 `ss|http`),不是数组 */
+  clash_exclude_type: z.string().optional(),
 
   // [S] ssid params
   ssid_params: z

@@ -1,6 +1,7 @@
 # 协议字段对照表
 
-> Clash (Mihomo) ↔ Surge 字段命名差异权威表(目标版本:mihomo Stable / Surge iOS 5.21+ & Mac 6.8+;低版本要求会单独标注)。
+> Clash (Mihomo) ↔ Surge 字段命名差异权威表。**基线 = 两端当前最新正式版**(mihomo Stable / Surge iOS 与 Mac 正式版),
+> 不锁死版本号;个别特性的最低版本要求在对应条目里单独标注。上游标记为 deprecated / legacy / 无效的写法一律按最新版行为处理。
 > 与代码 `backend/src/generators/protocol-mapping.ts` 保持同步。
 
 ---
@@ -18,7 +19,9 @@
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
 | `tls` | `tls: bool` | `tls=bool` | [CS],Surge 端**仅 vmess** 需要显式 `tls=true`(vmess 默认明文);trojan/https/tuic/hysteria2 等由协议类型隐含,不输出该键 |
-| `sni` | `sni:` | `sni=` | [CS] |
+| `sni` | `sni:`,**vmess/vless 用 `servername:`** | `sni=` | [CS],**键名分两套** — 见下方说明 |
+| `name_cert_verify` | `name-cert-verify:` | `server-cert-verify-name=` | [CS],只改证书 DNSName 校验目标、不改 SNI;Surge 需 iOS 5.21.0+ / Mac 6.8.0+ |
+| `ip_version` | `ip-version: dual\|ipv4\|ipv6\|ipv4-prefer\|ipv6-prefer` | `ip-version=dual\|v4-only\|v6-only\|prefer-v4\|prefer-v6` | [CS],**键名同、取值不同**,generator 负责映射 |
 | `skip_cert_verify` | `skip-cert-verify: bool` | `skip-cert-verify=bool` | [CS] |
 | `fingerprint` | `fingerprint:` | `server-cert-fingerprint-sha256=` | [CS],服务器证书 SHA256 锁定(替代标准 X.509 校验);**区别于** `client_fingerprint` |
 | `client_fingerprint` | `client-fingerprint:` | `tls-fingerprint=` | [CS],uTLS 客户端指纹(chrome/firefox 等);**区别于** `fingerprint` |
@@ -26,6 +29,16 @@
 | `tfo` | `tfo: bool` | `tfo=bool` | [CS] |
 | `mptcp` | `mptcp: bool` | — | [C],mihomo 通用字段(仅 TCP 协议生效);Surge 无 per-node mptcp |
 | `alpn` | `alpn: [h3]` | `alpn=h3`(可重复) | [CS],写法不同;Surge 端 `alpn=` 需 iOS 5.20.0+ / Mac 6.7.0+ |
+
+### SNI 键名在 mihomo 分两套(易错)
+
+mihomo 的 TLS 文档([wiki: TLS 配置](https://wiki.metacubex.one/config/proxies/tls/))在 "sni/servername" 小节写得很明确:
+
+> 服务器名称指示,在 VMess/VLESS 中为 `servername`,如果为空,则为 `server` 中的地址
+
+也就是说 **vmess / vless 只认 `servername`,其余 TLS 系协议(trojan / anytls / tuic / hysteria2)才认 `sni`**。写错不会报错,mihomo 的解码器会静默忽略不认识的键并回落到 `server` 地址 —— 当 `server` 是 IP 或裸 CDN 域名时,节点表现为"能连上握手却失败",极难排查。
+
+Stash 反过来:它的通用 TLS 参数里只有 `sni`,没有 `servername`。因此 **generator 对 vmess/vless 同时输出两个键**,各内核取自己认识的那个;其余协议只输出 `sni`。内部 schema 只有一个 `sni` 字段作为唯一真相(parser 读到 `servername` 会折叠进来),`node.servername` 是废弃字段,不参与生成。
 
 ---
 
@@ -50,15 +63,20 @@
 | transport ws | `network: ws` + `ws-opts: { path, headers }` | `ws=true, ws-path=, ws-headers=Host:xx\|Foo:bar` | [CS],拍平 |
 | transport grpc | `network: grpc` + `grpc-opts:{grpc-service-name}` | — | [C] |
 
-## 4. VLESS
+## 4. VLESS —— **[C] Clash 独占,Surge 不支持该协议**
+
+Surge 手册的[协议表](https://manual.nssurge.com/policies/overview.html)列出了全部 19 种类型关键字,**没有 `vless`**,也不存在 `vless-flow` / `reality-*` 参数页。想在 Surge 用 VLESS+Reality 只能在本机用 sing-box 之类桥成 socks5。
+
+因此 **Surge generator 对 vless 节点整节点跳过 + warning**(与 `ssr` 同样处理)。此前这里给 surge 列填过键名,是没有出处的臆测,会让 Surge 产物出现无法解析的行。
 
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
-| `uuid` | `uuid:` | `username=` 或 `uuid=` | [CS] |
-| `flow` | `flow:` | `vless-flow=` | [CS] |
-| `encryption` | `encryption:` | `encryption=` | [CS] |
-| Reality public-key | `reality-opts.public-key` | `reality-public-key=` | [CS] |
-| Reality short-id | `reality-opts.short-id` | `reality-short-id=` | [CS] |
+| `uuid` | `uuid:` | — | [C] |
+| `flow` | `flow:` | — | [C],`xtls-rprx-vision` |
+| `encryption` | `encryption:` | — | [C] |
+| `sni` | **`servername:`** | — | [C],vless 必须用 servername,见第 1 节说明 |
+| Reality public-key | `reality-opts.public-key` | — | [C] |
+| Reality short-id | `reality-opts.short-id` | — | [C] |
 
 ## 5. Trojan
 
@@ -121,16 +139,22 @@ WireGuard 在两端的**表达结构**完全不同:
 3. wireguard 节点不接受 `chain_via` (Surge L3 隧道无法叠 underlying-proxy),命中时发 warning
 4. Surge parser 当前只解析 inline 写法的 wireguard,section-name 模式输入会丢密钥(整包导入路径未来可扩展)
 
-## 9. Snell
+## 9. Snell —— **[CS] 两端都支持**
+
+mihomo 原生支持 Snell v1–v5([wiki: Snell](https://wiki.metacubex.one/config/proxies/snell/)),Surge 支持 v1–v6。
+早先文档写的"Clash 内核不原生支持 Snell"是错的,Clash 端曾因此整节点跳过。
 
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
-| `psk` | — | `psk=` | [S] |
-| `snell_version` | — | `version=` | [S],3/4/5/6;v6 需 iOS 5.20.0+ / Mac 6.7.0+(beta,流量特征由 PSK 派生,无额外客户端参数,不支持 QUIC Proxy Mode) |
-| `reuse` | — | `reuse=` | [S],连接复用(Snell v4+ 可选) |
-| `obfs`, `obfs_host` | — | `obfs=`, `obfs-host=` | [S] |
+| `psk` | `psk:` | `psk=` | [CS] |
+| `snell_version` | `version:` | `version=` | [CS],mihomo 1–5 / Surge 1–6;**v6 是 Surge 独占**(iOS 5.20.0+ / Mac 6.7.0+,beta,流量特征由 PSK 派生),Clash 端整节点跳过 + warning |
+| `reuse` | `reuse:` | `reuse=` | [CS],连接复用,仅 v4/v5 有意义 |
+| `obfs`, `obfs_host` | `obfs-opts: { mode, host }` | `obfs=`, `obfs-host=` | [CS],**写法不同**:mihomo 嵌套、Surge 平铺 |
+| `obfs_uri` | — | `obfs-uri=` | [S],仅 `obfs=http` 有意义;mihomo 的 obfs-opts 无对应键 |
 
-> Clash 内核不原生支持 Snell;NodeDeck 在 Clash 输出中跳过 Snell 节点并发出警告。
+> mihomo 的 `obfs-opts.mode` 除 `http` / `tls` 外还支持 `shadow-tls` / `restls` / `jls`;
+> Surge 侧 v1–v3 支持 http/tls,v4/v5 仅 http,v6 不支持 obfs。
+> Snell + Shadow TLS 的映射见 §9.2。仅 v3/4/5 支持 UDP。
 
 ## 9.1 AnyTLS
 
@@ -141,13 +165,28 @@ WireGuard 在两端的**表达结构**完全不同:
 
 ## 9.2 Shadow TLS(传输层混淆,可叠加在任意 TCP 协议上)
 
-| 内部抽象 | Clash (仅 ss) | Surge (任意 proxy 行) | 备注 |
-|---|---|---|---|
-| `shadow_tls_password` | `plugin: shadow-tls` + `plugin-opts.password` | `shadow-tls-password=` | [CS] |
-| `shadow_tls_sni` | `plugin-opts.host` | `shadow-tls-sni=` | [CS],TLS 握手明文 SNI;Surge 不填则不发 SNI |
-| `shadow_tls_version` | `plugin-opts.version`(1/2/3) | `shadow-tls-version=`(仅 2/3,缺省 2) | v1 在 Surge 端无对应 → 跳过键 + warning |
+**mihomo 按协议分三套写法**(早先文档写的"mihomo 仅 shadowsocks 支持"已过时,当时非 ss 节点会被丢字段):
 
-> Surge:v2 自 iOS 5.2.0 / Mac 4.10.0,v3 自 iOS 5.5.0 / Mac 5.0.3(参考 [manual: Shadow TLS](https://manual.nssurge.com/policy/proxy.html));mihomo 仅 shadowsocks 支持该 plugin,非 ss 节点在 Clash 输出丢弃 shadow-tls 字段 + warning。Clash parser 会把 `plugin: shadow-tls` 归一化到内部 `shadow_tls_*` 字段,generator 对称重建。
+| 协议 | mihomo 写法 | 出处 |
+|---|---|---|
+| `ss` | `plugin: shadow-tls` + `plugin-opts: { password, host, version }` | [wiki: Shadowsocks](https://wiki.metacubex.one/config/proxies/ss/) |
+| `snell` | `obfs-opts: { mode: shadow-tls, host, password, version, alpn }` | [wiki: Snell](https://wiki.metacubex.one/config/proxies/snell/) |
+| 其余 TLS 系(vmess/vless/trojan/anytls) | `shadow-tls-opts: { version, password }`,需 `tls: true` | [wiki: TLS 配置](https://wiki.metacubex.one/config/proxies/tls/) |
+
+Surge 侧统一是任意 proxy 行追加三个平铺参数。
+
+| 内部抽象 | Clash | Surge | 备注 |
+|---|---|---|---|
+| `shadow_tls_password` | 三套写法的 `password` | `shadow-tls-password=` | [CS] |
+| `shadow_tls_sni` | ss → `plugin-opts.host`;snell → `obfs-opts.host`;**通用写法没有 host 键** | `shadow-tls-sni=` | [CS],通用写法下 ShadowTLS 的 SNI 取节点的 `sni`/`servername`,generator 会把 `shadow_tls_sni` 写进节点 SNI 并 warning;Surge 不填则不发 SNI |
+| `shadow_tls_version` | `version`(1/2/3,缺省 2) | `shadow-tls-version=`(仅 2/3,缺省 2) | v1 在 Surge 端无对应 → 跳过键 + warning |
+
+> Surge:v2 自 iOS 5.2.0 / Mac 4.10.0,v3 自 iOS 5.5.0 / Mac 5.0.3(参考 [manual: Shadow TLS](https://manual.nssurge.com/policy/proxy.html))。
+>
+> **Stash 例外**:Stash 只支持 ss 的 `plugin: shadow-tls`,没有通用 `shadow-tls-opts`,snell 的 obfs 也只有 http/tls。
+> 因此 `clash_options.flag = "stash"` 时,非 ss 协议仍按"丢弃 shadow-tls 字段 + warning"处理。
+>
+> Clash parser 会把三套写法都归一化到内部 `shadow_tls_*` 字段,generator 按协议对称重建。
 
 ---
 
@@ -187,6 +226,7 @@ WireGuard 在两端的**表达结构**完全不同:
 | 内部抽象 | Clash | Surge |
 |---|---|---|
 | 远程 URL (`type: remote_url`) | `rule-providers:` 段 + `rules: RULE-SET,<id>`(默认 `clash_format: rule_provider`) | 直接 `RULE-SET,<url>,POLICY`(默认 `surge_format: rule_set`) 或 `DOMAIN-SET,<url>,POLICY`(`surge_format: domain_set`) |
+| `update_interval` | `rule-providers[].interval` | 行尾 `update-interval=`([manual: Rule Set](https://manual.nssurge.com/rules/ruleset.html)) | Surge 默认 86400,generator **仅在非默认值时输出**以免产物噪音;此前从不输出,用户改了间隔在 Surge 侧是无声失效的 |
 | inline list (`type: inline_list`) | `rules:` 段直接展开每行 | 直接展开;或 `surge_format: inline_ruleset` 时生成 `[Ruleset Name]` 段 + `RULE-SET,<name>` (Mac 5.3.1+) |
 | GEOSITE (`type: geosite`) | `GEOSITE,<geosite_category 或 id>,POLICY` | 三级回退:① `payload` 展开内联 → ② `url` 走 `DOMAIN-SET` → ③ warning |
 | GEOIP (`type: geoip`) | `GEOIP,<geoip_country_code 或 id>,POLICY` | 同 Clash |
@@ -217,7 +257,7 @@ WireGuard 在两端的**表达结构**完全不同:
 - Surge `pre-matching/extended-matching/force-remote-dns` flag → 静默丢弃
 - Surge `[Module]` 段 → 完全跳过
 - Surge `[URL Rewrite]/[Header Rewrite]/[Script]` → 跳过(Clash 无对应)
-- Surge `Snell` 节点 → 跳过 + warning
+- Surge `Snell` v6 节点 → 跳过 + warning(v1–v5 正常输出,见 §9)
 - Surge `RULE-SET,SYSTEM` → 跳过 + warning(含 USER-AGENT/PROCESS-NAME 无 Clash 等价)
 - Surge `RULE-SET,LAN` → 展开为内联 DOMAIN-SUFFIX,local + IP-CIDR 列表
 - Surge hosts `server:`(指定 DNS) → 转 `dns.proxy-server-nameserver-policy`(按域名 `*.`→`+.`,依赖 `proxy-server-nameserver` 非空);`DOMAIN-SET:` / `RULE-SET:` → 跳过 + warning
@@ -226,7 +266,8 @@ WireGuard 在两端的**表达结构**完全不同:
 - Clash `peers:` (WireGuard 多 peer) → `[WireGuard <id>]` 段内逐 peer 输出多行 `peer = (...)`,不截断(见 §8)
 - Clash `GEOSITE,xxx` → 三级回退:① 有 inline `payload` 则展开内联 → ② 有 `url` 则改为 `DOMAIN-SET,<url>` → ③ 都没有则 warning + 跳过
 - Clash `mrs` 格式 → 无特殊处理,仍按 `RULE-SET,<url>` 原样输出;Surge 无法解析 mrs 二进制,该 ruleset 需另配文本格式 url 供 Surge 使用
-- 同 key 多值 hosts(多 IP / 多 server) → Surge 端展开成多行 `key = value`(支持同域名多上游 DNS)
+- 同 key 多值 hosts(多 IP / 多 server) → Surge 端合并成**一行逗号列表**;`[Host]` 条目自上而下求值、首条命中即止,拆多行会让第二行起永远不生效。多 IP 写 `a.com = 1.2.3.4, 5.6.7.8`,多 DNS 上游写 `a.com = server:8.8.8.8,1.1.1.1`(server: 前缀只出现一次,该写法需 iOS 5.21.0+ / Mac 6.8.0+)
+- Clash `vless` 节点 → Surge 端整节点跳过 + warning(Surge 无此协议,见 §4)
 
 ---
 
@@ -270,6 +311,45 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 - `include_other_group: "Japan"`(Surge)→ 客户端 Stream 面板**直接列出** Japan 的所有节点(层级踩平)
 
 `v1` 历史字段 `selector.include_other_group: string[]` 命名误导,**实际行为是嵌套引用**;`v2` schema transform 自动把它搬到 `nested_groups`,旧 yaml 透明兼容。
+
+### 17.1 策略组测速参数(两端语义已分叉)
+
+| 内部字段 | Clash 输出 | Surge 输出 | 说明 |
+|---|---|---|---|
+| `g.url` | `url:` | **不输出** | Surge 现行版本已把组行上的 `url=` 列为 legacy 且完全无效(不报错,静默忽略),测速 URL 只认 per-policy `test-url` 或 `[General]` 的 `proxy-test-url` / `internet-test-url`。字段保留是因为 mihomo 的 url-test / fallback 组需要它 |
+| `g.interval` | `interval:` | `interval=` | [CS],测试结果有效期(秒);Surge 默认 600 |
+| `g.tolerance` | `tolerance:` | `tolerance=` | [CS],切换阻尼(ms);Surge 默认 100,显式 `0` 会被尊重 |
+| `g.timeout` | `timeout:` | `timeout=` | [CS],**按延迟过滤候选**(秒) —— 实测延迟高于它的成员不参与选择。注意这**不是**测速自身的超时,那个是 per-policy `test-timeout` 或全局 `test-timeout`(默认 5s) |
+| `g.evaluate_before_use` | — | `evaluate-before-use=` | [S],首次使用时等第一轮测速完成再放行请求 |
+| `g.icon_url` | `icon:` | `icon-url=` | [CS],仅展示用;Surge 端 Mac 6.5.0+ |
+| `g.policy_priority` | — | `policy-priority="正则:系数;..."` | [S],Smart 组唯一的调参手段(系数 <1 更优先);值含 `;` 必须整体加引号。iOS 5.11.0+ / Mac 5.7.0+,且 iOS 5.21.0 / Mac 6.8.0 起 0 与负值被拒绝 |
+| `g.filter` / `g.exclude_filter` / `g.clash_exclude_type` | `filter:` / `exclude-filter:` / `exclude-type:` | — | [C],由**客户端**在展开成员时执行的筛选。与 `g.selector`(NodeDeck 在服务端算好成员)是两个维度;`use_proxy_providers` 模式下成员由客户端展开,那时只有这几个键能生效 |
+
+> Surge 的 `interval` 对 **Smart 组无效**([manual: Smart Group](https://manual.nssurge.com/policy-groups/smart.html)),generator 在 smart 组上不输出该键。
+>
+> Surge 的 **smart 组会静默忽略成员里的嵌套组与内置策略**([manual: Policy Groups](https://manual.nssurge.com/policy-groups/overview.html) 的 Nesting Groups 小节)——
+> 客户端不报错,只是那些成员不参与选择。generator 检测到这种成员时会发 warning。
+>
+> **`external` 不是策略组类型**。Surge 只有 select / url-test / fallback / load-balance / smart / subnet 六种
+> (`ssid` 是 `subnet` 的兼容别名)。`external` 是 `[Proxy]` 段的策略类型且 Mac 独占,写进 `[Proxy Group]`
+> 会让 Surge 解析失败;schema 已把存量的 `type: external` 迁移成 `select`,引入外部策略列表请改用 `policy_path`。
+
+> Surge 的测速分数取自**两轮 HEAD 请求中的第二轮**(复用已建立的连接),所以它近似"纯请求往返",**不含握手开销**;测试 URL 不支持 keep-alive 时才退化为第一轮全程耗时并给一次性警告。评估链式代理的真实成本时要意识到握手那部分被这个分数隐藏了。参考 [manual: Automatic Testing Group](https://manual.nssurge.com/policy-groups/url-test.html)。
+
+### 17.2 组级链式代理 `underlying_proxy`([S] 专属)
+
+| 内部字段 | Clash 输出 | Surge 输出 | 说明 |
+|---|---|---|---|
+| `g.underlying_proxy` | **忽略 + warning** | `underlying-proxy=` | [S],组内每个**代理成员**都经该策略出站,等价于给每个成员单独写 `underlying-proxy`,并**覆盖**成员自带的同名参数 |
+
+语义要点(参考 [manual: Common Group Parameters](https://manual.nssurge.com/policy-groups/parameters.html)):
+
+- 覆盖面包括显式成员、`policy-path`、`include-all-proxies`、`include-other-group` 引入的全部成员
+- 成员里的**策略组不受影响**(嵌套组可自己声明);`DIRECT` / `REJECT` 等内置策略原样放行
+- 被链式的成员在客户端显示为派生策略 `成员名 (via 前置名)`,**带独立的测速结果** —— 这是唯一能同时看到"直连"与"链式"两个延迟的办法
+- 不能形成循环引用。NodeDeck 在 `validateGroupRefs` 里只挡**直接自引用**与**悬空引用**(清空该参数 + warning);更深的环依赖 Surge 自己检测,因为成员集合要等客户端展开 `policy-path` / `include-all-proxies` 之后才完整,本地算不准
+
+**Clash 端为什么不降级**:mihomo 的 `dialer-proxy` 只能写在单个 proxy 上,proxy-group 不支持该字段([wiki: dialer-proxy](https://wiki.metacubex.one/config/proxies/dialer-proxy/) 明确写了 "proxy-group 并不直接支持 dialer-proxy")。官方替代方案是把成员塞进 proxy-provider 再用 `override.dialer-proxy`,与 NodeDeck 的 provider = 机场订阅 语义冲突,故不自动降级。**要两端都生效,请改用 `profile.chain_rules` 逐节点配置**(`node.chain_via` 的 `via` 本身就可以填策略组名)。
 
 ---
 

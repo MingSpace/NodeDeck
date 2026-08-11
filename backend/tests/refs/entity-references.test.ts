@@ -155,7 +155,7 @@ describe("findEntityReferences: groups", () => {
     ]);
   });
 
-  it("其它组的 nested_groups / include_other_group / ssid_params 按 name 引用", async () => {
+  it("其它组的 nested_groups / include_other_group / underlying_proxy / ssid_params 按 name 引用", async () => {
     setSources({
       groups: [
         group(),
@@ -167,6 +167,7 @@ describe("findEntityReferences: groups", () => {
           type: "ssid",
           ssid_params: { default: "Proxy", cellular: "DIRECT", wifi: { Home: "Proxy" } },
         }),
+        group({ id: "g-d", name: "D", underlying_proxy: "Proxy" }),
       ],
     });
     const refs = await findEntityReferences("groups", "g-proxy");
@@ -175,6 +176,7 @@ describe("findEntityReferences: groups", () => {
       "g-b:include_other_group",
       "g-c:ssid_params.default",
       "g-c:ssid_params.wifi[Home]",
+      "g-d:underlying_proxy",
     ]);
   });
 

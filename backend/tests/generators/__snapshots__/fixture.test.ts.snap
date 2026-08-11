@@ -53,7 +53,7 @@ DIRECT = direct
 🇯🇵 JP-01 = ss, jp.example.com, 8388, encrypt-method=aes-128-gcm, password=pwd, udp-relay=true
 
 [Proxy Group]
-Proxys = url-test,🇭🇰 HK-01,🇯🇵 JP-01,url=http://cp.cloudflare.com/generate_204,interval=600,tolerance=50,timeout=5
+Proxys = url-test,🇭🇰 HK-01,🇯🇵 JP-01,interval=600,tolerance=50,timeout=5
 Manual = select,Proxys,DIRECT
 
 [Rule]

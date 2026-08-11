@@ -88,7 +88,9 @@ describe("buildSurgeHostLines", () => {
     expect(buildSurgeHostLines({ "baidu.com": "google.com" })).toEqual(["baidu.com = google.com"]);
   });
 
-  it("expands multi-value array into multiple lines (multi upstream DNS)", () => {
+  // [Host] 条目自上而下求值、首条命中即止(manual.nssurge.com/dns/local-dns-mapping.html),
+  // 所以同 key 多值必须合并成一行的逗号列表,拆多行会让第二行起永远不生效。
+  it("merges multi upstream DNS into one line with a single server: prefix", () => {
     expect(
       buildSurgeHostLines({
         "*.example.com": [
@@ -96,17 +98,30 @@ describe("buildSurgeHostLines", () => {
           "server:https://b.com/dns-query",
         ],
       }),
-    ).toEqual([
-      "*.example.com = server:https://a.com/dns-query",
-      "*.example.com = server:https://b.com/dns-query",
+    ).toEqual(["*.example.com = server:https://a.com/dns-query,https://b.com/dns-query"]);
+  });
+
+  it("merges comma-separated IP values into one line", () => {
+    expect(buildSurgeHostLines({ "b.com": "1.1.1.1, 2.2.2.2" })).toEqual([
+      "b.com = 1.1.1.1, 2.2.2.2",
     ]);
   });
 
-  it("expands comma-separated string values too", () => {
-    expect(buildSurgeHostLines({ "b.com": "1.1.1.1, 2.2.2.2" })).toEqual([
-      "b.com = 1.1.1.1",
-      "b.com = 2.2.2.2",
-    ]);
+  it("server: 与 IP 混用时保留 server: 并对丢弃的值 warning", () => {
+    // 一个 [Host] 条目只能是一种映射;合并 general + provider hosts 时容易混进来,
+    // 静默丢 IP 映射很难排查,所以必须出 warning。
+    const warnings: string[] = [];
+    const lines = buildSurgeHostLines({ "c.com": ["1.2.3.4", "server:8.8.8.8"] }, warnings);
+    expect(lines).toEqual(["c.com = server:8.8.8.8"]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("c.com");
+    expect(warnings[0]).toContain("1.2.3.4");
+  });
+
+  it("纯 IP 多值不触发 warning", () => {
+    const warnings: string[] = [];
+    buildSurgeHostLines({ "d.com": ["1.2.3.4", "5.6.7.8"] }, warnings);
+    expect(warnings).toEqual([]);
   });
 
   it("emits Surge-only syntax verbatim", () => {

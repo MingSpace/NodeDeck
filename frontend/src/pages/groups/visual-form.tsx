@@ -13,7 +13,9 @@ import { ProxyListEditor, type NodeCandidate } from "./proxy-list-editor";
 export interface ProxyGroupData {
   id: string;
   name: string;
-  type: "select" | "url-test" | "fallback" | "load-balance" | "smart" | "ssid" | "external";
+  // 与 backend/src/schemas/proxy-group.ts 的 proxyGroupTypeSchema 保持同步。
+  // `external` 不是策略组类型(是 [Proxy] 段的策略类型),后端 schema 会把存量值迁移成 select。
+  type: "select" | "url-test" | "fallback" | "load-balance" | "smart" | "ssid";
   proxies: string[];
   /**
    * 嵌套引用的其它策略组(作为单个 proxy 项加入)。存 group **name**,跟后端 yaml 输出
@@ -42,6 +44,20 @@ export interface ProxyGroupData {
   policy_regex_filter?: string;
   no_alert?: boolean;
   include_all_proxies?: boolean;
+  /**
+   * [S] 组级链式:组内每个代理成员都经此策略出站(Surge 专属,Clash 输出忽略 + warning)。
+   * 与其它 Surge 专属参数一样只在「YAML 高级」tab 编辑。
+   * 与 backend/src/schemas/proxy-group.ts 保持同步。
+   */
+  underlying_proxy?: string;
+  /** [CS] 策略组图标;clash `icon` / surge `icon-url` */
+  icon_url?: string;
+  /** [S] Smart 组成员加权,`"正则:系数;正则:系数"` */
+  policy_priority?: string;
+  /** [C] mihomo 客户端侧筛选,proxy-providers 模式下唯一能生效的过滤手段 */
+  filter?: string;
+  exclude_filter?: string;
+  clash_exclude_type?: string;
   /**
    * [S] Surge 原生 include-other-group:把另一个组的成员**平铺展开**进本组(客户端侧展开)。
    * 与顶层 nested_groups(嵌套引用,成员里就是那个组名)不是一回事。可视化表单不编辑它,
@@ -214,31 +230,51 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
         </Field>
       </div>
 
-      <Field label="类型">
-        <Select value={data.type} onValueChange={(v) => update({ type: v as ProxyGroupData["type"] })}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="select">select (手动)</SelectItem>
-            <SelectItem value="url-test">url-test (自动选择最快)</SelectItem>
-            <SelectItem value="fallback">fallback (按顺序故障转移)</SelectItem>
-            <SelectItem value="load-balance">load-balance (负载均衡)</SelectItem>
-            <SelectItem value="smart">smart [Surge] (Clash 等价 url-test)</SelectItem>
-            <SelectItem value="ssid">ssid (按 WiFi) [Surge]</SelectItem>
-            <SelectItem value="external">external [Surge]</SelectItem>
-          </SelectContent>
-        </Select>
-      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="类型">
+          <Select value={data.type} onValueChange={(v) => update({ type: v as ProxyGroupData["type"] })}>
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="select">select (手动)</SelectItem>
+              <SelectItem value="url-test">url-test (自动选择最快)</SelectItem>
+              <SelectItem value="fallback">fallback (按顺序故障转移)</SelectItem>
+              <SelectItem value="load-balance">load-balance (负载均衡)</SelectItem>
+              <SelectItem value="smart">smart [Surge] (Clash 等价 url-test)</SelectItem>
+              <SelectItem value="ssid">ssid / subnet (按网络) [Surge]</SelectItem>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field label="图标 URL (可选)">
+          <Input
+            value={data.icon_url ?? ""}
+            onChange={(e) => update({ icon_url: e.target.value || undefined })}
+            placeholder="https://example.com/icon.png"
+          />
+        </Field>
+      </div>
+
+      {data.type === "smart" && (
+        <Field label="policy-priority [Surge] · Smart 组唯一的调参手段">
+          <Input
+            value={data.policy_priority ?? ""}
+            onChange={(e) => update({ policy_priority: e.target.value || undefined })}
+            placeholder="IPLC:0.5;实验:2  (系数 <1 更优先,>1 更不优先)"
+          />
+        </Field>
+      )}
 
       {NEEDS_TEST(data.type) && (
         <fieldset className="border rounded-md p-3">
           <legend className="text-xs font-medium px-1">
             测速参数
-            {data.type === "smart" && (
-              <span className="font-normal text-muted-foreground"> · 仅 Clash 需要填(降级为 url-test;Surge smart 用不到)</span>
-            )}
+            <span className="font-normal text-muted-foreground">
+              {data.type === "smart"
+                ? " · 仅 Clash 需要填(降级为 url-test;Surge smart 用不到)"
+                : " · Surge 已废弃组级测试 URL,改在「全局配置」里设 proxy-test-url"}
+            </span>
           </legend>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="测试 URL">
+            <Field label="测试 URL (仅 Clash)">
               <Input
                 value={data.url ?? ""}
                 onChange={(e) => update({ url: e.target.value })}

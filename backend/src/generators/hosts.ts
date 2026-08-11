@@ -57,15 +57,48 @@ export function buildClashHosts(
 
 /**
  * 构造 Surge `[Host]` 段行,每行 `key = value`。
- * 同一 key 的多个值(数组)展开成多行 —— Surge 支持给同一域名指定多个上游(server: DNS),
- * 机场常借此给代理节点域名配多个 DoH 规避封锁;多 IP 同理展开多行。
+ *
+ * 同一 key 的多个值合并成**逗号列表**(`key = v1, v2`),不能拆成多行 —— 手册明确写了
+ * `[Host]` 条目「自上而下求值,第一条命中即止」(manual.nssurge.com/dns/local-dns-mapping.html),
+ * 拆多行的话第二行起永远不会命中,机场自建 DoH 配多上游、一个域名配多 IP 都会静默丢值。
+ *
+ * 多值的两种合法形态手册都给了示例:多个 IP 直接 `a.com = 1.2.3.4, 5.6.7.8`;
+ * 多个 DNS 上游是 `a.com = server:8.8.8.8,1.1.1.1`(**server: 前缀只写一次**,
+ * 且该写法需 iOS 5.21.0+ / Mac 6.8.0+)。
  */
-export function buildSurgeHostLines(hosts: Record<string, HostValue>): string[] {
+export function buildSurgeHostLines(hosts: Record<string, HostValue>, warnings?: string[]): string[] {
   const lines: string[] = [];
   for (const [key, raw] of Object.entries(hosts)) {
-    for (const v of normalizeHostValue(raw)) lines.push(`${key} = ${v}`);
+    const values = normalizeHostValue(raw);
+    if (values.length === 0) continue;
+    lines.push(`${key} = ${joinSurgeHostValues(key, values, warnings)}`);
   }
   return lines;
+}
+
+const SERVER_PREFIX = "server:";
+
+/**
+ * 合并同 key 的多个值。`server:` 系列要折叠成单个前缀 + 逗号分隔的解析器列表,
+ * 而不是每个值各带一个前缀 —— 后者不是手册给的语法。
+ *
+ * 一个 `[Host]` 条目只能是一种映射:要么给 IP / 别名,要么用 `server:` 指定解析器,
+ * 两者无法写进同一行。合并多来源 hosts(general + 各 provider)时可能出现混用,
+ * 此时保留 `server:`(它才是机场配这条 host 的意图),被丢弃的值发 warning ——
+ * 否则静态 IP 映射会在 Surge 侧无声消失。
+ */
+function joinSurgeHostValues(key: string, values: string[], warnings?: string[]): string {
+  const servers = values.filter((v) => v.startsWith(SERVER_PREFIX));
+  if (servers.length === 0) return values.join(", ");
+  const dropped = values.filter((v) => !v.startsWith(SERVER_PREFIX));
+  if (dropped.length > 0) {
+    warnings?.push(
+      `Host "${key}" 同时有 server: 与非 server: 值,Surge 的一个 [Host] 条目只能是一种映射;`
+        + `已保留 server: 解析器,丢弃 [${dropped.join(", ")}]`,
+    );
+  }
+  const resolvers = servers.map((v) => v.slice(SERVER_PREFIX.length).trim()).filter((v) => v.length > 0);
+  return `${SERVER_PREFIX}${resolvers.join(",")}`;
 }
 
 /**

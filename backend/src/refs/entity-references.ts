@@ -259,6 +259,7 @@ function findGroupReferences(id: string, s: Sources): EntityReference[] {
       });
     if (g.nested_groups.includes(name)) push("nested_groups");
     if (g.include_other_group === name) push("include_other_group");
+    if (g.underlying_proxy === name) push("underlying_proxy");
     if (g.ssid_params?.default === name) push("ssid_params.default");
     if (g.ssid_params?.cellular === name) push("ssid_params.cellular");
     for (const [ssid, policy] of Object.entries(g.ssid_params?.wifi ?? {})) {

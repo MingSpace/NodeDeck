@@ -37,7 +37,8 @@ export interface UniquifyOptions {
  * - group.proxies 对原名的显式引用 **原位展开为全部同名节点**(用户在组里点了
  *   "Hong Kong 01",改名后 【K】/【奶】 两个都应出现在组里,缺一个等于"吃节点")
  * - node.chain_via(Clash dialer-proxy 只能填单个名)与 group.include_other_group /
- *   nested_groups(组名引用)是单值语义,取列表第一项,保持"原名指向第一个同名节点"
+ *   nested_groups / underlying_proxy(组名引用)是单值语义,取列表第一项,
+ *   保持"原名指向第一个同名节点"
  *
  * 重命名信息记入 warnings,方便用户在订阅响应注释中看到。
  */
@@ -111,6 +112,7 @@ export function uniquifyNodeNames(
   const finalGroups = groups.map((g) => {
     const newProxies = expandRefs(g.proxies);
     const newIncludeOther = remapSingle(g.include_other_group);
+    const newUnderlying = remapSingle(g.underlying_proxy);
     const currentNested = g.nested_groups ?? [];
     const newNestedGroups = currentNested.map((p) => renameMap.get(p)?.[0] ?? p);
     const updated: ProxyGroup = { ...g };
@@ -121,6 +123,10 @@ export function uniquifyNodeNames(
     }
     if (newIncludeOther !== g.include_other_group) {
       updated.include_other_group = newIncludeOther;
+      touched = true;
+    }
+    if (newUnderlying !== g.underlying_proxy) {
+      updated.underlying_proxy = newUnderlying;
       touched = true;
     }
     if (newNestedGroups.some((p, i) => p !== currentNested[i])) {
@@ -137,7 +143,7 @@ export function uniquifyNodeNames(
  * Surge 的节点/策略组名作为 INI 行的左侧标识符,不允许包含 `=` `,` `"` 等会破坏行解析的字符,
  * 也不允许首尾有空格。这里把这些字符替换为 `_`,并同步改写所有引用(node.chain_via,
  * group.proxies / group.nested_groups 中的成员/嵌套组引用,以及 group 的
- * include_other_group 字段)。
+ * include_other_group 与 underlying_proxy 字段)。
  *
  * 注意:本函数只在 Surge generator 入口调用;Clash 不需要(Clash 的 name 是 yaml 字符串,
  * 任意字符都安全)。
@@ -177,6 +183,7 @@ export function escapeSurgeNames(
   const finalGroups = cleanedGroups.map((g) => {
     const newProxies = g.proxies.map((p) => renameMap.get(p) ?? p);
     const newIncludeOther = remap(g.include_other_group);
+    const newUnderlying = remap(g.underlying_proxy);
     // `?? []` 是 defensive — 经 schema parse 的 group 一定有 nested_groups(default []),
     // 但测试里手动构造的 ProxyGroup literal 可能漏写。
     const currentNested = g.nested_groups ?? [];
@@ -189,6 +196,10 @@ export function escapeSurgeNames(
     }
     if (newIncludeOther !== g.include_other_group) {
       updated.include_other_group = newIncludeOther;
+      touched = true;
+    }
+    if (newUnderlying !== g.underlying_proxy) {
+      updated.underlying_proxy = newUnderlying;
       touched = true;
     }
     if (newNestedGroups.some((p, i) => p !== currentNested[i])) {

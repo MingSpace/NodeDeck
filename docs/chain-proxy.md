@@ -123,6 +123,46 @@ Clash `dialer-proxy` 与 Surge `underlying-proxy` 都是**每个节点单值**�
 需要"同一落地节点配两种前置"时,正确做法是在客户端侧建两个策略组分别指向两个**不同的**落地节点,
 而不是指望同一节点分裂成两份。
 
+> **Surge 用户的例外**:组级 `underlying_proxy`(见下一节)是按"组"而不是按"节点"挂链的,
+> 同一个节点在 A 组里带链、在 B 组里不带链,在 Surge 端是可以表达的 —— 客户端会把带链的那份
+> 显示成派生策略 `节点名 (via 前置名)`。Clash 端没有这个能力。
+
+---
+
+## 组级链式(`underlying_proxy`,仅 Surge)
+
+除了"给某个节点挂前置",Surge 还支持"给某个**策略组的全体代理成员**挂同一个前置":
+
+```yaml
+# data/groups/landing.yaml
+id: landing
+name: 落地
+type: select
+proxies: [Sososo-JP, Sososo-US]
+underlying_proxy: 前置池        # ← 组内每个代理成员都经「前置池」出站
+```
+
+输出为 `落地 = select,Sososo-JP,Sososo-US,underlying-proxy=前置池`。
+
+| 特性 | 说明 |
+|---|---|
+| 覆盖面 | 显式成员 + `policy-path` / `include-all-proxies` / `include-other-group` 引入的全部成员 |
+| 不受影响的成员 | 成员里的**策略组**(嵌套组可自己声明)、`DIRECT` / `REJECT` 等内置策略 |
+| 与节点级的优先级 | 组级**覆盖**成员自带的 `chain_via` |
+| 客户端展示 | 派生策略 `成员名 (via 前置名)`,带独立测速结果 |
+| Clash | **无等价物**,输出时忽略 + warning;要两端一致就用上面的 `chain_rules` |
+
+目前只能在策略组编辑器的「YAML 高级」tab 里填(与其它 Surge 专属参数一致)。悬空或直接自引用会被
+`validateGroupRefs` 清空 + warning;更深的环靠 Surge 客户端自己检测。
+
+### 该用哪一个
+
+| 场景 | 用法 |
+|---|---|
+| 落地节点固定走某个前置,两端都要生效 | `chain_rules` + `via`(可填策略组名,前置由该组动态选) |
+| 只有 Surge,想让整组成员共用一个前置 | 组级 `underlying_proxy` |
+| 想同时看到某节点"直连"和"链式"两个延迟 | 组级 `underlying_proxy` —— 派生策略与原策略各测各的 |
+
 ---
 
 ## 多跳

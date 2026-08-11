@@ -154,7 +154,9 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("encrypt-method=2022-blake3-aes-128-gcm");
 
     expect(out).toContain("[Proxy Group]");
-    expect(out).toContain("Proxys = url-test,🇭🇰 HK-01,🇭🇰 HK-SS,url=http://cp.cloudflare.com,interval=600,tolerance=10");
+    // 组行不带 url= —— Surge 现行版本已废弃组级测试 URL(只认 per-policy test-url /
+    // [General] proxy-test-url),g.url 只服务于 Clash 端。
+    expect(out).toContain("Proxys = url-test,🇭🇰 HK-01,🇭🇰 HK-SS,interval=600,tolerance=10");
 
     expect(out).toContain("[Rule]");
     expect(out).toContain("RULE-SET,https://example.com/cn.list,DIRECT,no-resolve");
@@ -345,6 +347,271 @@ describe("generateSurgeConfig", () => {
     expect(streamLine).toBeDefined();
     expect(streamLine).toContain("Japan"); // 嵌套引用作为同级 proxy 项
     expect(streamLine).toContain("DIRECT"); // 独立 builtin
+  });
+
+  it("组级 underlying-proxy: 输出到 [Proxy Group] 行,legacy 组级 url 不再输出", () => {
+    const nodes: Node[] = [
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", tags: [] },
+      { name: "Relay", type: "ss", server: "r.com", port: 8388, cipher: "aes-128-gcm", password: "x", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "Front",
+        name: "Front",
+        type: "url-test",
+        proxies: ["Relay"],
+        nested_groups: [],
+        url: "http://cp.cloudflare.com",
+        interval: 300,
+      },
+      {
+        id: "Landing",
+        name: "Landing",
+        type: "select",
+        proxies: ["JP-01"],
+        nested_groups: [],
+        underlying_proxy: "Front",
+      },
+    ];
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile({ proxy_groups: ["Front", "Landing"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Landing" },
+      surgeModules: [],
+      warnings,
+    });
+    const lines = out.split(/\r?\n/);
+    expect(lines.find((l) => l.startsWith("Landing = "))).toBe("Landing = select,JP-01,underlying-proxy=Front");
+    // 同一份配置里,组级 url 被丢弃但 interval 仍保留
+    const frontLine = lines.find((l) => l.startsWith("Front = "))!;
+    expect(frontLine).not.toContain("url=");
+    expect(frontLine).toContain("interval=300");
+    expect(warnings).toEqual([]);
+  });
+
+  it("socks5 + tls 还原为 socks5-tls 类型关键字", () => {
+    // Surge 的 socks5-tls 是独立类型关键字,不是 socks5 加个参数;
+    // parser 读进来折叠成 type=socks5 + tls,导出时必须还原,否则静默退化成明文。
+    const nodes: Node[] = [
+      { name: "S5T", type: "socks5", server: "s.com", port: 443, username: "u", password: "p", tls: true, tags: [] },
+      { name: "S5", type: "socks5", server: "s2.com", port: 1080, tags: [] },
+    ];
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes,
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(out).toContain("S5T = socks5-tls, s.com, 443");
+    expect(out).toContain("S5 = socks5, s2.com, 1080");
+  });
+
+  it("vless 整节点跳过 + warning(Surge 没有这个协议)", () => {
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [
+        { name: "VL", type: "vless", server: "v.com", port: 443, uuid: "u", tls: true, flow: "xtls-rprx-vision", tags: [] },
+        { name: "TJ", type: "trojan", server: "t.com", port: 443, password: "p", tls: true, tags: [] },
+      ],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings,
+    });
+    expect(out).not.toContain("VL = ");
+    expect(out).not.toContain("vless-flow");
+    expect(out).toContain("TJ = trojan");
+    expect(warnings.some((w) => w.includes("VL") && w.includes("vless"))).toBe(true);
+  });
+
+  it("wireguard 支持 underlying-proxy(此前被误判为不支持而丢弃)", () => {
+    const nodes: Node[] = [
+      { name: "Relay", type: "ss", server: "r.com", port: 8388, cipher: "aes-128-gcm", password: "x", tags: [] },
+      {
+        name: "WARP",
+        type: "wireguard",
+        server: "wg.com",
+        port: 2408,
+        private_key: "PK",
+        public_key: "PUB",
+        ip: "10.0.0.2/32",
+        chain_via: "Relay",
+        wg_dns_server: ["1.1.1.1", "8.8.8.8"],
+        wg_prefer_ipv6: false,
+        peers: [{ server: "wg.com", port: 2408, public_key: "PUB", allowed_ips: ["0.0.0.0/0"], keepalive: 25 }],
+        tags: [],
+      },
+    ];
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes,
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings,
+    });
+    expect(out).toContain("WARP = wireguard, section-name=WARP, underlying-proxy=Relay");
+    expect(out).toContain("dns-server = 1.1.1.1, 8.8.8.8");
+    expect(out).toContain("prefer-ipv6 = false");
+    expect(out).toContain("keepalive = 25");
+    expect(warnings.some((w) => w.includes("underlying-proxy"))).toBe(false);
+  });
+
+  it("节点级测速参数 / server-cert-verify-name / ip-version 映射", () => {
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [
+        {
+          name: "N",
+          type: "trojan",
+          server: "t.com",
+          port: 443,
+          password: "p",
+          tls: true,
+          sni: "fake.example.com",
+          name_cert_verify: "real.example.com",
+          ip_version: "ipv4-prefer",
+          test_url: "http://cp.cloudflare.com/generate_204",
+          test_timeout: 3,
+          test_udp: "google.com@1.1.1.1",
+          tags: [],
+        },
+      ],
+      groups: [],
+      rules: [],
+      surgeModules: [],
+      warnings: [],
+    });
+    const line = out.split(/\r?\n/).find((l) => l.startsWith("N = "))!;
+    expect(line).toContain("server-cert-verify-name=real.example.com");
+    // 内部用 mihomo 枚举,Surge 侧取值不同,必须映射
+    expect(line).toContain("ip-version=prefer-v4");
+    expect(line).toContain("test-url=http://cp.cloudflare.com/generate_204");
+    expect(line).toContain("test-timeout=3");
+    expect(line).toContain("test-udp=google.com@1.1.1.1");
+  });
+
+  it("smart 组:不输出无效的 interval,输出 policy-priority / icon-url,并对嵌套成员告警", () => {
+    const nodes: Node[] = [
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      { id: "Sub", name: "Sub", type: "select", proxies: ["JP-01"], nested_groups: [] },
+      {
+        id: "Smart",
+        name: "Smart",
+        type: "smart",
+        proxies: ["JP-01", "DIRECT"],
+        nested_groups: ["Sub"],
+        interval: 600,
+        policy_priority: "IPLC:0.5;实验:2",
+        icon_url: "https://example.com/i.png",
+      },
+    ];
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile({ proxy_groups: ["Sub", "Smart"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Smart" },
+      surgeModules: [],
+      warnings,
+    });
+    const line = out.split(/\r?\n/).find((l) => l.startsWith("Smart = "))!;
+    expect(line).not.toContain("interval=");
+    expect(line).toContain('policy-priority="IPLC:0.5;实验:2"');
+    expect(line).toContain("icon-url=https://example.com/i.png");
+    // Surge 的 smart 组会静默忽略嵌套组与内置策略,这里要主动提示
+    expect(warnings.some((w) => w.includes("Smart") && w.includes("Sub") && w.includes("DIRECT"))).toBe(true);
+  });
+
+  it("RULE-SET / DOMAIN-SET 行按需输出 update-interval", () => {
+    const mk = (id: string, interval: number, format: "rule_set" | "domain_set"): RuleSet => ({
+      id,
+      name: id,
+      type: "remote_url",
+      url: `https://example.com/${id}.list`,
+      behavior: "classical",
+      format: "text",
+      clash_format: "rule_provider",
+      surge_format: format,
+      update_interval: interval,
+    });
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [
+        { ref: "a", policy: "DIRECT", ruleset: mk("a", 3600, "rule_set") },
+        { ref: "b", policy: "DIRECT", ruleset: mk("b", 86400, "rule_set") },
+        { ref: "c", policy: "DIRECT", ruleset: mk("c", 7200, "domain_set") },
+      ],
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(out).toContain("RULE-SET,https://example.com/a.list,DIRECT,update-interval=3600");
+    // 默认值不输出,避免产物噪音
+    expect(out).toContain("RULE-SET,https://example.com/b.list,DIRECT");
+    expect(out).not.toContain("b.list,DIRECT,update-interval");
+    expect(out).toContain("DOMAIN-SET,https://example.com/c.list,DIRECT,update-interval=7200");
+  });
+
+  it("组级 underlying-proxy: 指向的节点被改名时同步改写,不留悬空", () => {
+    // 两个机场同名节点 → uniquifyNodeNames 加来源前缀;Surge 名称净化再把 `=` 换成 `_`。
+    // 两条改名路径都必须把 underlying_proxy 一起带走,否则组级链式会指向一个已不存在的名字。
+    const nodes: Node[] = [
+      { name: "Relay=A", type: "ss", server: "r1.com", port: 8388, cipher: "aes-128-gcm", password: "x", source_provider_id: "p1", tags: [] },
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", source_provider_id: "p2", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      { id: "Landing", name: "Landing", type: "select", proxies: ["JP-01"], nested_groups: [], underlying_proxy: "Relay=A" },
+    ];
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile({ proxy_groups: ["Landing"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Landing" },
+      surgeModules: [],
+      warnings,
+    });
+    const lines = out.split(/\r?\n/);
+    expect(lines.some((l) => l.startsWith("Relay_A = "))).toBe(true);
+    expect(lines.find((l) => l.startsWith("Landing = "))).toContain("underlying-proxy=Relay_A");
+    // 改名同步生效 => 不应该出现悬空降级的 warning
+    expect(warnings.some((w) => w.includes("组级链式出口"))).toBe(false);
+  });
+
+  it("组级 underlying-proxy: 悬空 / 自引用都降级为忽略 + warning", () => {
+    const nodes: Node[] = [
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      { id: "Dangling", name: "Dangling", type: "select", proxies: ["JP-01"], nested_groups: [], underlying_proxy: "不存在的前置" },
+      { id: "SelfRef", name: "SelfRef", type: "select", proxies: ["JP-01"], nested_groups: [], underlying_proxy: "SelfRef" },
+    ];
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile({ proxy_groups: ["Dangling", "SelfRef"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Dangling" },
+      surgeModules: [],
+      warnings,
+    });
+    expect(out).not.toContain("underlying-proxy=");
+    expect(warnings.some((w) => w.includes("Dangling") && w.includes("既不是节点也不是已启用的策略组"))).toBe(true);
+    expect(warnings.some((w) => w.includes("SelfRef") && w.includes("指向本组自己"))).toBe(true);
   });
 
   it("translates chain_via to underlying-proxy", () => {

@@ -97,11 +97,12 @@ export function FlowGroupCard({
 
 function TestParams({ group }: { group: FlowGroup }) {
   const parts: string[] = [];
-  if (group.url) parts.push(`测试 ${group.url}`);
+  if (group.url) parts.push(`Clash 测速 ${group.url}`);
   if (group.interval !== undefined) parts.push(`每 ${group.interval}s 复测`);
   if (group.timeout !== undefined) parts.push(`超时 ${group.timeout}s`);
   if (group.tolerance !== undefined) parts.push(`容差 ${group.tolerance}ms`);
   if (group.include_other_group) parts.push(`平铺 ${group.include_other_group} 的成员`);
+  if (group.underlying_proxy) parts.push(`成员统一经 ${group.underlying_proxy} 出站`);
   if (group.clash_type !== group.type) parts.push(`Clash 端降级为 ${group.clash_type}`);
   if (parts.length === 0) return null;
   return (

@@ -662,8 +662,33 @@ mihomo / Surge 客户端加载后,Stream 的选择面板会显示两行:一个�
 | `g.nested_groups: string[]` | **其它组的 name** | 把其它组作为单个 proxy 项嵌套引用(客户端可点进去) |
 | `g.selector` | regex / from_providers / include_region / exclude_type | 动态筛选独立节点(从节点池里"挑出"满足条件的节点加进来) |
 | `g.include_other_group: string` | 单个组 name (Surge only) | Surge 原生 `include-other-group` 参数,把那个组的成员**平铺**展开到当前组(跟 nested_groups 的"嵌套引用"语义相反) |
+| `g.underlying_proxy: string` | 节点名 / 组 name (Surge only) | 组级链式:组内每个**代理成员**都经它出站(见 7.4) |
 
 > **老 yaml 自动迁移**: 在旧版本里这事是通过 `selector.include_other_group` 数组实现的(名字误导)。NodeDeck v2 起读取旧 yaml 时,schema transform 会把那个字段的值搬到顶层 `nested_groups`,首次保存后写回的就是新字段形态。无需手动改 yaml。
+
+### 7.4 让整组成员共用一个前置(`underlying_proxy`,仅 Surge)
+
+> 需 Surge iOS 5.22.0+ / Mac 6.9.0+。Clash 端无等价物,生成时忽略 + warning。
+
+平常"给节点挂前置"用的是 Profile 的 `chain_rules`(两端都生效)。如果你要的是"这个组里的**所有**成员都走同一个前置",Surge 有个更省事的组级参数:
+
+```yaml
+# data/groups/landing.yaml —— 目前只能在策略组编辑器的「YAML 高级」tab 里填
+id: landing
+name: 落地
+type: select
+proxies: [Sososo-JP, Sososo-US]
+underlying_proxy: 前置池
+```
+
+输出 `落地 = select,Sososo-JP,Sososo-US,underlying-proxy=前置池`。
+
+两个实用性质:
+
+- **覆盖面广**:显式成员、`policy-path`、`include-all-proxies`、`include-other-group` 引入的成员全都被链上;成员里的策略组和 `DIRECT` / `REJECT` 不受影响
+- **能同时看到两个延迟**:被链的成员在 Surge 里显示为派生策略 `Sososo-JP (via 前置池)`,与原本的 `Sososo-JP` 各自独立测速 —— 想评估"加了落地比直连慢多少",这是最省事的 A/B 办法
+
+完整说明见 [chain-proxy.md 的「组级链式」小节](chain-proxy.md)。
 
 ---
 

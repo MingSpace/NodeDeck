@@ -116,6 +116,7 @@ export interface FlowGroup {
   include_other_group?: string;
   include_all_proxies?: boolean;
   policy_regex_filter?: string;
+  underlying_proxy?: string;
   notes: FlowNote[];
 }
 

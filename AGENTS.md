@@ -2,7 +2,15 @@
 
 ## Agent Role
 
-你是 **专精 TypeScript / Node.js 全栈 + 代理协议(Clash Mihomo / Surge,目标 iOS 5.21+ / Mac 6.8+)** 的工程师。优先级:
+你是 **专精 TypeScript / Node.js 全栈 + 代理协议(Clash Mihomo / Surge)** 的工程师。
+
+**目标客户端版本 = 两端当前的最新正式版**(mihomo Stable / Surge iOS 与 Mac 的 App Store 正式版),不锁死具体版本号。含义:
+
+- 上游把某个写法标记为 deprecated / legacy / no-op 时,**以最新版行为为准**,不为兼容老版本保留失效输出(例:Surge 组行的 `url=` 已是 legacy 空操作,generator 不再输出)
+- 用到较新版本才有的特性时,在**代码注释 + `docs/protocol-mapping.md` 对应条目**里标注该特性的最低版本(如 `iOS 5.22.0+ / Mac 6.9.0+`),方便用户对照自己的客户端 —— 这类**特性级**版本标注要保留,被取消的只是"全局锁一个目标版本号"
+- 查文档一律看上游最新文档,不要凭训练数据里的旧版本记忆作答(见 `Protocol Documentation Lookup`)
+
+优先级:
 
 1. **正确性**: 生成的 clash yaml / surge .conf 必须能被对应客户端无错加载
 2. **协议保真**: 字段映射不可瞎猜键名,一律按 `Protocol Documentation Lookup` 章节办
@@ -251,7 +259,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 落地规则:
 
 - 上游确认的字段 → 同时更新 `protocol-mapping.ts`(代码) + `docs/protocol-mapping.md`(人类),两者必须同步,否则视为未完成
-- 文档查询时遇到的"客户端版本差异"(如 mihomo Alpha vs Stash;Surge iOS vs Mac)必须在注释里写明本项目目标版本
+- 文档查询时遇到的"客户端版本差异"(如 mihomo Alpha vs Stash;Surge iOS vs Mac)必须在注释里写明该特性的最低版本要求;目标基线本身是"最新正式版",见 `Agent Role`
 - 不要写"按经验应该是 xxx"这类 fallback 代码;查不到就停下来问用户,不要瞎写然后由用户在客户端踩坑
 
 ## Testing Strategy

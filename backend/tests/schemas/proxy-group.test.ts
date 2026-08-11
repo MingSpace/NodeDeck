@@ -8,6 +8,26 @@ import { proxyGroupSchema } from "../../src/schemas/proxy-group.js";
  * 这是 v1→v2 的隐式迁移层,首次 save 后老 yaml 会被改写成新字段形态(因为
  * Repo.save 先 parse 再 writeYaml,parse 输出已是迁移结果)。
  */
+describe("proxyGroupSchema — 类型枚举迁移", () => {
+  // external 是 [Proxy] 段的策略类型(Mac 独占),不是策略组类型
+  // (manual.nssurge.com/policy-groups/overview.html 只列了 6 种)。写进 [Proxy Group]
+  // Surge 会解析失败,所以存量值静默迁移成 select 而不是让整个 yaml 校验失败。
+  it("把历史遗留的 type: external 迁移成 select", () => {
+    const parsed = proxyGroupSchema.parse({ id: "Ext", name: "Ext", type: "external", proxies: [] });
+    expect(parsed.type).toBe("select");
+  });
+
+  it("合法类型直通", () => {
+    for (const t of ["select", "url-test", "fallback", "load-balance", "smart", "ssid"] as const) {
+      expect(proxyGroupSchema.parse({ id: "G", name: "G", type: t }).type).toBe(t);
+    }
+  });
+
+  it("未知类型仍然报错(不静默吞掉拼写错误)", () => {
+    expect(() => proxyGroupSchema.parse({ id: "G", name: "G", type: "url_test" })).toThrow();
+  });
+});
+
 describe("proxyGroupSchema transform — 嵌套组字段迁移", () => {
   it("把老 selector.include_other_group 搬到 nested_groups 并清空老字段", () => {
     const raw = {

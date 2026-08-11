@@ -20,7 +20,14 @@ export interface FieldMap {
 /** Common booleans / strings shared across protocols. */
 export const COMMON_FIELDS: FieldMap[] = [
   { internal: "tls", clash: "tls", surge: "tls", notes: "Surge 端仅 vmess 需要显式 tls=true(默认明文);trojan/https/tuic/hysteria2 等由协议类型隐含,不输出该键" },
-  { internal: "sni", clash: "sni", surge: "sni" },
+  // mihomo 的 SNI 键名分两套:VMess / VLESS 用 `servername`,其余 TLS 系协议用 `sni`。
+  // 依据 wiki.metacubex.one/config/proxies/tls 的 "sni/servername" 小节原文:
+  // 「服务器名称指示,在 VMess/VLESS 中为 `servername`,如果为空,则为 `server` 中的地址」。
+  // 写错键不会报错,只会被静默忽略并回落到 server 地址 —— CDN 前置节点会连到错误 SNI。
+  // Stash 反过来只认 `sni`(stash.wiki 的通用 TLS 参数无 servername),故 vmess/vless 两个键都写。
+  { internal: "sni", clash: "sni", surge: "sni", notes: "mihomo 的 vmess/vless 必须写 servername;generator 对这两个协议同时输出 servername(mihomo)与 sni(Stash)" },
+  { internal: "name_cert_verify", clash: "name-cert-verify", surge: "server-cert-verify-name", notes: "只改证书 DNSName 校验目标,不改 SNI;Surge 需 iOS 5.21.0+ / Mac 6.8.0+" },
+  { internal: "ip_version", clash: "ip-version", surge: "ip-version", notes: "枚举值两端不同,需映射:clash dual|ipv4|ipv6|ipv4-prefer|ipv6-prefer ↔ surge dual|v4-only|v6-only|prefer-v4|prefer-v6" },
   { internal: "skip_cert_verify", clash: "skip-cert-verify", surge: "skip-cert-verify" },
   { internal: "fingerprint", clash: "fingerprint", surge: "server-cert-fingerprint-sha256", notes: "服务器证书 SHA256 锁定(TLS 通用,替代标准 X.509 校验);区别于 client_fingerprint(uTLS 浏览器指纹)" },
   { internal: "client_fingerprint", clash: "client-fingerprint", surge: "tls-fingerprint", notes: "uTLS 客户端指纹(chrome/firefox 等);区别于 fingerprint(证书锁定)" },
@@ -32,15 +39,23 @@ export const COMMON_FIELDS: FieldMap[] = [
 
 /**
  * Shadow TLS 传输层混淆(可叠加在任意 TCP 协议上)。
+ *
  * - Surge: 任意 proxy 行追加参数(v2: iOS 5.2.0+/Mac 4.10.0+;v3: iOS 5.5.0+/Mac 5.0.3+);
  *   version 仅支持 2/3,缺省 2。
- * - mihomo: 仅 shadowsocks 支持,写法为 `plugin: shadow-tls` + `plugin-opts: { password, host, version }`,
- *   version 支持 1/2/3。其余协议在 Clash 输出降级为跳过该组字段 + warning。
+ * - mihomo: **按协议分三套写法**,不是只有 ss 能用(旧版本注释的 "仅 shadowsocks 支持" 已过时):
+ *   1. `ss`    → `plugin: shadow-tls` + `plugin-opts: { password, host, version }`
+ *   2. `snell` → `obfs-opts: { mode: shadow-tls, host, password, version, alpn }`
+ *      (wiki.metacubex.one/config/proxies/snell)
+ *   3. 其余 TLS 系(vmess/vless/trojan/anytls)→ 通用 `shadow-tls-opts: { version, password }`,
+ *      需 `tls: true`;**该写法没有 host 键**,ShadowTLS 的 SNI 取通用的 sni/servername
+ *      (wiki.metacubex.one/config/proxies/tls 的 shadow-tls-opts 小节)
+ * - Stash: 只支持 ss 的 `plugin: shadow-tls`,没有通用 `shadow-tls-opts`,snell 的 obfs 也只有
+ *   http/tls。`flag: stash` 时非 ss 协议仍按"丢弃 + warning"处理。
  */
 export const SHADOW_TLS_FIELDS: FieldMap[] = [
-  { internal: "shadow_tls_password", clash: "plugin-opts.password", surge: "shadow-tls-password" },
-  { internal: "shadow_tls_sni", clash: "plugin-opts.host", surge: "shadow-tls-sni", notes: "TLS 握手明文 SNI;Surge 不填则不发 SNI" },
-  { internal: "shadow_tls_version", clash: "plugin-opts.version", surge: "shadow-tls-version", notes: "Surge 仅 2/3(缺省 2);v1 在 Surge 端跳过 + warning" },
+  { internal: "shadow_tls_password", clash: "plugin-opts.password / obfs-opts.password / shadow-tls-opts.password", surge: "shadow-tls-password", notes: "三套写法按协议选:ss / snell / 其余 TLS 系" },
+  { internal: "shadow_tls_sni", clash: "plugin-opts.host / obfs-opts.host / (通用 sni)", surge: "shadow-tls-sni", notes: "TLS 握手明文 SNI;通用 shadow-tls-opts 无 host 键,复用节点的 sni/servername;Surge 不填则不发 SNI" },
+  { internal: "shadow_tls_version", clash: "plugin-opts.version / obfs-opts.version / shadow-tls-opts.version", surge: "shadow-tls-version", notes: "mihomo 1/2/3(缺省 2);Surge 仅 2/3,v1 在 Surge 端跳过 + warning" },
 ];
 
 /** Shadowsocks-specific. */
@@ -58,13 +73,20 @@ export const VMESS_FIELDS: FieldMap[] = [
   { internal: "vmess_aead", clash: null, surge: "vmess-aead", notes: "Surge-only flag" },
 ];
 
-/** VLESS-specific. */
+/**
+ * VLESS —— **Clash 独占,Surge 完全不支持该协议**。
+ *
+ * Surge 手册的协议表(manual.nssurge.com/policies/overview.html)列出的全部类型里没有 vless,
+ * 也不存在 `vless-flow` / `reality-*` 这些参数页。生态里想在 Surge 用 VLESS+Reality,只能靠
+ * sing-box 之类在本机桥成 socks5。历史上这里给 surge 列填过键名,是没有出处的臆测 ——
+ * 会让 Surge 产物出现无法解析的行,现已改为整节点跳过 + warning。
+ */
 export const VLESS_FIELDS: FieldMap[] = [
-  { internal: "uuid", clash: "uuid", surge: "username" },
-  { internal: "flow", clash: "flow", surge: "vless-flow" },
-  { internal: "encryption", clash: "encryption", surge: "encryption" },
-  { internal: "reality_opts.public_key", clash: "reality-opts.public-key", surge: "reality-public-key" },
-  { internal: "reality_opts.short_id", clash: "reality-opts.short-id", surge: "reality-short-id" },
+  { internal: "uuid", clash: "uuid", surge: null },
+  { internal: "flow", clash: "flow", surge: null },
+  { internal: "encryption", clash: "encryption", surge: null },
+  { internal: "reality_opts.public_key", clash: "reality-opts.public-key", surge: null },
+  { internal: "reality_opts.short_id", clash: "reality-opts.short-id", surge: null },
 ];
 
 /** Hysteria2-specific. */
@@ -121,13 +143,23 @@ export const WIREGUARD_FIELDS: FieldMap[] = [
   { internal: "peers", clash: "peers", surge: "peer", notes: "Multi-peer = repeated `peer = (...)` lines in [WireGuard <id>]" },
 ];
 
-/** Snell (Surge-only). v6 需 iOS 5.20.0+ / Mac 6.7.0+(beta,不支持 QUIC Proxy Mode)。 */
+/**
+ * Snell —— **两端都支持**(旧版本把它标成 Surge-only 是错的)。
+ *
+ * mihomo 原生支持 snell v1–v5(wiki.metacubex.one/config/proxies/snell),仅 v3/4/5 支持 udp,
+ * `reuse` 仅 v4/5。Surge 支持 v1–v6。**v6 是 Surge 独占**(iOS 5.20.0+ / Mac 6.7.0+,beta),
+ * mihomo 不认,Clash 输出对 v6 节点整节点跳过 + warning。
+ *
+ * 混淆写法两端不同:Surge 是 `obfs=` + `obfs-host=` 两个平铺参数;mihomo 是嵌套的
+ * `obfs-opts: { mode, host }`(mode 还支持 shadow-tls / restls / jls,见 SHADOW_TLS_FIELDS)。
+ */
 export const SNELL_FIELDS: FieldMap[] = [
-  { internal: "psk", clash: null, surge: "psk" },
-  { internal: "snell_version", clash: null, surge: "version", notes: "3/4/5/6;v6 派生流量特征,无额外客户端参数" },
-  { internal: "reuse", clash: null, surge: "reuse", notes: "连接复用,Snell v4+ 可选" },
-  { internal: "obfs", clash: null, surge: "obfs" },
-  { internal: "obfs_host", clash: null, surge: "obfs-host" },
+  { internal: "psk", clash: "psk", surge: "psk" },
+  { internal: "snell_version", clash: "version", surge: "version", notes: "mihomo 1–5;Surge 1–6。v6 为 Surge 独占,Clash 端跳过整节点 + warning" },
+  { internal: "reuse", clash: "reuse", surge: "reuse", notes: "连接复用,Snell v4+ 可选" },
+  { internal: "obfs", clash: "obfs-opts.mode", surge: "obfs", notes: "mihomo 支持 http/tls/shadow-tls/restls/jls;Surge v1–v3 支持 http/tls,v4/v5 仅 http,v6 不支持 obfs" },
+  { internal: "obfs_host", clash: "obfs-opts.host", surge: "obfs-host" },
+  { internal: "obfs_uri", clash: null, surge: "obfs-uri", notes: "仅 obfs=http 有意义;mihomo 的 obfs-opts 无对应键" },
 ];
 
 /** AnyTLS (v2: iOS 5.17.0+ / Mac 6.4.3+)。 */

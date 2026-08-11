@@ -9,7 +9,7 @@ import { applyNodeFilter } from "./node-filter.js";
 import { sortNodesByRegion } from "./node-sort.js";
 import { applyChainRules, validateChain } from "../chain/apply.js";
 import { uniquifyNodeNames, buildProviderLabels, escapeSurgeNames } from "./node-naming.js";
-import { validateGroupRefs } from "./group-refs.js";
+import { validateGroupRefs, GROUP_BUILTIN_POLICIES } from "./group-refs.js";
 import { buildGroupMemberIndex, resolveGroupMemberEntries } from "./group-members.js";
 import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
@@ -83,7 +83,7 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   if ((input.hosts && Object.keys(input.hosts).length > 0) || hasModuleSection(input.surgeModules, "host")) {
     lines.push("[Host]");
     if (input.hosts) {
-      lines.push(...buildSurgeHostLines(input.hosts));
+      lines.push(...buildSurgeHostLines(input.hosts, input.warnings));
     }
     for (const m of input.surgeModules) {
       if (m.content_sections.host) lines.push(...splitNonEmpty(m.content_sections.host));
@@ -132,13 +132,11 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   filteredNodes.forEach((node, idx) => {
     if (node.type === "wireguard") {
       const sid = sanitizeWireGuardSectionId(node.name, idx + 1);
-      const head = `${node.name} = wireguard, section-name=${sid}`;
-      // wireguard 在 Surge 端不接受 underlying-proxy / udp-relay 这些通用参数 — 它本身就是 L3 隧道
-      if (node.chain_via) {
-        input.warnings.push(
-          `Surge wireguard "${node.name}" chain_via="${node.chain_via}" 在 Surge 端不被支持(L3 隧道无法叠 underlying-proxy),已忽略`,
-        );
-      }
+      // Surge 的 wireguard **支持** underlying-proxy(manual.nssurge.com/policies/wireguard.html:
+      // 把加密后的 UDP 数据报经另一策略转发,默认 DIRECT)。之前这里当成不支持直接丢弃是误判。
+      // 真正不支持的是 interface 绑定与 shadow-tls-*。
+      const wgParams = node.chain_via ? `, underlying-proxy=${node.chain_via}` : "";
+      const head = `${node.name} = wireguard, section-name=${sid}${wgParams}`;
       lines.push(head);
       wgSections.push(buildSurgeWireGuardSection(sid, node, input.warnings));
       return;
@@ -151,8 +149,9 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   // [Proxy Group]
   if (sanitizedGroups.length > 0) {
     lines.push("[Proxy Group]");
+    const activeGroupNames = new Set(sanitizedGroups.map((g) => g.name));
     for (const g of sanitizedGroups) {
-      lines.push(buildSurgeProxyGroup(g, filteredNodes, hiddenNodes));
+      lines.push(buildSurgeProxyGroup(g, filteredNodes, hiddenNodes, input.warnings, activeGroupNames));
     }
     lines.push("");
   }
@@ -191,10 +190,17 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
         input.warnings.push(`Ruleset "${rs.id}" type=remote_url but url missing, skipped`);
         continue;
       }
+      // Surge 的规则集重下间隔默认 86400,只有非默认值才输出,避免给产物加噪音。
+      // 之前从不输出,用户在 UI 里改了间隔在 Surge 侧是无声失效的。
+      const updateInterval =
+        rs.update_interval !== undefined && rs.update_interval !== 86400
+          ? [`update-interval=${rs.update_interval}`]
+          : [];
       if (rs.surge_format === "domain_set") {
-        lines.push(`DOMAIN-SET,${rs.url},${policy}${flagSuffix}`);
+        const parts = [`DOMAIN-SET,${rs.url}`, policy, ...updateInterval, ...flags];
+        lines.push(parts.join(","));
       } else {
-        const parts = [`RULE-SET,${rs.url}`, policy, ...extraParams, ...flags];
+        const parts = [`RULE-SET,${rs.url}`, policy, ...extraParams, ...updateInterval, ...flags];
         lines.push(parts.join(","));
       }
     } else if (rs.type === "inline_list") {
@@ -428,16 +434,13 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
       pushTransport(params, node);
       break;
     case "vless":
-      if (!node.uuid) return null;
-      params.push(`username=${node.uuid}`);
-      if (node.encryption) params.push(`encryption=${node.encryption}`);
-      if (node.flow) params.push(`vless-flow=${node.flow}`);
-      if (node.reality_opts) {
-        params.push(`reality-public-key=${node.reality_opts.public_key}`);
-        if (node.reality_opts.short_id) params.push(`reality-short-id=${node.reality_opts.short_id}`);
-      }
-      pushTransport(params, node);
-      break;
+      // Surge 完全没有 vless:manual.nssurge.com/policies/overview.html 的协议表里没有这个
+      // 类型关键字,也不存在 vless-flow / reality-* 参数。历史上这里按臆测的键名输出过,
+      // 结果是 Surge 加载时解析不了这一行 —— 现在与 ssr 一样整节点跳过。
+      warnings.push(
+        `Skipped VLESS node "${node.name}" in Surge output (Surge 不支持 vless 协议;如需使用请在本机用 sing-box 等桥成 socks5)`,
+      );
+      return null;
     case "trojan":
       if (node.password !== undefined) params.push(`password=${escapeValue(node.password)}`);
       pushTransport(params, node);
@@ -494,6 +497,9 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
       if (node.reuse !== undefined) params.push(`reuse=${node.reuse}`);
       if (node.obfs) params.push(`obfs=${node.obfs}`);
       if (node.obfs_host) params.push(`obfs-host=${node.obfs_host}`);
+      // obfs-uri 仅在 obfs=http 下有意义(manual.nssurge.com/policies/snell.html);
+      // 之前只有 ss 分支输出了它,snell 这边漏了。
+      if (node.obfs_uri && node.obfs === "http") params.push(`obfs-uri=${node.obfs_uri}`);
       break;
     case "anytls":
       if (node.password !== undefined) params.push(`password=${escapeValue(node.password)}`);
@@ -514,6 +520,14 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
   }
 
   if (node.sni) params.push(`sni=${node.sni}`);
+  // 证书 DNSName 校验目标与 SNI 解耦(iOS 5.21.0+ / Mac 6.8.0+),机场伪装 SNI 时用得上
+  if (node.name_cert_verify) params.push(`server-cert-verify-name=${node.name_cert_verify}`);
+  if (node.ip_version) params.push(`ip-version=${SURGE_IP_VERSION[node.ip_version]}`);
+  // 节点级测速覆盖:Surge 现行版本已废弃组行的 url=,这三个键与 [General] 的全局值
+  // 是仅有的入口(解析顺序:节点 test-url → [General] proxy-test-url → 默认)。
+  if (node.test_url) params.push(`test-url=${node.test_url}`);
+  if (node.test_timeout !== undefined) params.push(`test-timeout=${node.test_timeout}`);
+  if (node.test_udp) params.push(`test-udp=${node.test_udp}`);
   if (node.skip_cert_verify) params.push(`skip-cert-verify=${node.skip_cert_verify}`);
   // 服务器证书指纹锁定(TLS 通用参数,适用 HTTP/SOCKS5-TLS/VMess/Trojan/TUIC/Hysteria2/AnyTLS):
   // 用固定证书指纹替代标准 X.509 校验,机场常借此配合伪装 SNI 使用。
@@ -538,7 +552,11 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
   }
   if (node.chain_via) params.push(`underlying-proxy=${node.chain_via}`);
 
-  let head = `${node.type}, ${node.server}, ${node.port}`;
+  // socks5-tls 在 Surge 是独立的类型关键字,不是 socks5 + 某个参数
+  // (manual.nssurge.com/policies/socks5.html);parser 读进来时折叠成了 type=socks5 + tls,
+  // 这里必须还原,否则导入再导出会静默退化成明文 socks5。
+  const typeKeyword = node.type === "socks5" && node.tls ? "socks5-tls" : node.type;
+  let head = `${typeKeyword}, ${node.server}, ${node.port}`;
   if (node.type === "http" || node.type === "https") {
     // Surge http/https 凭据格式: 必须 username 与 password 同时存在用位置参数;
     // 任一缺失 Surge 会拒绝解析,这里直接降级为无认证 + warning。
@@ -587,7 +605,21 @@ function buildSurgeWireGuardSection(
   if (node.private_key) out.push(`private-key = ${node.private_key}`);
   if (node.ip) out.push(`self-ip = ${node.ip}`);
   if (node.ipv6) out.push(`self-ip-v6 = ${node.ipv6}`);
-  if (node.mtu !== undefined) out.push(`mtu = ${node.mtu}`);
+  if (node.mtu !== undefined) {
+    // 手册给的有效区间是 576–1420(默认 1280);schema 为兼容存量放宽到 9000,这里提醒。
+    if (node.mtu > 1420) {
+      warnings.push(
+        `Surge wireguard "${node.name}" mtu=${node.mtu} 超出手册范围(576-1420),客户端可能拒绝或截断`,
+      );
+    }
+    out.push(`mtu = ${node.mtu}`);
+  }
+  // dns-server 决定 Surge 把该策略当「通用代理」还是「点对点」,进而决定默认测速方式
+  // (无 dns-server → 原生 RTT 探测;有 → 标准 URL 测速)。WARP 类节点缺了它测速会不符预期。
+  if (node.wg_dns_server && node.wg_dns_server.length > 0) {
+    out.push(`dns-server = ${node.wg_dns_server.join(", ")}`);
+  }
+  if (node.wg_prefer_ipv6 !== undefined) out.push(`prefer-ipv6 = ${node.wg_prefer_ipv6}`);
 
   if (node.peers && node.peers.length > 0) {
     for (const peer of node.peers) {
@@ -596,6 +628,7 @@ function buildSurgeWireGuardSection(
       if (peer.preshared_key) args.push(`preshared-key = ${peer.preshared_key}`);
       args.push(`allowed-ips = "${peer.allowed_ips.join(", ")}"`);
       args.push(`endpoint = ${peer.server}:${peer.port}`);
+      if (peer.keepalive !== undefined) args.push(`keepalive = ${peer.keepalive}`);
       if (peer.reserved) {
         warnings.push(
           `Surge wireguard "${node.name}" peer.reserved="${peer.reserved}" 未自动转换为 client-id(需手动转 base64→三字节十进制)`,
@@ -632,6 +665,15 @@ function pushTransport(params: string[], node: Node): void {
   }
 }
 
+/** 内部统一用 mihomo 的 ip-version 枚举,Surge 侧键名相同但取值不同。 */
+const SURGE_IP_VERSION: Record<NonNullable<Node["ip_version"]>, string> = {
+  dual: "dual",
+  ipv4: "v4-only",
+  ipv6: "v6-only",
+  "ipv4-prefer": "prefer-v4",
+  "ipv6-prefer": "prefer-v6",
+};
+
 function stripBandwidthUnit(s: string): string {
   // Surge expects just the number (Mbps assumed). e.g. "200 Mbps" → "200"
   const m = s.trim().match(/^(\d+)/);
@@ -645,11 +687,32 @@ function escapeValue(v: string): string {
   return v;
 }
 
-function buildSurgeProxyGroup(g: ProxyGroup, allNodes: Node[], hiddenNodes: Set<string>): string {
+function buildSurgeProxyGroup(
+  g: ProxyGroup,
+  allNodes: Node[],
+  hiddenNodes: Set<string>,
+  warnings: string[],
+  knownGroupNames: Set<string>,
+): string {
   const members = resolveSurgeGroupMembers(g, allNodes, hiddenNodes);
+  // Surge 的 smart 组会**静默忽略**成员里的嵌套组与内置策略
+  // (manual.nssurge.com/policy-groups/overview.html 的 Nesting Groups 小节),
+  // 客户端不会报错,用户只会发现"配了但没用",所以这里主动提示。
+  if (g.type === "smart") {
+    const ignored = members.filter((m) => knownGroupNames.has(m) || GROUP_BUILTIN_POLICIES.has(m));
+    if (ignored.length > 0) {
+      warnings.push(
+        `Surge smart 组 "${g.name}" 的成员 [${ignored.join(", ")}] 是嵌套组或内置策略,`
+          + `smart 组会静默忽略它们;需要它们参与选择请改用 url-test / fallback / select`,
+      );
+    }
+  }
   const params: string[] = [];
-  if (g.url) params.push(`url=${g.url}`);
-  if (g.interval !== undefined) params.push(`interval=${g.interval}`);
+  // g.url 刻意不输出:Surge 现行版本已把组行上的 `url=` 列为 legacy 且完全无效,测速 URL 只认
+  // per-policy 的 `test-url` 或 [General] 的 proxy-test-url / internet-test-url。该字段仍保留在
+  // schema 里,因为 mihomo 的 url-test / fallback 组需要它(见 clash.ts)。
+  // interval 对 Smart 组同样无效(manual.nssurge.com/policy-groups/smart.html),不输出免噪音。
+  if (g.interval !== undefined && g.type !== "smart") params.push(`interval=${g.interval}`);
   if (g.tolerance !== undefined) params.push(`tolerance=${g.tolerance}`);
   if (g.timeout !== undefined) params.push(`timeout=${g.timeout}`);
   if (g.evaluate_before_use !== undefined) params.push(`evaluate-before-use=${g.evaluate_before_use}`);
@@ -660,6 +723,10 @@ function buildSurgeProxyGroup(g: ProxyGroup, allNodes: Node[], hiddenNodes: Set<
   if (g.policy_regex_filter) params.push(`policy-regex-filter=${g.policy_regex_filter}`);
   if (g.include_other_group) params.push(`include-other-group="${g.include_other_group}"`);
   if (g.include_all_proxies !== undefined) params.push(`include-all-proxies=${g.include_all_proxies}`);
+  if (g.underlying_proxy) params.push(`underlying-proxy=${g.underlying_proxy}`);
+  if (g.icon_url) params.push(`icon-url=${g.icon_url}`);
+  // Smart 组唯一的调参手段;值里的 `;` 会被 INI 行解析吃掉,必须整体加引号
+  if (g.policy_priority) params.push(`policy-priority="${g.policy_priority}"`);
 
   const type = g.type === "smart" ? "smart" : g.type;
   const memberStr = members.join(",");

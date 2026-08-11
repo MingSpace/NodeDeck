@@ -303,6 +303,177 @@ describe("generateClashConfig", () => {
     expect(members).toContain("DIRECT"); // 独立的内置 policy
   });
 
+  it("vmess/vless 的 SNI 输出 servername(mihomo)与 sni(Stash)两个键,其余协议只输出 sni", () => {
+    // wiki.metacubex.one/config/proxies/tls:「服务器名称指示,在 VMess/VLESS 中为 servername」。
+    // 只写 sni 会被 mihomo 静默忽略并回落到 server 地址 —— CDN 前置节点会连到错误 SNI。
+    const nodes: Node[] = [
+      { name: "VM", type: "vmess", server: "1.2.3.4", port: 443, uuid: "u", tls: true, sni: "cdn.example.com", tags: [] },
+      { name: "VL", type: "vless", server: "1.2.3.5", port: 443, uuid: "u", tls: true, sni: "cdn.example.com", tags: [] },
+      { name: "TJ", type: "trojan", server: "1.2.3.6", port: 443, password: "p", tls: true, sni: "cdn.example.com", tags: [] },
+    ];
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes,
+      groups: [],
+      rules: [],
+      warnings: [],
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const proxies = parsed.proxies as Array<Record<string, unknown>>;
+    const byName = (n: string) => proxies.find((p) => p.name === n)!;
+    expect(byName("VM").servername).toBe("cdn.example.com");
+    expect(byName("VM").sni).toBe("cdn.example.com");
+    expect(byName("VL").servername).toBe("cdn.example.com");
+    expect(byName("TJ").servername).toBeUndefined();
+    expect(byName("TJ").sni).toBe("cdn.example.com");
+  });
+
+  it("snell: v1-v5 输出 psk/version/obfs-opts,shadow-tls 走 obfs-opts.mode", () => {
+    const nodes: Node[] = [
+      { name: "S4", type: "snell", server: "s.com", port: 443, psk: "k", snell_version: 4, reuse: true, obfs: "http", obfs_host: "bing.com", tags: [] },
+      { name: "S-STLS", type: "snell", server: "s2.com", port: 443, psk: "k2", snell_version: 4, shadow_tls_password: "stls", shadow_tls_sni: "cloud.example.com", shadow_tls_version: 3, tags: [] },
+    ];
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes,
+      groups: [],
+      rules: [],
+      warnings,
+    });
+    const proxies = (yaml.load(out) as Record<string, unknown>).proxies as Array<Record<string, unknown>>;
+    expect(proxies[0]).toMatchObject({
+      type: "snell",
+      psk: "k",
+      version: 4,
+      reuse: true,
+      "obfs-opts": { mode: "http", host: "bing.com" },
+    });
+    expect(proxies[1]["obfs-opts"]).toEqual({
+      mode: "shadow-tls",
+      host: "cloud.example.com",
+      password: "stls",
+      version: 3,
+    });
+    expect(warnings).toEqual([]);
+  });
+
+  it("snell: psk 为空串时回退到 password(clash parser 缺 psk 时写的是空串而非 undefined)", () => {
+    const nodes: Node[] = [
+      { name: "S", type: "snell", server: "s.com", port: 443, psk: "", password: "psk-in-password", snell_version: 4, tags: [] },
+    ];
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes,
+      groups: [],
+      rules: [],
+      warnings,
+    });
+    const proxies = (yaml.load(out) as Record<string, unknown>).proxies as Array<Record<string, unknown>>;
+    expect(proxies).toHaveLength(1);
+    expect(proxies[0].psk).toBe("psk-in-password");
+    expect(warnings).toEqual([]);
+  });
+
+  it("stash flag 下非 ss 的 shadow-tls 仍丢弃 + warning(Stash 无通用 shadow-tls-opts)", () => {
+    const nodes: Node[] = [
+      { name: "TJ", type: "trojan", server: "t.com", port: 443, password: "p", tls: true, shadow_tls_password: "stls", tags: [] },
+    ];
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile({ clash_options: { use_proxy_providers: false, flag: "stash", group_style: "flow" } }),
+      nodes,
+      groups: [],
+      rules: [],
+      warnings,
+    });
+    const proxies = (yaml.load(out) as Record<string, unknown>).proxies as Array<Record<string, unknown>>;
+    expect(proxies[0]["shadow-tls-opts"]).toBeUndefined();
+    expect(warnings.some((w) => w.includes("Stash") && w.includes("TJ"))).toBe(true);
+  });
+
+  it("ws early-data 与组的 icon / filter 都要真的进产物", () => {
+    const nodes: Node[] = [
+      {
+        name: "WS",
+        type: "vmess",
+        server: "w.com",
+        port: 443,
+        uuid: "u",
+        network: "ws",
+        ws_opts: { path: "/p", headers: {}, max_early_data: 2048, early_data_header_name: "Sec-WebSocket-Protocol" },
+        tags: [],
+      },
+    ];
+    const groups: ProxyGroup[] = [
+      {
+        id: "G",
+        name: "G",
+        type: "select",
+        proxies: ["WS"],
+        nested_groups: [],
+        icon_url: "https://example.com/i.png",
+        filter: "JP|HK",
+        exclude_filter: "过期",
+        clash_exclude_type: "ss|http",
+      },
+    ];
+    const out = generateClashConfig({
+      profile: baseProfile({ proxy_groups: ["G"] }),
+      nodes,
+      groups,
+      rules: [],
+      warnings: [],
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const wsOpts = (parsed.proxies as Array<Record<string, unknown>>)[0]["ws-opts"] as Record<string, unknown>;
+    expect(wsOpts["max-early-data"]).toBe(2048);
+    expect(wsOpts["early-data-header-name"]).toBe("Sec-WebSocket-Protocol");
+    const group = (parsed["proxy-groups"] as Array<Record<string, unknown>>)[0];
+    expect(group.icon).toBe("https://example.com/i.png");
+    expect(group.filter).toBe("JP|HK");
+    expect(group["exclude-filter"]).toBe("过期");
+    expect(group["exclude-type"]).toBe("ss|http");
+  });
+
+  it("组级 underlying_proxy 是 Surge 专属:Clash 端忽略并 warning,保留组的 url", () => {
+    // mihomo 的 dialer-proxy 只能写在单个 proxy 上,proxy-group 无组级等价物。
+    // 与之相对,g.url 在 Clash 端是 url-test/fallback 的必要字段,必须继续输出
+    // (Surge 端才是被废弃的那一侧,见 surge.test.ts 的对称用例)。
+    const nodes: Node[] = [
+      { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", tags: [] },
+    ];
+    const groups: ProxyGroup[] = [
+      { id: "Relay", name: "Relay", type: "select", proxies: ["JP-01"], nested_groups: [] },
+      {
+        id: "Landing",
+        name: "Landing",
+        type: "url-test",
+        proxies: ["JP-01"],
+        nested_groups: [],
+        url: "http://cp.cloudflare.com",
+        interval: 300,
+        underlying_proxy: "Relay",
+      },
+    ];
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile({ proxy_groups: ["Relay", "Landing"] }),
+      nodes,
+      groups,
+      rules: [],
+      finalRule: { policy: "Landing" },
+      warnings,
+    });
+    const parsed = yaml.load(out) as Record<string, unknown>;
+    const landing = (parsed["proxy-groups"] as Array<Record<string, unknown>>).find((g) => g.name === "Landing")!;
+    expect(landing["underlying-proxy"]).toBeUndefined();
+    expect(landing.underlying_proxy).toBeUndefined();
+    expect(landing.url).toBe("http://cp.cloudflare.com");
+    expect(warnings.some((w) => w.includes("Landing") && w.includes("Clash 无等价物已忽略"))).toBe(true);
+  });
+
   it("translates chain_via to dialer-proxy", () => {
     const nodes: Node[] = [
       {

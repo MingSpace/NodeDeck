@@ -85,7 +85,13 @@ export function validateGroupRefs(
   // (因为节点池全空时要聚合 → 单条总览;否则 → per-group 分散)
   const perGroupNodeDangling: { group: string; refs: string[] }[] = [];
 
-  const sanitized = groups.map((g) => {
+  const sanitized = groups.map((original) => {
+    const g = sanitizeUnderlyingProxy(original, {
+      validNodeNames,
+      activeGroupNames,
+      knownGroupNames,
+      warnings,
+    });
     if (g.proxies.length === 0) return g;
 
     const kept: string[] = [];
@@ -147,4 +153,40 @@ export function validateGroupRefs(
   }
 
   return sanitized;
+}
+
+/**
+ * 校验 `g.underlying_proxy`([S] 组级链式)指向的策略是否存在,悬空则清空 + warning
+ * (与 validateChain 处理 node.chain_via 悬空的口径一致:宁可降级为不链式,也不让客户端加载报错)。
+ *
+ * 只查一层直接自引用(`A` 的组级链式指回 `A` 自己)。更深的环 —— 比如 A 经 B、B 的成员又经 A ——
+ * 依赖 Surge 自己的循环引用检测:成员集合要等客户端展开 policy-path / include-all-proxies
+ * 之后才完整,本地算不准,硬判会误伤。
+ */
+function sanitizeUnderlyingProxy(
+  g: ProxyGroup,
+  ctx: {
+    validNodeNames: Set<string>;
+    activeGroupNames: Set<string>;
+    knownGroupNames: Set<string>;
+    warnings: string[];
+  },
+): ProxyGroup {
+  const via = g.underlying_proxy;
+  if (!via) return g;
+
+  const strip = (reason: string): ProxyGroup => {
+    ctx.warnings.push(`Proxy group "${g.name}" 的组级链式出口 "${via}" ${reason},已忽略该参数`);
+    const { underlying_proxy: _omit, ...rest } = g;
+    return rest as ProxyGroup;
+  };
+
+  if (via === g.name) return strip("指向本组自己(会形成循环引用)");
+  if (ctx.validNodeNames.has(via) || ctx.activeGroupNames.has(via) || GROUP_BUILTIN_POLICIES.has(via)) {
+    return g;
+  }
+  if (ctx.knownGroupNames.has(via)) {
+    return strip("对应的组已存在但未在当前 Profile 启用(请到 Profile 编辑器把它加入 proxy_groups)");
+  }
+  return strip("既不是节点也不是已启用的策略组");
 }

@@ -6,9 +6,12 @@ import { generateSurgeConfig } from "../generators/surge.js";
 import { aggregateUserInfo } from "../userinfo/aggregate.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
 import { sortNodesByRegion } from "../generators/node-sort.js";
+import { applyChainRules } from "../chain/apply.js";
+import { buildGroupMemberIndex } from "../generators/group-members.js";
+import { resolveHiddenNodeNames } from "../generators/hidden-nodes.js";
+import { uniquifyNodeNames, buildProviderLabels } from "../generators/node-naming.js";
 import { env } from "../env.js";
 import { loadConfig } from "../storage/config-store.js";
-import { loadProviderNodes } from "../providers/load.js";
 import { refreshIntervalToSeconds } from "../schemas/common.js";
 import { logger } from "../logger.js";
 import { getClientIp } from "../auth/middleware.js";
@@ -232,11 +235,35 @@ async function handleProviderClashYaml(c: import("hono").Context) {
   // 仅取该 provider 的节点(不混入其他机场,也不混入手动节点),
   // 但仍走该 profile 的 node_filter 让用户能过滤/重命名。
   // 真实下发:不传 staleWhileRevalidate,cache miss 时同步拉,保证客户端拿到完整节点。
-  const { nodes: allNodes } = await loadProviderNodes(provider);
-  const filteredRaw = applyNodeFilter(allNodes, profile.node_filter);
-  const filtered = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const warnings: string[] = [];
-  const text = generateProxyProviderYaml(filtered, warnings);
+
+  // 这条路由输出的是**整个 profile 节点池的一个切片**,不是一份独立配置 —— 所以必须完整复刻
+  // 主 generator 的前半段流水线(filter → sort → uniquify → hidden → chain),最后才按
+  // source_provider_id 切出本机场的节点。理由有两个:
+  //
+  // 1. **命名必须与主订阅一致**。撞名改名(`【标识】xxx`)是按全量池算的,只看本机场算不出
+  //    同样的名字。而 chain_rules 的 via / include_nodes 用的是改名后的最终名,组成员列表里
+  //    写的也是最终名 —— 名字对不上,客户端就会报 proxy not found。
+  // 2. **组成员要按全量池算**。selector.include_groups 圈的是跨机场的组,只看本机场会少匹配。
+  //
+  // 唯一不复刻的是 validateChain:chain_via 可以指向主订阅里的节点或策略组,那些在本文件里
+  // 必然"不存在",按悬空清掉反而会误伤。引用合法性由主订阅那侧统一校验。
+  const resolved = await resolveProfile(profile, { staleWhileRevalidate: false });
+  const poolFiltered = applyNodeFilter(resolved.nodes, profile.node_filter);
+  const poolSorted = profile.node_filter.sort_by_region ? sortNodesByRegion(poolFiltered) : poolFiltered;
+  // 改名 warning 覆盖全量池,对单机场产物是噪音,丢进单独的数组不并入响应头。
+  const uniqued = uniquifyNodeNames(poolSorted, [], {
+    providerLabels: buildProviderLabels(resolved.providers),
+  });
+  const hiddenNodes = resolveHiddenNodeNames(uniqued.nodes, profile.hidden_nodes);
+  const chained = applyChainRules(uniqued.nodes, profile, {
+    groupMembers: buildGroupMemberIndex(resolved.groups, uniqued.nodes, { hiddenNodes }),
+  });
+  const filtered = chained.filter((n) => n.source_provider_id === providerId);
+
+  const text = generateProxyProviderYaml(filtered, warnings, {
+    flag: profile.clash_options.flag,
+  });
 
   logger.info(
     {

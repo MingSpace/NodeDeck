@@ -137,20 +137,26 @@ describe("nodesToInlineContent", () => {
     expect(reparsed.find((n) => n.type === "snell")?.psk).toBe("snellpsk");
   });
 
-  it("clash 路径: snell 会被 generator 跳过并 emit warning(Clash 不支持 snell)", () => {
+  // mihomo 原生支持 snell v1–v5(wiki.metacubex.one/config/proxies/snell),
+  // 只有 Surge 独占的 v6 才跳过。
+  it("clash 路径: snell v1-v5 正常输出", () => {
     const input: Node[] = [
-      {
-        name: "snell-x",
-        type: "snell",
-        server: "x.example.com",
-        port: 30000,
-        psk: "k",
-      },
+      { name: "snell-x", type: "snell", server: "x.example.com", port: 30000, psk: "k", snell_version: 4 },
+    ];
+    const { content, warnings } = nodesToInlineContent(input, "clash");
+    expect(warnings).toEqual([]);
+    const parsedYaml = yaml.load(content) as { proxies: Record<string, unknown>[] };
+    expect(parsedYaml.proxies).toHaveLength(1);
+    expect(parsedYaml.proxies[0]).toMatchObject({ type: "snell", psk: "k", version: 4 });
+  });
+
+  it("clash 路径: snell v6 是 Surge 独占,跳过并 emit warning", () => {
+    const input: Node[] = [
+      { name: "snell-v6", type: "snell", server: "x.example.com", port: 30000, psk: "k", snell_version: 6 },
     ];
     const { content, warnings } = nodesToInlineContent(input, "clash");
     expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings[0]).toMatch(/snell/);
-    // 没有任何 proxies(content 仍合法)
+    expect(warnings[0]).toMatch(/v6/);
     const parsedYaml = yaml.load(content) as { proxies: unknown[] };
     expect(parsedYaml.proxies.length).toBe(0);
   });

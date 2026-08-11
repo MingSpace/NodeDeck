@@ -46,6 +46,8 @@ export interface FlowGroup {
   include_other_group?: string;
   include_all_proxies?: boolean;
   policy_regex_filter?: string;
+  /** [S] 组级链式出口,组内全体代理成员都经它出站 */
+  underlying_proxy?: string;
   notes: FlowNote[];
 }
 
@@ -75,8 +77,7 @@ const SELECTION_SEMANTICS: Record<ProxyGroup["type"], string> = {
   fallback: "按下面的顺序取第一个可用的成员,越靠前优先级越高",
   "load-balance": "在可用成员之间分摊连接",
   smart: "按实测连接质量自动选择,当前成员失败时立刻重试下一个",
-  ssid: "按当前接入的网络(SSID)选择",
-  external: "由外部代理程序决定",
+  ssid: "按当前接入的网络(SSID / 蜂窝 / 有线)选择",
 };
 
 const AUTO_TEST_TYPES = new Set<ProxyGroup["type"]>(["url-test", "fallback", "load-balance"]);
@@ -159,6 +160,7 @@ export function buildFlowGraph(input: BuildFlowGraphInput): FlowGraph {
       include_other_group: g.include_other_group,
       include_all_proxies: g.include_all_proxies,
       policy_regex_filter: g.policy_regex_filter,
+      underlying_proxy: g.underlying_proxy,
       notes: buildNotes(g, members),
     } satisfies FlowGroup;
   });
@@ -251,10 +253,17 @@ function buildNotes(g: ProxyGroup, members: FlowMember[]): FlowNote[] {
       text: "没有设置 interval,Surge 默认 600 秒才复测一次,成员挂掉后最长要等这么久才切换",
     });
   }
-  if (AUTO_TEST_TYPES.has(g.type) && !g.url) {
+  if (AUTO_TEST_TYPES.has(g.type) && g.url) {
     notes.push({
       level: "info",
-      text: "没有单独设测试 URL,使用 [General] 的 proxy-test-url",
+      text: "测试 URL 只对 Clash 生效;Surge 已废弃组级 url,一律用 [General] 的 proxy-test-url",
+    });
+  }
+
+  if (g.underlying_proxy) {
+    notes.push({
+      level: "info",
+      text: `组级链式:全体代理成员都经 ${g.underlying_proxy} 出站(仅 Surge;Clash 端忽略该参数)`,
     });
   }
 
