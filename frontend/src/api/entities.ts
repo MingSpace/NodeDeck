@@ -7,10 +7,11 @@ interface EntityListResponse<T> {
   items: T[];
 }
 
-export function useEntityList<T>(kind: EntityKind) {
+export function useEntityList<T>(kind: EntityKind, enabled = true) {
   return useQuery<EntityListResponse<T>>({
     queryKey: ["entities", kind],
     queryFn: () => api.get<EntityListResponse<T>>(`/api/entities/${kind}`),
+    enabled,
   });
 }
 

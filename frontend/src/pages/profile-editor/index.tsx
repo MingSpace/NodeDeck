@@ -1,10 +1,20 @@
 import { useRef, useState } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Save, Network, Filter, Link as LinkIcon, SlidersHorizontal, Waypoints } from "lucide-react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  ArrowLeft,
+  Save,
+  Network,
+  Filter,
+  Link as LinkIcon,
+  Loader2,
+  SlidersHorizontal,
+  Waypoints,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useProfileForm } from "./use-profile-form";
+import { ProfileLoadError } from "./load-error";
 import { NodeSelector } from "./node-selector";
 import { RulePipeline } from "./rule-pipeline";
 import { ProxyGroupsPicker, AdvancedPanel } from "./right-panel";
@@ -40,16 +50,23 @@ export function ProfileEditorPage() {
   const yamlModeRef = useRef<YamlModeHandle>(null);
   const [yamlDirty, setYamlDirty] = useState(false);
 
-  if (profileQuery.isLoading) return <div className="p-8 text-muted-foreground">加载中...</div>;
-  if (profileQuery.error || !profileQuery.data || !draft) {
+  // draft 由 effect 从 query data 拷贝而来,所以「data 已到但 draft 还没同步」那一帧也算加载中,
+  // 否则会闪一下错误页。反过来,只要 draft 在手就继续给编辑器(后台 refetch 失败不该顶掉正在编辑的内容)。
+  if (!draft) {
+    if (profileQuery.isError) {
+      return (
+        <ProfileLoadError
+          id={id}
+          error={profileQuery.error}
+          onRetry={() => void profileQuery.refetch()}
+          retrying={profileQuery.isFetching}
+        />
+      );
+    }
     return (
-      <div className="p-8">
-        <Button asChild variant="outline">
-          <Link to="/dashboard">
-            <ArrowLeft className="h-4 w-4" /> 返回
-          </Link>
-        </Button>
-        <div className="mt-4 text-destructive">Profile 加载失败</div>
+      <div className="flex items-center justify-center py-24 text-muted-foreground">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        <span className="text-sm">加载 Profile…</span>
       </div>
     );
   }

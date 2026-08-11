@@ -2,6 +2,20 @@ interface RequestOptions extends Omit<RequestInit, "body"> {
   body?: unknown;
 }
 
+/**
+ * 带状态码的请求错误:UI 侧要区分"这条数据不存在(404)"和"真的出错了(5xx / 网络断)",
+ * 只靠 message 字符串没法可靠判断。网络层失败(fetch reject)仍是原生 TypeError,没有 status。
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { body, headers, ...rest } = options;
   const res = await fetch(path, {
@@ -21,7 +35,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     } catch {
       // ignore
     }
-    throw new Error(message);
+    throw new ApiError(res.status, message);
   }
   if (res.status === 204) return undefined as T;
   const ct = res.headers.get("content-type") ?? "";
