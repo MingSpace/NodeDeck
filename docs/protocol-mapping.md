@@ -264,6 +264,7 @@ flags 存在 ruleset 级别,但**落点取决于该 ruleset 的输出形态**:
 - Surge `[Module]` 段 → 完全跳过
 - Surge `[URL Rewrite]/[Header Rewrite]/[Script]` → 跳过(Clash 无对应)
 - Surge `Snell` v6 节点 → 跳过 + warning(v1–v5 正常输出,见 §9)
+- 组级 `timeout`(Surge 语义 = 候选延迟阈值,秒) → mihomo `timeout`(健康检查超时,毫秒),按 ×1000 换算输出;两端语义不等价,策略组编辑器的「超时」字段下有提示
 - Surge 设备策略 `DEVICE:<设备名>`(Surge Ponte,把流量交给局域网内另一台 Surge 设备) → 整条规则跳过 + warning;mihomo 无等价物,原样输出会让客户端报 `policy not found` 而整份配置加载失败
 - Surge `RULE-SET,SYSTEM` → 跳过 + warning(含 USER-AGENT/PROCESS-NAME 无 Clash 等价)
 - Surge `RULE-SET,LAN` → 展开为内联 DOMAIN-SUFFIX,local + IP-CIDR 列表
@@ -326,7 +327,7 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 | `g.url` | `url:` | **不输出** | Surge 现行版本已把组行上的 `url=` 列为 legacy 且完全无效(不报错,静默忽略),测速 URL 只认 per-policy `test-url` 或 `[General]` 的 `proxy-test-url` / `internet-test-url`。字段保留是因为 mihomo 的 url-test / fallback 组需要它 |
 | `g.interval` | `interval:` | `interval=` | [CS],测试结果有效期(秒);Surge 默认 600 |
 | `g.tolerance` | `tolerance:` | `tolerance=` | [CS],切换阻尼(ms);Surge 默认 100,显式 `0` 会被尊重 |
-| `g.timeout` | `timeout:` | `timeout=` | [CS],**按延迟过滤候选**(秒) —— 实测延迟高于它的成员不参与选择。注意这**不是**测速自身的超时,那个是 per-policy `test-timeout` 或全局 `test-timeout`(默认 5s) |
+| `g.timeout` | `timeout:`(**秒 ×1000**) | `timeout=`(秒) | 两端同名但**不是一回事**。Surge:**按延迟过滤候选**(秒,无默认)—— 实测延迟高于它的成员不参与选择,这**不是**测速自身的超时(那个是 per-policy `test-timeout` 或全局 `test-timeout`,默认 5s)。mihomo:**健康检查请求自身的超时**(毫秒,默认 5000,[wiki: 代理组通用字段](https://wiki.metacubex.one/config/proxy-groups/)),且 mihomo 没有按延迟过滤候选的能力。原样输出会让 mihomo 拿到个位数毫秒的检查超时 —— 所有成员必然检查失败,url-test / fallback 退化成"永远用第一个",故 Clash 端按 秒→毫秒 换算 |
 | `g.evaluate_before_use` | — | `evaluate-before-use=` | [S],首次使用时等第一轮测速完成再放行请求 |
 | `g.icon_url` | `icon:` | `icon-url=` | [CS],仅展示用;Surge 端 Mac 6.5.0+ |
 | `g.policy_priority` | — | `policy-priority="正则:系数;..."` | [S],Smart 组唯一的调参手段(系数 <1 更优先);值含 `;` 必须整体加引号。iOS 5.11.0+ / Mac 5.7.0+,且 iOS 5.21.0 / Mac 6.8.0 起 0 与负值被拒绝 |

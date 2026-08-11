@@ -16,7 +16,7 @@ proxies:
   - {name: 🇭🇰 HK-01, type: trojan, server: hk.example.com, port: 443, udp: true, tls: true, sni: hk.test, skip-cert-verify: true, password: secret}
   - {name: 🇯🇵 JP-01, type: ss, server: jp.example.com, port: 8388, udp: true, cipher: aes-128-gcm, password: pwd}
 proxy-groups:
-  - {name: Proxys, type: url-test, proxies: [🇭🇰 HK-01, 🇯🇵 JP-01], url: http://cp.cloudflare.com/generate_204, interval: 600, tolerance: 50, timeout: 5}
+  - {name: Proxys, type: url-test, proxies: [🇭🇰 HK-01, 🇯🇵 JP-01], url: http://cp.cloudflare.com/generate_204, interval: 600, tolerance: 50, timeout: 5000}
   - {name: Manual, type: select, proxies: [Proxys, DIRECT]}
 rule-providers:
   cn-direct: {type: http, behavior: domain, url: https://example.com/cn.yaml, path: ./ruleset/cn-direct.yaml, interval: 86400, format: yaml}

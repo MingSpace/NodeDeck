@@ -118,7 +118,12 @@ export function importClashYaml(text: string, fileName?: string): ClashImportRes
         url: typeof raw.url === "string" ? raw.url : undefined,
         interval: typeof raw.interval === "number" ? raw.interval : undefined,
         tolerance: typeof raw.tolerance === "number" ? raw.tolerance : undefined,
-        timeout: typeof raw.timeout === "number" ? raw.timeout : undefined,
+        // mihomo 的 timeout 是健康检查超时且单位为毫秒(默认 5000),内部按 Surge 的「秒」建模
+        // (schema 限 1..60)。不换算会让常见的 `timeout: 5000` 变成 5000 秒而过不了校验。
+        timeout:
+          typeof raw.timeout === "number" && raw.timeout > 0
+            ? Math.min(60, Math.max(1, Math.round(raw.timeout / 1000)))
+            : undefined,
       });
     }
   }

@@ -663,7 +663,12 @@ function buildClashProxyGroup(
   if (g.url) out.url = g.url;
   if (g.interval !== undefined) out.interval = g.interval;
   if (g.tolerance !== undefined) out.tolerance = g.tolerance;
-  if (g.timeout !== undefined) out.timeout = g.timeout;
+  // 两端的 timeout 不是一回事:Surge 是「实测延迟高于该值的成员判为不可用」(秒),mihomo 是
+  // 「健康检查请求自身的超时」(毫秒,默认 5000,wiki.metacubex.one/config/proxy-groups 通用字段),
+  // 且 mihomo 没有按延迟过滤候选的能力。原样输出会让 mihomo 拿到个位数毫秒的检查超时 ——
+  // 握手都完不成,所有成员健康检查必然失败,url-test / fallback 直接退化成"永远用第一个"。
+  // 故按 秒→毫秒 换算成一个数值上合理的检查超时;语义差异在策略组编辑器的「超时」字段下提示。
+  if (g.timeout !== undefined) out.timeout = g.timeout * 1000;
   if (g.lazy !== undefined) out.lazy = g.lazy;
   if (g.disable_udp !== undefined) out["disable-udp"] = g.disable_udp;
   if (g.icon_url) out.icon = g.icon_url;

@@ -46,7 +46,7 @@ proxy-groups:
     url: http://cp.cloudflare.com/generate_204
     interval: 300
     tolerance: 50
-    timeout: 5
+    timeout: 5000
   - name: Manual
     type: select
     proxies: [Proxys, DIRECT]
@@ -109,6 +109,9 @@ describe("importClashYaml", () => {
     expect(proxys?.proxies).toEqual(["🇭🇰 HK-01", "🇯🇵 JP-01"]);
     expect(proxys?.url).toBe("http://cp.cloudflare.com/generate_204");
     expect(proxys?.interval).toBe(300);
+    expect(proxys?.tolerance).toBe(50);
+    // mihomo 的 timeout 是毫秒,内部按秒建模 → 5000ms 落成 5s
+    expect(proxys?.timeout).toBe(5);
     const manual = r.proxyGroups.find((g) => g.name === "Manual");
     expect(manual?.type).toBe("select");
     expect(manual?.proxies).toEqual(["Proxys", "DIRECT"]);

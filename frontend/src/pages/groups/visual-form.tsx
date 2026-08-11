@@ -317,6 +317,14 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
               />
             </Field>
           </div>
+          {data.timeout !== undefined && (
+            <p className="mt-3 border-t pt-2 text-[11px] leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">超时</span>在两端不是同一个东西。Surge:实测延迟高于此值的成员判为不可用。
+              mihomo 没有这个能力,它的 <code className="rounded bg-muted px-1 font-mono">timeout</code> 指健康检查请求自身的超时且单位是毫秒,
+              因此输出时按 ×1000 换算 —— 填 {data.timeout} 秒,clash.yaml 里是{" "}
+              <code className="rounded bg-muted px-1 font-mono">timeout: {data.timeout * 1000}</code>。
+            </p>
+          )}
         </fieldset>
       )}
 

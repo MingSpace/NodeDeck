@@ -168,6 +168,35 @@ describe("generateClashConfig", () => {
     expect(out).toMatch(/# WARN:.*SYSTEM/);
   });
 
+  // 两端同名的 timeout 不是一回事:Surge 是候选延迟阈值(秒),mihomo 是健康检查请求自身的超时
+  // (毫秒,默认 5000)。原样输出会变成个位数毫秒的检查超时,所有成员必然检查失败。
+  it("converts group timeout from seconds to milliseconds for mihomo", () => {
+    const out = generateClashConfig({
+      profile: baseProfile({ proxy_groups: ["Auto"] }),
+      nodes: [
+        { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "y", tags: [] },
+      ],
+      groups: [
+        {
+          id: "Auto",
+          name: "Auto",
+          type: "url-test",
+          proxies: ["JP-01"],
+          nested_groups: [],
+          url: "http://cp.cloudflare.com",
+          interval: 600,
+          tolerance: 30,
+          timeout: 3,
+        },
+      ],
+      rules: [],
+      finalRule: { policy: "Auto" },
+      warnings: [],
+    });
+    const groups = (yaml.load(out) as Record<string, unknown>)["proxy-groups"] as Record<string, unknown>[];
+    expect(groups[0]).toMatchObject({ name: "Auto", timeout: 3000, interval: 600, tolerance: 30 });
+  });
+
   // mihomo 的 no-resolve 同样只对目标 IP 类规则有意义(wiki.metacubex.one/config/rules 附加参数),
   // 所以混合 payload 展开时按行分发;行内自带的 option 也要挪到策略之后。
   it("distributes no-resolve to IP lines only when expanding inline payload", () => {
