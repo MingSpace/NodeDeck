@@ -405,6 +405,12 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 |---|---|---|
 | `general.block_quic` | `[General] block-quic = per-policy\|all-proxy\|all\|always-allow` | [S],全局 QUIC 拦截策略(iOS 5.14.6+ / Mac 5.10.3+);Clash 端忽略 |
 | `general.mtproto` | 独立 `[MTProto]` 段(`interface` / `port` / `secret` / `ipv6` / `dc-config-url`) | [S],Telegram MTProto 入站代理(iOS 5.21.0+ / Mac 6.8.0+);secret 必须 32 位 hex(可带 `dd` 前缀),非法时跳过整段 + warning;一个 profile 仅允许一个该段。参考 [manual: MTProto](https://manual.nssurge.com/others/mtproto.html) |
+| `general.include_all_networks` | `[General] include-all-networks = true\|false` | [S] **iOS 独占**(iOS 14.0+),Mac 忽略。默认 iOS 允许 App 绑定物理网卡绕过 Surge VIF,开启后所有请求都由 Surge 处理、不发生泄漏。可能导致 AirDrop / Xcode 调试 / USB 控制台异常。下面三项的前提 |
+| `general.include_local_networks` | `[General] include-local-networks = true\|false` | [S] iOS 独占(iOS 14.2+),接管发往局域网的请求。**必须配合 `include-all-networks = true`** |
+| `general.include_apns` | `[General] include-apns = true\|false` | [S] iOS 独占,让 Surge VIF 接管 Apple 推送通知服务(APNs)流量。**必须配合 `include-all-networks = true`**。大陆网络下 APNs 直连链路受干扰时,Telegram / X 等境外 App 收不到推送,需本开关 + 一条把 `push.apple.com` 指向代理的规则;该规则务必指向带 fallback 的策略组,否则节点故障时国内 App 推送会一起失效 |
+| `general.include_cellular_services` | `[General] include-cellular-services = true\|false` | [S] iOS 独占,接管蜂窝服务(VoLTE / Wi-Fi 通话 / IMS / 彩信 / 可视语音留言)中可路由到互联网的流量;运营商直连自家网络的那部分始终排除在隧道外。**必须配合 `include-all-networks = true`** |
+
+后三项的依赖关系由 `schemas/general-preset.ts` 的 `TUNNEL_SCOPE_DEPENDENTS` 在 schema 层强制(单开子项 = 保存失败),因为 Surge 侧是**静默忽略**,生成一份看着有效实际无效的 conf 比报错更难排查。导入 Surge conf 时遇到这种组合会按 Surge 的实际生效结果剔除子项 + warning,避免整包导入失败。参考 [manual: VPN Tunnel Scope](https://manual.nssurge.com/profile/general.html)。
 
 ### 19.1 Subnet Settings(产物段名 `[SSID Setting]`)
 

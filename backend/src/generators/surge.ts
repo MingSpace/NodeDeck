@@ -370,6 +370,12 @@ function appendGeneralLines(lines: string[], g: GeneralPreset): void {
     ["loglevel", g.log_level === "info" ? "notify" : g.log_level],
     ["exclude-simple-hostnames", g.exclude_simple_hostnames],
     ["show-error-page-for-reject", g.show_error_page_for_reject],
+    // VPN Tunnel Scope(iOS 独占,Mac 侧忽略未知平台 key)。后三项的
+    // "必须配合 include-all-networks" 依赖已由 schema 的 superRefine 保证。
+    ["include-all-networks", g.include_all_networks],
+    ["include-local-networks", g.include_local_networks],
+    ["include-apns", g.include_apns],
+    ["include-cellular-services", g.include_cellular_services],
   ];
   if (g.skip_proxy && g.skip_proxy.length > 0) kv.push(["skip-proxy", g.skip_proxy.join(", ")]);
   if (g.always_real_ip && g.always_real_ip.length > 0) kv.push(["always-real-ip", g.always_real_ip.join(", ")]);

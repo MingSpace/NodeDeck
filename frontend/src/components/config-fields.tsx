@@ -78,6 +78,7 @@ export function ToggleRow({
   onChange,
   badge,
   className,
+  disabled,
 }: {
   label: React.ReactNode;
   hint?: React.ReactNode;
@@ -87,18 +88,23 @@ export function ToggleRow({
   onChange: (v: boolean) => void;
   badge?: React.ReactNode;
   className?: string;
+  disabled?: boolean;
 }) {
   return (
-    <div className={cn("flex items-start gap-2.5 py-1", className)}>
+    <div className={cn("flex items-start gap-2.5 py-1", disabled && "opacity-50", className)}>
       <Switch
         checked={checked}
         onCheckedChange={onChange}
+        disabled={disabled}
         aria-label={typeof label === "string" ? label : undefined}
         className="mt-0.5"
       />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 text-xs font-medium">
-          <span className="cursor-pointer select-none" onClick={() => onChange(!checked)}>
+          <span
+            className={cn("select-none", disabled ? "cursor-not-allowed" : "cursor-pointer")}
+            onClick={() => !disabled && onChange(!checked)}
+          >
             {label}
           </span>
           {raw && <code className="font-mono text-[10px] text-muted-foreground/70">{raw}</code>}

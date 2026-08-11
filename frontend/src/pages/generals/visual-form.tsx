@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Settings2, Globe, ListTree, Zap, ShieldCheck, TerminalSquare, Send, Wifi, Wrench, ChevronDown } from "lucide-react";
+import { Settings2, Globe, ListTree, Zap, ShieldCheck, TerminalSquare, Send, Wifi, Wrench, Network, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { GeneralPresetData } from "./types";
 import { BasicSection } from "./sections/basic";
@@ -8,6 +8,7 @@ import { MitmSection } from "./sections/mitm";
 import { MtprotoSection } from "./sections/mtproto";
 import { HostsSection, HttpApiSection, SurgeOnlySection } from "./sections/misc";
 import { SsidSection } from "./sections/ssid";
+import { TunnelScopeSection } from "./sections/tunnel-scope";
 
 interface Props {
   data: GeneralPresetData;
@@ -28,6 +29,9 @@ export function GeneralPresetVisualForm({ data, update }: Props) {
       </CollapsibleSection>
       <CollapsibleSection title="Surge 专属" icon={<Zap className="h-4 w-4" />}>
         <div className="space-y-2">
+          <SubCollapsible title="隧道接管范围 (APNs 推送)" icon={<Network className="h-3.5 w-3.5" />}>
+            <TunnelScopeSection data={data} update={update} />
+          </SubCollapsible>
           <SubCollapsible title="MITM" icon={<ShieldCheck className="h-3.5 w-3.5" />}>
             <MitmSection data={data} update={update} />
           </SubCollapsible>

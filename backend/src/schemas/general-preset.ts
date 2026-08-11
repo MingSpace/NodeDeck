@@ -134,7 +134,7 @@ const ssidRuleSchema = z.preprocess(
   }),
 );
 
-export const generalPresetSchema = z.object({
+const generalPresetBaseSchema = z.object({
   id: idSchema,
   name: z.string().min(1),
 
@@ -168,6 +168,16 @@ export const generalPresetSchema = z.object({
   // [S] 全局 QUIC 拦截策略(iOS 5.14.6+ / Mac 5.10.3+):
   // per-policy(默认,按各 policy 自身设置) / all-proxy(拦截所有代理) / all(连 DIRECT 一起拦) / always-allow
   block_quic: z.enum(["per-policy", "all-proxy", "all", "always-allow"]).optional(),
+
+  // [S] iOS 独占 —— VPN Tunnel Scope(manual: General Section → VPN Tunnel Scope)。
+  // 默认 iOS 允许 App 绑定物理网卡绕过 Surge VIF,这几个开关把这些流量也拉进隧道。
+  // include_apns 是大陆 APNs 直连链路被干扰时让推送走代理的关键开关(系统推送链路默认不走代理)。
+  // 后三项在 Surge 侧必须配合 include-all-networks=true 才生效,单开会被静默忽略 —— 见下方 superRefine。
+  include_all_networks: z.boolean().optional(), // iOS 14.0+
+  include_local_networks: z.boolean().optional(), // iOS 14.2+
+  include_apns: z.boolean().optional(),
+  include_cellular_services: z.boolean().optional(),
+
   http_api: httpApiSchema,
 
   // [C]
@@ -192,6 +202,28 @@ export const generalPresetSchema = z.object({
   sniffer: snifferSchema, // [C]
   mitm: mitmSchema, // [S]
   mtproto: mtprotoSchema, // [S] Telegram MTProto 入站代理
+});
+
+/** 只有在 `include-all-networks = true` 时才生效的隧道范围子开关 → 对应 Surge key 名 */
+const TUNNEL_SCOPE_DEPENDENTS = [
+  ["include_local_networks", "include-local-networks"],
+  ["include_apns", "include-apns"],
+  ["include_cellular_services", "include-cellular-services"],
+] as const;
+
+export const generalPresetSchema = generalPresetBaseSchema.superRefine((g, ctx) => {
+  if (g.include_all_networks === true) return;
+  // 单开子项在 Surge 侧是静默无效的:用户会以为开了 APNs 接管而推送依旧不来。
+  // 与其生成一份看着有效、实际无效的 conf,不如在保存时就拦住。
+  for (const [field, surgeKey] of TUNNEL_SCOPE_DEPENDENTS) {
+    if (g[field] === true) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${surgeKey} 必须配合 include-all-networks = true 才生效`,
+        path: [field],
+      });
+    }
+  }
 });
 
 export type GeneralPreset = z.infer<typeof generalPresetSchema>;

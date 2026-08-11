@@ -858,4 +858,51 @@ describe("generateSurgeConfig", () => {
     expect(warnings[0]).toContain("没填网络匹配表达式");
     expect(warnings[1]).toContain("SSID:Empty");
   });
+
+  // VPN Tunnel Scope(iOS 独占)。include-apns 是大陆 APNs 直连受干扰时让推送走隧道的开关,
+  // 漏输出会让用户以为在 Web UI 里开了、而客户端拿到的 conf 里根本没这行。
+  it("emits [General] VPN tunnel scope keys", () => {
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [],
+      general: {
+        id: "g",
+        name: "g",
+        allow_lan: false,
+        mode: "rule",
+        log_level: "notify",
+        ipv6: false,
+        include_all_networks: true,
+        include_apns: true,
+        include_local_networks: false,
+      },
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(out).toContain("include-all-networks = true");
+    expect(out).toContain("include-apns = true");
+    expect(out).toContain("include-local-networks = false");
+    // 未设置的键不输出,避免给 conf 塞一堆等于默认值的行
+    expect(out).not.toContain("include-cellular-services");
+  });
+
+  it("imports VPN tunnel scope keys and drops dependents left without include-all-networks", () => {
+    const ok = importSurgeConf(
+      "[General]\ninclude-all-networks = true\ninclude-apns = true\ninclude-cellular-services = true\n",
+    );
+    expect(ok.general).toMatchObject({
+      include_all_networks: true,
+      include_apns: true,
+      include_cellular_services: true,
+    });
+    // 上游没写的键保持 undefined,不能变成显式 false
+    expect(ok.general?.include_local_networks).toBeUndefined();
+
+    // Surge 自己会忽略单开的子项;原样导入会撞上 schema 依赖校验让整包导入失败
+    const orphan = importSurgeConf("[General]\ninclude-apns = true\n");
+    expect(orphan.general?.include_apns).toBeUndefined();
+    expect(orphan.warnings.some((w) => w.includes("include_apns"))).toBe(true);
+  });
 });

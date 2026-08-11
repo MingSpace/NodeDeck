@@ -20,6 +20,20 @@ export function importSurgeConf(text: string, fileName?: string): SurgeImportRes
   const warnings: string[] = [];
 
   const general = parseGeneralSection(text, fileName);
+  // Surge 静默忽略没配合 include-all-networks 的隧道范围子开关。原样导入会撞上 general schema
+  // 的依赖校验、让整包导入失败,所以按 Surge 的实际生效结果剔除掉。
+  if (general && general.include_all_networks !== true) {
+    const dropped = (["include_local_networks", "include_apns", "include_cellular_services"] as const).filter(
+      (field) => general[field] === true,
+    );
+    for (const field of dropped) general[field] = undefined;
+    if (dropped.length > 0) {
+      warnings.push(
+        `Dropped [General] ${dropped.join(", ")}: they require include-all-networks = true and are ignored by Surge otherwise.`,
+      );
+    }
+  }
+
   const hostMap = parseHostSection(text);
   if (general && Object.keys(hostMap).length > 0) {
     general.hosts = { ...general.hosts, ...hostMap };
@@ -81,6 +95,15 @@ export function extractSection(text: string, name: string): string | null {
   return collected.length > 0 ? collected.join("\n") : null;
 }
 
+/**
+ * 只在 key 真的出现在 conf 里时才落值。用于 Surge 默认 false 的可选布尔开关 ——
+ * 一律 `=== "true"` 会把"上游没写"变成显式 `false`,导入结果里凭空多出一堆等于默认值的行。
+ */
+function optionalBool(raw: string | undefined): boolean | undefined {
+  if (raw === undefined) return undefined;
+  return raw === "true";
+}
+
 function parseGeneralSection(text: string, fileName?: string): GeneralPreset | undefined {
   const body = extractSection(text, "General");
   if (!body) return undefined;
@@ -123,6 +146,10 @@ function parseGeneralSection(text: string, fileName?: string): GeneralPreset | u
     block_quic: ["per-policy", "all-proxy", "all", "always-allow"].includes(kv["block-quic"])
       ? (kv["block-quic"] as GeneralPreset["block_quic"])
       : undefined,
+    include_all_networks: optionalBool(kv["include-all-networks"]),
+    include_local_networks: optionalBool(kv["include-local-networks"]),
+    include_apns: optionalBool(kv["include-apns"]),
+    include_cellular_services: optionalBool(kv["include-cellular-services"]),
     http_api: parseHttpApi(kv),
     dns: {
       enable: true,

@@ -38,6 +38,44 @@ describe("generalPresetSchema — http_api.user 迁移", () => {
 });
 
 /**
+ * Surge 的 include-local-networks / include-apns / include-cellular-services 只有在
+ * include-all-networks=true 时才生效,单开会被**静默忽略**。生成一份看着有效实际无效的
+ * conf 极难排查(用户以为开了 APNs 接管而推送依旧不来),所以在 schema 层就拦住。
+ */
+describe("generalPresetSchema — VPN Tunnel Scope 依赖", () => {
+  const base = { id: "g", name: "g" };
+
+  it("接受配合 include_all_networks 的子开关", () => {
+    const parsed = generalPresetSchema.parse({
+      ...base,
+      include_all_networks: true,
+      include_apns: true,
+      include_cellular_services: true,
+    });
+    expect(parsed).toMatchObject({ include_all_networks: true, include_apns: true });
+  });
+
+  it("拒绝缺少 include_all_networks 的子开关,并逐个指出字段", () => {
+    for (const field of ["include_local_networks", "include_apns", "include_cellular_services"] as const) {
+      const result = generalPresetSchema.safeParse({ ...base, [field]: true });
+      expect(result.success).toBe(false);
+      if (result.success) continue;
+      expect(result.error.issues[0]?.path).toEqual([field]);
+      expect(result.error.issues[0]?.message).toContain("include-all-networks");
+    }
+    // include_all_networks 显式 false 与缺省同等对待
+    expect(generalPresetSchema.safeParse({ ...base, include_all_networks: false, include_apns: true }).success).toBe(
+      false,
+    );
+  });
+
+  it("子开关为 false 或缺省时不受依赖约束", () => {
+    expect(generalPresetSchema.safeParse({ ...base, include_apns: false }).success).toBe(true);
+    expect(generalPresetSchema.safeParse(base).success).toBe(true);
+  });
+});
+
+/**
  * `[SSID Setting]`(官方名 Subnet Settings)的条目从 `{ ssid, suspend, policy }` 改成
  * `{ match, ...全量参数 }`:match 存完整 subnet 表达式,才能表达 BSSID / ROUTER / TYPE / MCCMNC;
  * `policy` 在 Surge 手册里从来不属于本段,一并丢弃。

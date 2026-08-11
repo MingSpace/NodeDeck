@@ -26,6 +26,13 @@ export interface GeneralPresetData {
   always_real_ip?: string[];
   show_error_page_for_reject?: boolean;
   block_quic?: "per-policy" | "all-proxy" | "all" | "always-allow";
+  // Surge iOS 独占的隧道接管范围;与 backend/src/schemas/general-preset.ts 的
+  // TUNNEL_SCOPE_DEPENDENTS 保持同步 —— 后三项必须配合 include_all_networks=true,
+  // 否则后端 superRefine 会拒绝保存。
+  include_all_networks?: boolean;
+  include_local_networks?: boolean;
+  include_apns?: boolean;
+  include_cellular_services?: boolean;
   http_api?: {
     password: string;
     listen: string;

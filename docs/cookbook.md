@@ -14,6 +14,7 @@
 6. [Profile 拼装与订阅 URL](#6-profile-拼装与订阅-url)
 7. [嵌套引用其它策略组 (nested_groups)](#7-嵌套引用其它策略组-nested_groups)
 8. [Telegram MTProto 入站代理 (Surge)](#8-telegram-mtproto-入站代理-surge)
+9. [收不到境外 App 推送:让 APNs 走代理 (Surge iOS)](#9-收不到境外-app-推送让-apns-走代理-surge-ios)
 
 ---
 
@@ -735,3 +736,82 @@ Telegram 客户端填 `服务器 = 可达 interface 的地址 / 端口 = 5753 / 
 - 用 `PROTOCOL,MTProto` 规则(inline ruleset)可以单独给 Telegram 流量指策略;
 - secret 不合法(非 32 位 hex)时,生成器会跳过整段并在订阅头部输出 `# WARN:`,不会生成 Surge 拒绝加载的坏配置;
 - 一个 profile 只允许一个 `[MTProto]` 段(Surge 限制)。
+
+> MTProto 入站代理解决的是 **Telegram 客户端自己的选路**(DC 卡死、切网卡 "Updating" 等),它**不解决收不到推送** —— iOS 推送走 Apple 的 APNs 独立链路,不经过这个端口。推送问题看下一节。
+
+---
+
+## 9. 收不到境外 App 推送:让 APNs 走代理 (Surge iOS)
+
+**症状**:开着代理、进 App 消息秒到,但锁屏和后台一条通知都不弹;国内 App 推送正常。Telegram / X / Instagram / YouTube 同时中招。
+
+**原因**:iOS 通知不是 App 自己送来的,而是 `App 服务器 → Apple APNs → 设备`。设备到 APNs 这一段是**系统级独立链路,默认不走代理**,而它的直连路径在大陆会被干扰。所以「代理开着」和「能收到推送」是两件事。
+
+修好它需要三步,缺一不可。
+
+### 9.1 让 Surge 接管 APNs 流量
+
+Web UI「Generals → Surge 专属 → 隧道接管范围 (APNs 推送)」,或直接写 yaml:
+
+```yaml
+# data/general/<id>.yaml
+include_all_networks: true    # 前提开关,iOS 14.0+
+include_apns: true            # 让 Surge VIF 接管 APNs 流量
+```
+
+`include_apns` 必须配合 `include_all_networks` —— Surge 侧单开是**静默忽略**的,所以 schema 直接拒绝这种组合,不会让你拿到一份看着有效实际无效的 conf。蜂窝网络下尤其需要这两项,否则只在 Wi-Fi 下生效。
+
+> `include_all_networks` 可能影响 AirDrop、Xcode 调试和 USB 控制台,这是 Surge 手册明确标注的副作用。
+
+### 9.2 给 Apple 推送域名配一条走代理的规则
+
+```yaml
+# data/ruleset/apns.yaml
+id: apns
+name: APNs Push
+type: inline_list
+behavior: classical
+policy: APNs                   # 指向 9.3 的策略组
+payload:
+  - DOMAIN-SUFFIX,push.apple.com
+  - DOMAIN-SUFFIX,push-apple.com.akadns.net
+  - IP-CIDR,17.249.0.0/16
+  - IP-CIDR,17.252.0.0/16
+  - IP-CIDR,17.57.144.0/22
+  - IP-CIDR,17.188.128.0/18
+clash_format: inline
+surge_format: inline_ruleset
+surge_flags:
+  no_resolve: true
+```
+
+要点:
+
+- 这条 ruleset 要排在 CN 直连规则**之前**,否则会被 `GEOIP,CN` 之类抢先命中;
+- `no_resolve` 必开。域名行和 IP 行混在一个 payload 里没问题 —— `generators/rule-line.ts` 按行分发,只给 IP 类行加 `no-resolve`,域名行不受影响;
+- Apple 只公开 `17.0.0.0/8` 归属自己,上面这几段是社区整理的 push 子网,不保证覆盖全部。想彻底就用 `IP-CIDR,17.0.0.0/8`,代价是 iCloud / App Store / 系统更新全部一起进代理;
+- **千万不要对 `*.push.apple.com` 做 MITM** —— 检查 generals 的 `mitm.hostname` 别写成 `*.apple.com` 这类通配,对 APNs 解密会让所有推送彻底瘫痪。
+
+### 9.3 策略组必须能回退直连
+
+APNs 一旦走代理,节点挂掉的那一刻连微信、支付宝的推送也会一起没了,整台手机变成失联状态。所以这个组必须用 `fallback` 类型,并把 `DIRECT` 放在**成员列表最后**:
+
+```yaml
+# data/group/apns.yaml
+id: apns
+name: APNs
+type: fallback
+proxies:
+  - Proxys      # 已有的自动选择组(必须也在 profile.proxy_groups 里,否则会被判 notImported)
+  - DIRECT      # 兜底:代理全挂时退回直连,保住国内 App 推送
+```
+
+> **成员顺序是这个配方的关键,而且写错不报错。** 别用 `selector` 圈节点再把 `DIRECT` 写进 `proxies` —— `resolveGroupMemberEntries` 的入列顺序是「显式 `proxies` → `nested_groups` → `selector` 动态匹配」,显式项永远在前,结果会是 `APNs = fallback,DIRECT,JP-01,JP-02`。`fallback` 取第一个可用成员,而 DIRECT 永远可用,于是 APNs 全程直连、推送照样收不到,且**不会有任何 warning**。要控顺序就全部走显式 `proxies`,把已有的自动选择组当成一个成员填进去。
+
+### 9.4 客户端侧收尾(配置管不了的部分)
+
+- 改完在 iPhone 上重新加载配置,然后**开关一次飞行模式**,不然不生效;
+- 代理必须**常驻**。用快捷指令按 App 自动开关 VPN 的话,Telegram 几乎必然丢推送;
+- 仍不弹的话,去 iOS 设置里把该 App 的通知权限关掉再打开,重置一次注册。
+
+判断有没有修好:关掉代理时推送应该重新消失,开着代理时正常 —— 如果两种情况都收不到,问题不在这条链路上。
