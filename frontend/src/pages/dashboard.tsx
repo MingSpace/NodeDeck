@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { RefreshedAt } from "@/components/refreshed-at";
+import { RefreshedAt, UpdatedAt } from "@/components/refreshed-at";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useEntityList, useDeleteEntity, useSaveEntity } from "@/api/entities";
@@ -129,6 +129,7 @@ export function DashboardPage() {
             <ProfileCard
               key={p.id}
               profile={p}
+              updatedAt={profileList.data?.meta?.[p.id]?.updated_at}
               onDelete={async () => {
                 if (!window.confirm(`删除 Profile "${p.name}"?`)) return;
                 await delProfile.mutateAsync(p.id);
@@ -166,7 +167,15 @@ export function DashboardPage() {
   );
 }
 
-function ProfileCard({ profile, onDelete }: { profile: Profile; onDelete: () => void | Promise<void> }) {
+function ProfileCard({
+  profile,
+  updatedAt,
+  onDelete,
+}: {
+  profile: Profile;
+  updatedAt?: number;
+  onDelete: () => void | Promise<void>;
+}) {
   return (
     <Card className="p-4">
       <div className="flex items-start justify-between gap-4">
@@ -176,6 +185,7 @@ function ProfileCard({ profile, onDelete }: { profile: Profile; onDelete: () => 
             <Badge variant="outline" className="text-xs font-mono">
               {profile.id}
             </Badge>
+            <UpdatedAt ts={updatedAt} className="text-xs text-muted-foreground" />
           </div>
           {profile.description && <p className="text-sm text-muted-foreground mt-1">{profile.description}</p>}
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2">

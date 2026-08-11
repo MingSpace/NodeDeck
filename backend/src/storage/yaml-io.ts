@@ -47,6 +47,16 @@ export async function deleteYaml(path: string): Promise<void> {
   }
 }
 
+/** 文件不存在时返回 null。用于把「配置文件最后修改时间」暴露给 Web UI。 */
+export async function fileMtimeMs(path: string): Promise<number | null> {
+  try {
+    const stats = await stat(path);
+    return stats.mtimeMs;
+  } catch {
+    return null;
+  }
+}
+
 export function fileIdFromPath(path: string): string {
   const base = basename(path);
   return base.replace(/\.ya?ml$/, "");

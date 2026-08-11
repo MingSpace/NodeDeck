@@ -13,6 +13,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { UpdatedAt } from "@/components/refreshed-at";
+import { useEntityUpdatedAt } from "@/api/entities";
 import { useProfileForm } from "./use-profile-form";
 import { ProfileLoadError } from "./load-error";
 import { NodeSelector } from "./node-selector";
@@ -45,6 +47,7 @@ export function ProfileEditorPage() {
     onRegenerateToken,
     saving,
   } = useProfileForm(id);
+  const updatedAt = useEntityUpdatedAt("profiles", id);
   const [mode, setMode] = useState<Mode>("visual");
   const [section, setSection] = useState<Section>("nodes");
   const yamlModeRef = useRef<YamlModeHandle>(null);
@@ -115,6 +118,7 @@ export function ProfileEditorPage() {
               }
             />
             <Badge variant="outline" className="text-xs font-mono">{draft.id}</Badge>
+            <UpdatedAt ts={updatedAt} className="text-xs text-muted-foreground" />
             {isDirty && <Badge variant="warning" className="text-xs">未保存</Badge>}
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">

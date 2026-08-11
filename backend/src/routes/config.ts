@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { loadConfig, saveConfig } from "../storage/config-store.js";
+import { configPath } from "../storage/paths.js";
+import { fileMtimeMs } from "../storage/yaml-io.js";
 import { resetData } from "../storage/reset.js";
 import { isValidAllowlistEntry } from "../auth/middleware.js";
 import { setLogRetentionDays } from "../log-store.js";
@@ -50,6 +52,7 @@ const resetSchema = z.object({
 
 configRouter.get("/", async (c) => {
   const cfg = await loadConfig();
+  const mtime = await fileMtimeMs(configPath());
   // never expose password_hash or session secrets through this endpoint
   return c.json({
     admin_username: cfg.admin.username,
@@ -58,6 +61,7 @@ configRouter.get("/", async (c) => {
     public_base_url: cfg.public_base_url ?? "",
     default_user_agent: cfg.default_user_agent,
     log_retention_days: cfg.logs.retention_days,
+    updated_at: mtime === null ? null : Math.round(mtime),
   });
 });
 

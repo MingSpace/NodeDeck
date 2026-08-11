@@ -40,11 +40,17 @@ const KINDS: Record<string, EntityKindDef> = {
 
 export const entitiesRouter = new Hono();
 
+// meta 与 items 分开返回,而不是把 updated_at 混进实体对象:实体对象会被前端原样
+// PUT 回来、也会在 YAML 编辑弹窗里直接展示,混入非 schema 字段会污染用户看到的 yaml。
+// 时间来源是文件 mtime —— schema 里不存时间戳,文件本身就是唯一真相。
 entitiesRouter.get("/:kind", async (c) => {
   const def = KINDS[c.req.param("kind")];
   if (!def) return c.json({ error: "unknown entity kind" }, 404);
   const list = await def.repo.list();
-  return c.json({ items: list.map((e) => e.data) });
+  return c.json({
+    items: list.map((e) => e.data),
+    meta: Object.fromEntries(list.map((e) => [e.id, { updated_at: Math.round(e.mtimeMs) }])),
+  });
 });
 
 entitiesRouter.get("/:kind/:id", async (c) => {

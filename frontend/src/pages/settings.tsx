@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
+import { UpdatedAt } from "@/components/refreshed-at";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
@@ -25,6 +26,8 @@ interface AppConfigDto {
   public_base_url: string;
   default_user_agent: string;
   log_retention_days: number;
+  /** config.yaml 的 mtime(epoch ms);文件还没落盘时为 null */
+  updated_at: number | null;
 }
 
 export function SettingsPage() {
@@ -137,7 +140,10 @@ function ServiceConfigCard() {
           <Server className="h-5 w-5" />
           服务
         </CardTitle>
-        <CardDescription>影响订阅 URL、Provider 拉取、日志留存与 Web UI 访问</CardDescription>
+        <CardDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>影响订阅 URL、Provider 拉取、日志留存与 Web UI 访问</span>
+          <UpdatedAt ts={draft.updated_at} />
+        </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>

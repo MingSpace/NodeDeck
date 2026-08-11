@@ -10,6 +10,7 @@ import {
   useSaveEntity,
   type EntityKind,
 } from "@/api/entities";
+import { UpdatedAt } from "./refreshed-at";
 import { EntityYamlDialog } from "./entity-yaml-dialog";
 import { DeleteEntityDialog, type DeleteTarget } from "./delete-entity-dialog";
 import { toast } from "@/components/ui/toast";
@@ -53,6 +54,7 @@ export function EntityListPage<T extends { id: string; name?: string }>({
   const [deleteTargets, setDeleteTargets] = useState<DeleteTarget[]>([]);
 
   const items = list.data?.items ?? [];
+  const meta = list.data?.meta;
 
   // 在现有 id 集合里找一个唯一的副本 id:`<src>-copy`、`<src>-copy-2`、`<src>-copy-3` ...
   // 不依赖后端,纯前端兜底;真正的唯一性由后端 PUT (写入磁盘) 保证。
@@ -262,7 +264,10 @@ export function EntityListPage<T extends { id: string; name?: string }>({
                   />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm truncate">{item.name ?? item.id}</div>
-                    <div className="text-xs text-muted-foreground truncate">{item.id}</div>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span className="truncate">{item.id}</span>
+                      <UpdatedAt ts={meta?.[item.id]?.updated_at} className="shrink-0" />
+                    </div>
                     {renderRow && <div className="text-xs text-muted-foreground mt-1">{renderRow(item)}</div>}
                   </div>
                   <div className="flex items-center gap-1">

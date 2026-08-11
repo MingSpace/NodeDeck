@@ -15,6 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useEntityList } from "@/api/entities";
+import { UpdatedAt } from "@/components/refreshed-at";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 
@@ -44,6 +45,11 @@ interface NotificationConfig {
   };
 }
 
+interface NotificationConfigDto extends NotificationConfig {
+  /** notification.yaml 的 mtime(epoch ms);还没保存过(用的是默认配置)时为 null */
+  updated_at: number | null;
+}
+
 interface ProviderListItem {
   id: string;
   name: string;
@@ -60,16 +66,20 @@ const LEVEL_OPTIONS: { value: BarkLevel; label: string }[] = [
 
 export function NotificationsPage() {
   const queryClient = useQueryClient();
-  const cfgQuery = useQuery<NotificationConfig>({
+  const cfgQuery = useQuery<NotificationConfigDto>({
     queryKey: ["notification"],
     queryFn: () => api.get("/api/notification"),
   });
   const [draft, setDraft] = useState<NotificationConfig | null>(null);
   const [dirty, setDirty] = useState(false);
+  const updatedAt = cfgQuery.data?.updated_at ?? null;
 
   useEffect(() => {
     if (cfgQuery.data) {
-      setDraft(JSON.parse(JSON.stringify(cfgQuery.data)));
+      // updated_at 是后端附带的文件元数据,不属于配置本身 —— 剔除后再做 draft,
+      // 免得跟着 PUT 回去(后端 schema 会 strip,但没必要把脏字段发出去)。
+      const { updated_at: _omit, ...cfg } = cfgQuery.data;
+      setDraft(JSON.parse(JSON.stringify(cfg)) as NotificationConfig);
       setDirty(false);
     }
   }, [cfgQuery.data]);
@@ -116,8 +126,11 @@ export function NotificationsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">通知</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            通过 <a href="https://bark.day.app" target="_blank" rel="noreferrer" className="underline underline-offset-2">Bark</a> 推送节点源异常与订阅事件到 iPhone
+          <p className="text-sm text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span>
+              通过 <a href="https://bark.day.app" target="_blank" rel="noreferrer" className="underline underline-offset-2">Bark</a> 推送节点源异常与订阅事件到 iPhone
+            </span>
+            <UpdatedAt ts={updatedAt} className="text-xs" />
           </p>
         </div>
         <Button onClick={() => save.mutate(draft)} disabled={!dirty || save.isPending}>

@@ -3,8 +3,15 @@ import { api } from "@/lib/api";
 
 export type EntityKind = "providers" | "rules" | "groups" | "generals" | "modules" | "profiles";
 
+/** 与 backend/src/routes/entities.ts 的列表响应 meta 保持同步 */
+export interface EntityMeta {
+  /** 配置文件最后修改时间(epoch ms),来源是 yaml 文件 mtime */
+  updated_at: number;
+}
+
 interface EntityListResponse<T> {
   items: T[];
+  meta?: Record<string, EntityMeta>;
 }
 
 export function useEntityList<T>(kind: EntityKind, enabled = true) {
@@ -13,6 +20,17 @@ export function useEntityList<T>(kind: EntityKind, enabled = true) {
     queryFn: () => api.get<EntityListResponse<T>>(`/api/entities/${kind}`),
     enabled,
   });
+}
+
+/**
+ * 单条的更新时间。走列表接口的 meta 而不是单条 GET —— 单条 GET 的 body 就是实体本身
+ * (会被 YAML 弹窗原样展示、被 PUT 原样回传),不适合塞元数据。列表本身有 query 缓存,
+ * 从列表页跳进详情时不会产生额外请求。
+ */
+export function useEntityUpdatedAt(kind: EntityKind, id: string | undefined): number | undefined {
+  const list = useEntityList<{ id: string }>(kind);
+  if (!id) return undefined;
+  return list.data?.meta?.[id]?.updated_at;
 }
 
 export function useEntity<T>(kind: EntityKind, id: string | undefined) {

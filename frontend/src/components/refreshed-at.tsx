@@ -1,3 +1,4 @@
+import { Clock } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { formatAbsoluteTime, useRelativeTime } from "@/lib/relative-time";
 import { cn } from "@/lib/utils";
@@ -33,5 +34,26 @@ export function RefreshedAt({ ts, className }: RefreshedAtProps) {
       </TooltipTrigger>
       <TooltipContent>{abs}</TooltipContent>
     </Tooltip>
+  );
+}
+
+interface UpdatedAtProps {
+  /** epoch ms;undefined / null 时整块不渲染(如配置文件还没落过盘) */
+  ts: number | null | undefined;
+  /** 默认「更新于」,provider 卡片等已有「上次刷新」的地方用「配置更新于」区分 */
+  label?: string;
+  className?: string;
+}
+
+/**
+ * 配置文件(yaml)的最后修改时间。时间来自文件 mtime,不是实体字段。
+ */
+export function UpdatedAt({ ts, label = "更新于", className }: UpdatedAtProps) {
+  if (ts == null) return null;
+  return (
+    <span className={cn("inline-flex items-center gap-1 whitespace-nowrap", className)}>
+      <Clock className="h-3 w-3 shrink-0" />
+      {label} <RefreshedAt ts={ts} />
+    </span>
   );
 }

@@ -1,14 +1,20 @@
 import { Hono } from "hono";
 import { notificationConfigSchema } from "../schemas/notification.js";
 import { loadNotificationConfig, saveNotificationConfig } from "../storage/notification-store.js";
+import { notificationConfigPath } from "../storage/paths.js";
+import { fileMtimeMs } from "../storage/yaml-io.js";
 import { sendTestNotification } from "../notifications/service.js";
 import { logger } from "../logger.js";
 
 export const notificationRouter = new Hono();
 
+// updated_at 平铺在配置对象上,前端 draft 会把它剔除后再 PUT 回来;
+// 即便漏剔,notificationConfigSchema 非 strict 会 strip 掉,不会写进 yaml。
+// 文件不存在(还没保存过,走的是默认配置)时为 null。
 notificationRouter.get("/", async (c) => {
   const cfg = await loadNotificationConfig();
-  return c.json(cfg);
+  const mtime = await fileMtimeMs(notificationConfigPath());
+  return c.json({ ...cfg, updated_at: mtime === null ? null : Math.round(mtime) });
 });
 
 notificationRouter.put("/", async (c) => {

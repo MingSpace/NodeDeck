@@ -3,12 +3,12 @@ import { Hono } from "hono";
 import type { Provider } from "../../src/schemas/provider.js";
 
 vi.mock("../../src/storage/repos.js", () => ({
-  providerRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
-  rulesetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
-  proxyGroupRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
-  generalPresetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
-  surgeModuleRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
-  profileRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
+  providerRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  rulesetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  proxyGroupRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  generalPresetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  surgeModuleRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  profileRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
 }));
 vi.mock("../../src/providers/load.js", () => ({
   refreshProvider: vi.fn(),
@@ -27,6 +27,7 @@ import type { RuleSet } from "../../src/schemas/ruleset.js";
 
 const mockedProviderSave = providerRepo.save as unknown as ReturnType<typeof vi.fn>;
 const mockedProviderExists = providerRepo.exists as unknown as ReturnType<typeof vi.fn>;
+const mockedRulesetList = rulesetRepo.list as unknown as ReturnType<typeof vi.fn>;
 const mockedRulesetSave = rulesetRepo.save as unknown as ReturnType<typeof vi.fn>;
 const mockedRulesetExists = rulesetRepo.exists as unknown as ReturnType<typeof vi.fn>;
 const mockedRefresh = refreshProvider as unknown as ReturnType<typeof vi.fn>;
@@ -104,6 +105,41 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks();
+});
+
+describe("GET /api/entities/:kind", () => {
+  it("meta 里带每条的 updated_at(文件 mtime),items 本身不被污染", async () => {
+    const body = fakeRulesetBody();
+    mockedRulesetList.mockResolvedValue([
+      { id: "rs-1", path: "/data/rules/rs-1.yaml", mtimeMs: 1_700_000_000_123.7, data: body },
+    ]);
+
+    const res = await buildApp().request("/api/entities/rules");
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      items: Record<string, unknown>[];
+      meta: Record<string, { updated_at: number }>;
+    };
+    expect(json.meta).toEqual({ "rs-1": { updated_at: 1_700_000_000_124 } });
+    // 前端会把 item 原样 PUT 回来 / 丢进 YAML 编辑器,不能混入非 schema 字段
+    expect(json.items[0]).not.toHaveProperty("updated_at");
+    expect(json.items[0]).toEqual(body);
+  });
+
+  it("空目录 → items 与 meta 都为空", async () => {
+    mockedRulesetList.mockResolvedValue([]);
+
+    const res = await buildApp().request("/api/entities/rules");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ items: [], meta: {} });
+  });
+
+  it("unknown kind → 404", async () => {
+    const res = await buildApp().request("/api/entities/bogus");
+    expect(res.status).toBe(404);
+  });
 });
 
 describe("POST /api/entities/:kind", () => {

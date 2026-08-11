@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { NodeRow, type NodeBrief } from "@/components/node-row";
-import { RefreshedAt } from "@/components/refreshed-at";
+import { RefreshedAt, UpdatedAt } from "@/components/refreshed-at";
 import { useEntityList, useDeleteEntity, useDeleteEntitiesBulk } from "@/api/entities";
 import { EntityVisualDialog } from "@/components/entity-visual-dialog";
 import { DeleteEntityDialog, type DeleteTarget } from "@/components/delete-entity-dialog";
@@ -138,6 +138,7 @@ export function ProvidersPage() {
   );
 
   const items = list.data?.items ?? [];
+  const meta = list.data?.meta;
   // 列表刷新后清掉已被删除的 id,避免幽灵选中导致"已选 X 项"对不上。
   const validSelected = useMemo(() => {
     if (selected.size === 0) return selected;
@@ -372,6 +373,7 @@ export function ProvidersPage() {
       <div className="grid gap-3">
         {items.map((p) => {
           const s = statusMap.get(p.id);
+          const updatedAt = meta?.[p.id]?.updated_at;
           const expanded = expandedIds.has(p.id);
           const checked = validSelected.has(p.id);
           // 只要后端有 cache(无论 ok/stale/error/0 节点)都允许展开,展开后 panel 内会展示
@@ -449,6 +451,12 @@ export function ProvidersPage() {
                     <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                       <CheckCircle2 className="h-3 w-3 text-emerald-500" />
                       最新
+                    </div>
+                  )}
+                  {/* 与「上次刷新」区分:那是从机场拉节点的时间,这是这份节点源配置本身被改动的时间 */}
+                  {updatedAt !== undefined && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      <UpdatedAt ts={updatedAt} label="配置更新于" />
                     </div>
                   )}
                   {s?.error && (
