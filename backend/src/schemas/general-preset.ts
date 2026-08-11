@@ -57,19 +57,28 @@ const mitmSchema = z
   .optional();
 
 // Surge `http-api = key@ip:port`(https://manual.nssurge.com/profile/general.html):
-// key 是一整串密钥,协议里没有用户名概念。user 只为兼容历史导入落下的数据保留,
-// 留空时 generator 直接把 password 当 key 输出,这才是手册里的标准形态。
+// key 是一整串不可再切分的密钥,协议里没有用户名概念,所以只存 password。
 const httpApiSchema = z
-  .object({
-    user: z.string().optional(),
-    // 空串会产出畸形的 `http-api = @0.0.0.0:8890`,Surge 加载时直接报错,所以必须非空。
-    password: z.string().min(1, "HTTP API 密钥不能为空"),
-    listen: z.string().default("0.0.0.0:8890"),
-    // 与 Surge 手册的默认值对齐(默认 false)。网页控制台会挂在 http-api 的 listener 上,
-    // 而 listen 默认是 0.0.0.0,默认开启等于把控制台暴露到整个局域网。
-    web_dashboard: z.boolean().default(false),
-    tls: z.boolean().default(false),
-  })
+  .preprocess(
+    // 存量 yaml 可能带早期版本落下的 `user`(当年按 `:` 拆出来的)。直接丢掉会让写回的
+    // key 从 `user:pw` 变成 `pw`,Surge 侧 X-Key 失配,所以折回 password 前缀。
+    (v) => {
+      if (typeof v !== "object" || v === null) return v;
+      const { user, ...rest } = v as Record<string, unknown>;
+      if (typeof user !== "string" || user === "") return rest;
+      const password = typeof rest.password === "string" ? rest.password : "";
+      return { ...rest, password: `${user}:${password}` };
+    },
+    z.object({
+      // 空串会产出畸形的 `http-api = @0.0.0.0:8890`,Surge 加载时直接报错,所以必须非空。
+      password: z.string().min(1, "HTTP API 密钥不能为空"),
+      listen: z.string().default("0.0.0.0:8890"),
+      // 与 Surge 手册的默认值对齐(默认 false)。网页控制台会挂在 http-api 的 listener 上,
+      // 而 listen 默认是 0.0.0.0,默认开启等于把控制台暴露到整个局域网。
+      web_dashboard: z.boolean().default(false),
+      tls: z.boolean().default(false),
+    }),
+  )
   .optional();
 
 // Surge [MTProto] 段:Surge 作为 Telegram MTProto 入站代理服务器(iOS 5.21.0+ / Mac 6.8.0+)。

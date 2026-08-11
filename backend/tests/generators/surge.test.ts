@@ -468,7 +468,7 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("hostname = %APPEND% *.google.cn");
   });
 
-  // 手册: `http-api = key@ip:port`,key 是不可再切分的整串密钥。含 `^` 的 key 曾被
+  // 手册: `http-api = key@ip:port`,key 是不可再切分的整串密钥。含 `^` / `:` 的 key 曾被
   // 当成 user/password 分隔符拆开、再用 `:` 拼回,导致 key 静默改变、Surge 侧 X-Key
   // 失配。这里锁住"导入再回写必须逐字符还原"。
   it("round-trips the http-api key verbatim through import → generate", () => {

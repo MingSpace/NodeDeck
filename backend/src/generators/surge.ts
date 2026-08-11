@@ -376,8 +376,7 @@ function appendGeneralLines(lines: string[], g: GeneralPreset): void {
   }
   if (g.dns?.hijack && g.dns.hijack.length > 0) kv.push(["hijack-dns", g.dns.hijack.join(", ")]);
   if (g.http_api) {
-    const cred = g.http_api.user ? `${g.http_api.user}:${g.http_api.password}` : g.http_api.password;
-    kv.push(["http-api", `${cred}@${g.http_api.listen}`]);
+    kv.push(["http-api", `${g.http_api.password}@${g.http_api.listen}`]);
     kv.push(["http-api-web-dashboard", g.http_api.web_dashboard]);
     kv.push(["http-api-tls", g.http_api.tls]);
   }

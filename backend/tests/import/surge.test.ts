@@ -151,8 +151,7 @@ describe("importSurgeConf", () => {
 
   // http-api / ipv6-vif / wifi 系列 / always-real-ip 历史上没解析过,
   // 用户拿原配置一键导入会丢字段。这里固化解析行为,防止以后回归。
-  // http-api 手册形态是 `key@ip:port`(无用户名);只有 `:` 会被当成分隔符,那是
-  // NodeDeck 早期 generator 自造的形态,拆开再拼回无损。
+  // http-api 手册形态是 `key@ip:port`,key 是一整串不可切分的密钥(无用户名概念)。
   it("parses http-api / ipv6-vif / wifi-assist / allow-hotspot-access / always-real-ip", () => {
     const text = `
 [General]
@@ -169,10 +168,9 @@ geoip-maxmind-url = https://example.com/cn.mmdb
 show-error-page-for-reject = true
 `;
     const r = importSurgeConf(text);
-    // `^` 在手册里没有含义,整串都是 key。若按 `^` 拆成 user/password,回写时会用 `:`
-    // 拼回,key 从 `alpha^bravo` 变成 `alpha:bravo`,Surge 侧 X-Key 直接失配。
+    // `^` 在手册里没有含义,整串都是 key。任何拆分再拼回的做法都会让 key 静默改变
+    //(`alpha^bravo` → `alpha:bravo`),Surge 侧 X-Key 直接失配。
     expect(r.general?.http_api).toEqual({
-      user: undefined,
       password: "alpha^bravo",
       listen: "0.0.0.0:8890",
       web_dashboard: true,
@@ -188,16 +186,13 @@ show-error-page-for-reject = true
     expect(r.general?.show_error_page_for_reject).toBe(true);
   });
 
-  it("parses http-api with `:` separator (NodeDeck generator style) and without user", () => {
-    // `:` 是 NodeDeck 早期 generator 自造的形态,拆开后回写仍拼成 `user:pw`,无损。
+  it("keeps a `:` inside the http-api key intact instead of treating it as a separator", () => {
+    // 早期版本按 `:` 拆成 user/password;既然手册里没有用户名,`:` 只是 key 的一部分。
     const r1 = importSurgeConf(`[General]\nhttp-api = user:pw@127.0.0.1:8080\n`);
-    expect(r1.general?.http_api).toMatchObject({ user: "user", password: "pw", listen: "127.0.0.1:8080" });
+    expect(r1.general?.http_api).toMatchObject({ password: "user:pw", listen: "127.0.0.1:8080" });
 
-    // 无分隔符时整串都是 key,不能凭空补用户名 —— 否则回写成 `<补的名>:onlypassword@`
-    // 会改掉 key,Surge 侧 X-Key 失配。
     const r2 = importSurgeConf(`[General]\nhttp-api = onlypassword@127.0.0.1:8080\n`);
     expect(r2.general?.http_api).toMatchObject({ password: "onlypassword", listen: "127.0.0.1:8080" });
-    expect(r2.general?.http_api?.user).toBeUndefined();
   });
 
   // Surge 内置 ruleset SYSTEM/LAN (manual.nssurge.com/rule/ruleset.html#internal-ruleset)

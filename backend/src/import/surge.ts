@@ -134,10 +134,8 @@ function parseGeneralSection(text: string, fileName?: string): GeneralPreset | u
 
 /**
  * 解析 `http-api = key@ip:port`(https://manual.nssurge.com/profile/general.html)。
- * 手册里 key 是一整串密钥,没有用户名概念。只按 `:` 拆 user —— 那是 NodeDeck 早期
- * generator 自造的形态,拆开后回写仍用 `:` 拼回,能原样还原。刻意不按 `^` 拆:`^` 在
- * 手册里没有任何含义,而按它拆之后会被回写成 `:`,key 静默改变,Surge 侧 X-Key 直接失配。
- * 拆不出分隔符时整串都当 password,也绝不凭空补用户名(同样会给 key 加上不存在的前缀)。
+ * 手册里 key 是一整串不可再切分的密钥,没有用户名概念,所以 `@` 之前的部分整串当
+ * password —— 任何按 `:` / `^` 拆再拼回的做法都会让 key 静默改变,Surge 侧 X-Key 失配。
  * listen 用 `lastIndexOf('@')` 切,避免 key 里含 `@` 时崩。
  *
  * `http-api-tls` 用户在 conf 里写错成 `flase` 是常见现象;这里只把字面 "true" 当 true,
@@ -148,19 +146,10 @@ function parseHttpApi(kv: Record<string, string>): GeneralPreset["http_api"] | u
   if (!raw) return undefined;
   const atIdx = raw.lastIndexOf("@");
   if (atIdx <= 0) return undefined;
-  const cred = raw.slice(0, atIdx);
   const listen = raw.slice(atIdx + 1).trim();
   if (!listen) return undefined;
-  const sepIdx = cred.indexOf(":");
-  let user: string | undefined;
-  let password = cred;
-  if (sepIdx > 0) {
-    user = cred.slice(0, sepIdx);
-    password = cred.slice(sepIdx + 1);
-  }
   return {
-    user,
-    password,
+    password: raw.slice(0, atIdx),
     listen,
     web_dashboard: kv["http-api-web-dashboard"] === "true",
     tls: kv["http-api-tls"] === "true",
