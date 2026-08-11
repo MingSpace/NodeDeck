@@ -180,18 +180,14 @@ describe("findEntityReferences: groups", () => {
     ]);
   });
 
-  it("generals.ssid_rules[].policy 按 name 引用", async () => {
+  // `[SSID Setting]` 只放 suspend / DNS / TFO 这类设置,Surge 手册里本段从来没有 policy 参数,
+  // 所以 generals 已经不存在指向策略组的字段 —— 存量 yaml 里的 policy 被 schema 丢弃。
+  it("generals 里的老 ssid_rules[].policy 不再算引用", async () => {
     setSources({
       groups: [group()],
       generals: [general({ ssid_rules: [{ ssid: "Home" }, { ssid: "Cafe", policy: "Proxy" }] })],
     });
-    const refs = await findEntityReferences("groups", "g-proxy");
-    expect(refs).toHaveLength(1);
-    expect(refs[0]).toMatchObject({
-      from_kind: "generals",
-      from_id: "gen-1",
-      field: "ssid_rules[1].policy",
-    });
+    expect(await findEntityReferences("groups", "g-proxy")).toEqual([]);
   });
 
   it("ruleset.policy 只是建议策略,标为 non-blocking", async () => {

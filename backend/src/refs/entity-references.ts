@@ -267,21 +267,9 @@ function findGroupReferences(id: string, s: Sources): EntityReference[] {
     }
   }
 
-  for (const gp of s.generals) {
-    gp.ssid_rules?.forEach((rule, i) => {
-      if (rule.policy === name) {
-        refs.push({
-          from_kind: "generals",
-          from_id: gp.id,
-          from_name: gp.name,
-          field: `ssid_rules[${i}].policy`,
-          via: "name",
-          value: name,
-          blocking: true,
-        });
-      }
-    });
-  }
+  // generals 不再有指向策略组的字段:`ssid_rules`(Surge `[SSID Setting]`)只放
+  // suspend / DNS / TFO 这类设置,历史上那个 `policy` 参数在 Surge 手册里并不存在,已移除。
+  // 按网络选策略走 subnet 策略组(groups 一侧扫描),不落在这里。
 
   for (const rs of s.rules) {
     if (rs.policy === name) {

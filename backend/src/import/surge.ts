@@ -31,8 +31,9 @@ export function importSurgeConf(text: string, fileName?: string): SurgeImportRes
   }
 
   const ssidFromText = parseSsidSection(text);
-  if (general && ssidFromText.length > 0) {
-    general.ssid_rules = [...(general.ssid_rules ?? []), ...ssidFromText];
+  warnings.push(...ssidFromText.warnings);
+  if (general && ssidFromText.rules.length > 0) {
+    general.ssid_rules = [...(general.ssid_rules ?? []), ...ssidFromText.rules];
   }
 
   const mtprotoFromText = parseMtprotoSection(text);
@@ -226,47 +227,125 @@ function parseMtprotoSection(text: string): GeneralPreset["mtproto"] | undefined
   };
 }
 
+type SsidRule = NonNullable<GeneralPreset["ssid_rules"]>[number];
+
+const CELLULAR_FALLBACK_VALUES = ["default", "off", "wifi-assist", "hybrid"] as const;
+const TFO_BEHAVIOUR_VALUES = ["auto", "force-enabled", "force-disabled"] as const;
+/** 值本身也是逗号分隔的参数 —— 后续没有 `=` 的 token 都算它的续值 */
+const SSID_LIST_PARAMS = new Set(["dns-server", "encrypted-dns-server"]);
+
 /**
- * 解析 Surge `[SSID Setting]` 段。语法(manual.nssurge.com/general/ssid-policy.html):
+ * 解析 Surge `[SSID Setting]` 段(官方文档名 Subnet Settings,
+ * https://manual.nssurge.com/features/subnet-settings.html):
  *
- *   SSID:<name> [suspend=<bool>] [policy=<policy_name>]
+ *   <subnet 表达式> key=value,key=value
  *
- * 与 generator 端 (`generators/surge.ts` 73–82) 严格对称,确保
- * "导入 → 生成"路径不丢字段。
+ * 表达式可以是 `SSID:` / `BSSID:` / `ROUTER:` / `TYPE:` / `MCCMNC:` 前缀形式,或 legacy 裸值;
+ * 含空格时整个表达式用双引号包起来。参数官方是逗号分隔,这里也接受空格分隔 —— NodeDeck
+ * 早期版本自己就是空格拼的,回读老产物不能丢字段。
  *
- * 跳过(不丢,但当前 schema 不建模):
- * - `cellular=...` / `default=...` / `untrusted=...` 这类非 SSID 行 —— 它们属于
- *   "SSID 类型 proxy group"的内部参数,在 NodeDeck 中由 proxyGroupSchema.ssid_params
- *   表达,不归 general.ssid_rules 管。这里静默忽略,后续若用户用到 SSID Group 再补
- *   `parseRuleAndGroupSections` 一侧。
+ * 与 generator 端 `buildSubnetSettingLines` 严格对称。刻意不认的两类行:
+ * - `policy=` —— 手册里本段从来没有这个参数(按网络选策略是 subnet 组 / `SUBNET` 规则的事),
+ *   NodeDeck 早期错误地生成过它,回读时给 warning 并丢弃
+ * - `default = Proxy` / `cellular=Auto` 这种纯 `key=value` 行 —— 那是 subnet 策略组的组内参数,
+ *   写进本段是配置写错了,给 warning 而不是静默吞掉
  */
-function parseSsidSection(text: string): NonNullable<GeneralPreset["ssid_rules"]> {
+function parseSsidSection(text: string): { rules: SsidRule[]; warnings: string[] } {
   const body = extractSection(text, "SSID Setting");
-  if (!body) return [];
-  const rules: NonNullable<GeneralPreset["ssid_rules"]> = [];
+  const warnings: string[] = [];
+  if (!body) return { rules: [], warnings };
+  const rules: SsidRule[] = [];
   for (const raw of body.split(/\r?\n/)) {
     const line = stripComment(raw).trim();
     if (!line) continue;
-    // 大小写不敏感匹配 `SSID:` 前缀(Surge 客户端解析时是大小写敏感的,
-    // 但用户手敲常见 `ssid:` 小写,容错放宽。)
-    const m = line.match(/^SSID:(\S+)\s*(.*)$/i);
-    if (!m) continue;
-    const ssid = m[1];
-    const paramsPart = m[2].trim();
-    const rule: { ssid: string; suspend?: boolean; policy?: string } = { ssid };
-    if (paramsPart) {
-      for (const tok of paramsPart.split(/\s+/)) {
-        const eq = tok.indexOf("=");
-        if (eq <= 0) continue;
-        const k = tok.slice(0, eq).trim();
-        const v = tok.slice(eq + 1).trim();
-        if (k === "suspend") rule.suspend = v === "true";
-        else if (k === "policy") rule.policy = v;
+
+    const quoted = line.match(/^"([^"]*)"\s*(.*)$/);
+    const bare = quoted ? null : line.match(/^(\S+)(?:\s+(.*))?$/);
+    const expr = quoted ? quoted[1].trim() : (bare?.[1] ?? "");
+    const paramsPart = (quoted ? quoted[2] : (bare?.[2] ?? "")).trim();
+    if (expr === "") continue;
+    if (expr.includes("=") || paramsPart.startsWith("=")) {
+      warnings.push(`[SSID Setting] 跳过 "${line}":这是策略组的参数写法,本段每行要以网络匹配表达式开头`);
+      continue;
+    }
+
+    const rule: SsidRule = { match: normalizeSubnetExpression(expr) };
+    let listKey: string | undefined;
+    for (const tok of paramsPart.split(/[,\s]+/).filter(Boolean)) {
+      const eq = tok.indexOf("=");
+      if (eq <= 0) {
+        // 没有 `=` 的 token:要么是列表参数的续值(dns-server=a,b),要么就是写错了
+        if (listKey === "dns-server") rule.dns_server = [...(rule.dns_server ?? []), tok];
+        else if (listKey === "encrypted-dns-server") {
+          rule.encrypted_dns_server = [...(rule.encrypted_dns_server ?? []), tok];
+        } else warnings.push(`[SSID Setting] "${expr}" 的 "${tok}" 不是 key=value,已忽略`);
+        continue;
+      }
+      const key = tok.slice(0, eq).trim().toLowerCase();
+      const value = tok.slice(eq + 1).trim();
+      listKey = SSID_LIST_PARAMS.has(key) ? key : undefined;
+      switch (key) {
+        case "suspend":
+        case "cellular-mode": {
+          if (value !== "true" && value !== "false") {
+            warnings.push(`[SSID Setting] "${expr}" 的 ${key}=${value} 不是布尔值,已忽略`);
+            break;
+          }
+          if (key === "suspend") rule.suspend = value === "true";
+          else rule.cellular_mode = value === "true";
+          break;
+        }
+        case "cellular-fallback": {
+          const v = value.toLowerCase();
+          if (!(CELLULAR_FALLBACK_VALUES as readonly string[]).includes(v)) {
+            warnings.push(`[SSID Setting] "${expr}" 的 cellular-fallback=${value} 不是合法取值,已忽略`);
+            break;
+          }
+          rule.cellular_fallback = v as SsidRule["cellular_fallback"];
+          break;
+        }
+        // 手册只有英式 tfo-behaviour,美式拼写一并容错(用户手敲高频错法)
+        case "tfo-behaviour":
+        case "tfo-behavior": {
+          const v = value.toLowerCase();
+          if (!(TFO_BEHAVIOUR_VALUES as readonly string[]).includes(v)) {
+            warnings.push(`[SSID Setting] "${expr}" 的 tfo-behaviour=${value} 不是合法取值,已忽略`);
+            break;
+          }
+          rule.tfo_behaviour = v as SsidRule["tfo_behaviour"];
+          break;
+        }
+        case "dns-server":
+          rule.dns_server = [...(rule.dns_server ?? []), value];
+          break;
+        case "encrypted-dns-server":
+          rule.encrypted_dns_server = [...(rule.encrypted_dns_server ?? []), value];
+          break;
+        case "policy":
+          warnings.push(
+            `[SSID Setting] "${expr}" 的 policy=${value} 已丢弃:本段没有 policy 参数,`
+              + `按网络切策略请用 subnet 策略组或 SUBNET 规则`,
+          );
+          break;
+        default:
+          warnings.push(`[SSID Setting] "${expr}" 的参数 ${key} 不是本段支持的键,已忽略`);
       }
     }
     rules.push(rule);
   }
-  return rules;
+  return { rules, warnings };
+}
+
+/**
+ * 表达式前缀统一成大写(Surge 认的是 `SSID:` 这种写法,但用户手敲常见小写);
+ * `TYPE:` 的取值也一并大写。裸值(legacy 兼容写法)原样保留 —— 它比对的是
+ * SSID / BSSID / 网关 IP,大小写有语义。
+ */
+function normalizeSubnetExpression(expr: string): string {
+  const m = expr.match(/^(SSID|BSSID|ROUTER|TYPE|MCCMNC):(.*)$/i);
+  if (!m) return expr;
+  const prefix = m[1].toUpperCase();
+  return `${prefix}:${prefix === "TYPE" ? m[2].toUpperCase() : m[2]}`;
 }
 
 function parseRuleAndGroupSections(text: string): {

@@ -38,7 +38,17 @@ export interface GeneralPresetData {
   secret?: string;
   global_client_fingerprint?: string;
   hosts?: Record<string, string | string[]>;
-  ssid_rules?: Array<{ ssid: string; suspend?: boolean; policy?: string }>;
+  // Surge Subnet Settings(段名 `[SSID Setting]`);与 backend/src/schemas/general-preset.ts
+  // 的 ssidRuleSchema 保持同步。match 存完整 subnet 表达式(SSID: / TYPE: / ... 或裸值)
+  ssid_rules?: Array<{
+    match: string;
+    suspend?: boolean;
+    cellular_fallback?: "default" | "off" | "wifi-assist" | "hybrid";
+    cellular_mode?: boolean;
+    tfo_behaviour?: "auto" | "force-enabled" | "force-disabled";
+    dns_server?: string[];
+    encrypted_dns_server?: string[];
+  }>;
   dns?: {
     enable: boolean;
     listen?: string;

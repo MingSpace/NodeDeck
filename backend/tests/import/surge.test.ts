@@ -237,10 +237,11 @@ RULE-SET,UNKNOWN-NAME,DIRECT
   // 用户需要再手动到 generals 编辑器补一次。补这一刀闭合回环。
   // 同时覆盖几个边界:
   // - SSID 名含 `.` (常见,如 `Forever.`)
-  // - 大小写不敏感的前缀 `ssid:`
-  // - 多条 SSID 行
-  // - 非 SSID 行 (`cellular=...`) 不进 general.ssid_rules (那是 SSID Proxy Group 的语法)
-  it("parses [SSID Setting] into general.ssid_rules and ignores non-SSID lines", () => {
+  // - 大小写不敏感的前缀 `ssid:`,归一化成 Surge 认的 `SSID:`
+  // - SSID / BSSID / ROUTER / TYPE / MCCMNC 全部表达式形式
+  // - 含空格的 SSID 用双引号包住整个表达式
+  // - 参数官方是逗号分隔,NodeDeck 早期产物是空格分隔,两种都要能回读
+  it("parses [SSID Setting] into general.ssid_rules", () => {
     // 与 parseHostSection / parseMitmSection 同款语义: SSID 必须挂在已有 general 上,
     // 因此 fixture 至少要带一个最小 [General] 段。
     const text = `
@@ -249,17 +250,50 @@ loglevel = notify
 
 [SSID Setting]
 SSID:Forever. suspend=true
-SSID:Office policy=DIRECT
-ssid:Home suspend=false policy=Proxys
-cellular=Auto
-default=DIRECT
+ssid:Home tfo-behaviour=force-enabled cellular-fallback=off
+"SSID:My Home" dns-server=192.168.1.1,10.0.0.1,encrypted-dns-server=off
+TYPE:cellular suspend=true
+BSSID:00:11:22:33:44:55 cellular-mode=true
+ROUTER:192.168.2.1 suspend=false
+MCCMNC:460-11 suspend=true
 `;
     const r = importSurgeConf(text);
     expect(r.general?.ssid_rules).toEqual([
-      { ssid: "Forever.", suspend: true },
-      { ssid: "Office", policy: "DIRECT" },
-      { ssid: "Home", suspend: false, policy: "Proxys" },
+      { match: "SSID:Forever.", suspend: true },
+      { match: "SSID:Home", tfo_behaviour: "force-enabled", cellular_fallback: "off" },
+      { match: "SSID:My Home", dns_server: ["192.168.1.1", "10.0.0.1"], encrypted_dns_server: ["off"] },
+      { match: "TYPE:CELLULAR", suspend: true },
+      { match: "BSSID:00:11:22:33:44:55", cellular_mode: true },
+      { match: "ROUTER:192.168.2.1", suspend: false },
+      { match: "MCCMNC:460-11", suspend: true },
     ]);
+    expect(r.warnings).toEqual([]);
+  });
+
+  // `policy=` 从来不是本段的参数(按网络切策略是 subnet 策略组 / SUBNET 规则的事),
+  // 但 NodeDeck 早期版本会生成它 —— 回读要明确告警而不是静默吞掉。
+  // 同理 `default = Proxy` 这种组内参数行漏进本段也要报出来。
+  it("warns on [SSID Setting] policy= and policy-group-style lines", () => {
+    const text = `
+[General]
+loglevel = notify
+
+[SSID Setting]
+SSID:Office suspend=true policy=DIRECT
+cellular=Auto
+default = Proxy
+SSID:Cafe bogus-key=1
+`;
+    const r = importSurgeConf(text);
+    expect(r.general?.ssid_rules).toEqual([
+      { match: "SSID:Office", suspend: true },
+      { match: "SSID:Cafe" },
+    ]);
+    expect(r.warnings).toHaveLength(4);
+    expect(r.warnings[0]).toContain("policy=DIRECT");
+    expect(r.warnings[1]).toContain("cellular=Auto");
+    expect(r.warnings[2]).toContain("default = Proxy");
+    expect(r.warnings[3]).toContain("bogus-key");
   });
 
   it("parses [MTProto] section + [General] block-quic into general", () => {

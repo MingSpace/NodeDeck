@@ -91,16 +91,14 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
     lines.push("");
   }
 
-  // [SSID Setting]
+  // [SSID Setting](官方文档名 Subnet Settings)
   if (general?.ssid_rules && general.ssid_rules.length > 0) {
-    lines.push("[SSID Setting]");
-    for (const r of general.ssid_rules) {
-      const parts: string[] = [];
-      if (r.suspend) parts.push(`suspend=${r.suspend}`);
-      if (r.policy) parts.push(`policy=${r.policy}`);
-      lines.push(`SSID:${r.ssid} ${parts.join(" ")}`.trim());
+    const ssidLines = buildSubnetSettingLines(general.ssid_rules, input.warnings);
+    if (ssidLines.length > 0) {
+      lines.push("[SSID Setting]");
+      lines.push(...ssidLines);
+      lines.push("");
     }
-    lines.push("");
   }
 
   // [MTProto] — Surge 作为 Telegram MTProto 入站代理(iOS 5.21.0+ / Mac 6.8.0+)。
@@ -395,6 +393,47 @@ function appendGeneralLines(lines: string[], g: GeneralPreset): void {
       lines.push(`${k} = ${v}`);
     }
   }
+}
+
+/**
+ * `[SSID Setting]` 段(官方文档名 Subnet Settings)。每行 = 一个 subnet 表达式 + **逗号分隔**的
+ * `key=value` 参数(https://manual.nssurge.com/features/subnet-settings.html)。
+ *
+ * 两个易错点:
+ * - 参数之间是逗号,不是空格。`dns-server` / `encrypted-dns-server` 自身的多值也用逗号,
+ *   靠"token 里有没有 `=`"区分,所以这两个列表型参数排在最后,避免歧义
+ * - 表达式含空格(SSID 带空格)时整个表达式要用双引号包起来,见
+ *   https://kb.nssurge.com/surge-knowledge-base/technotes/tfo 的示例
+ *
+ * 这里**不输出 `policy=`**:按网络选策略是 subnet 组 / `SUBNET` 规则的事,本段没这个参数。
+ */
+function buildSubnetSettingLines(
+  rules: NonNullable<GeneralPreset["ssid_rules"]>,
+  warnings: string[],
+): string[] {
+  const lines: string[] = [];
+  rules.forEach((r, i) => {
+    const expr = r.match.trim();
+    if (expr === "") {
+      warnings.push(`[SSID Setting] 第 ${i + 1} 条没填网络匹配表达式(SSID: / TYPE: 等),已跳过`);
+      return;
+    }
+    const params: string[] = [];
+    if (r.suspend !== undefined) params.push(`suspend=${r.suspend}`);
+    if (r.cellular_fallback) params.push(`cellular-fallback=${r.cellular_fallback}`);
+    if (r.cellular_mode !== undefined) params.push(`cellular-mode=${r.cellular_mode}`);
+    if (r.tfo_behaviour) params.push(`tfo-behaviour=${r.tfo_behaviour}`);
+    if (r.dns_server && r.dns_server.length > 0) params.push(`dns-server=${r.dns_server.join(",")}`);
+    if (r.encrypted_dns_server && r.encrypted_dns_server.length > 0) {
+      params.push(`encrypted-dns-server=${r.encrypted_dns_server.join(",")}`);
+    }
+    if (params.length === 0) {
+      warnings.push(`[SSID Setting] "${expr}" 没有任何生效参数(suspend / dns-server / ...),已跳过`);
+      return;
+    }
+    lines.push(`${/\s/.test(expr) ? `"${expr}"` : expr} ${params.join(",")}`);
+  });
+  return lines;
 }
 
 function hasModuleSection(modules: SurgeModule[], key: keyof SurgeModule["content_sections"]): boolean {

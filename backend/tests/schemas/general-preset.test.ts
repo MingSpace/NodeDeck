@@ -36,3 +36,55 @@ describe("generalPresetSchema — http_api.user 迁移", () => {
     expect(() => generalPresetSchema.parse({ ...base, http_api: { password: "" } })).toThrow();
   });
 });
+
+/**
+ * `[SSID Setting]`(官方名 Subnet Settings)的条目从 `{ ssid, suspend, policy }` 改成
+ * `{ match, ...全量参数 }`:match 存完整 subnet 表达式,才能表达 BSSID / ROUTER / TYPE / MCCMNC;
+ * `policy` 在 Surge 手册里从来不属于本段,一并丢弃。
+ */
+describe("generalPresetSchema — ssid_rules 结构迁移", () => {
+  const base = { id: "g", name: "g" };
+  const parse = (ssid_rules: unknown) => generalPresetSchema.parse({ ...base, ssid_rules }).ssid_rules;
+
+  it("老 { ssid } 折成 match: SSID:<name>,并丢掉 policy", () => {
+    expect(parse([{ ssid: "Forever.", suspend: true }, { ssid: "Office", policy: "DIRECT" }])).toEqual([
+      { match: "SSID:Forever.", suspend: true },
+      { match: "SSID:Office" },
+    ]);
+  });
+
+  it("新结构直通,新参数保留", () => {
+    expect(
+      parse([
+        {
+          match: "TYPE:CELLULAR",
+          cellular_fallback: "off",
+          cellular_mode: true,
+          tfo_behaviour: "auto",
+          dns_server: ["system"],
+          encrypted_dns_server: ["off"],
+        },
+      ]),
+    ).toEqual([
+      {
+        match: "TYPE:CELLULAR",
+        cellular_fallback: "off",
+        cellular_mode: true,
+        tfo_behaviour: "auto",
+        dns_server: ["system"],
+        encrypted_dns_server: ["off"],
+      },
+    ]);
+  });
+
+  // 老 UI 点了"添加"没填就保存会留下 { ssid: "" };让整份 general 文件加载失败
+  // 远比生成时报一条 warning 糟糕,所以空值放行,由 generator 跳过。
+  it("空 ssid 迁移成空 match 而不是抛错", () => {
+    expect(parse([{ ssid: "" }])).toEqual([{ match: "" }]);
+  });
+
+  it("非法取值仍然拒绝", () => {
+    expect(() => parse([{ match: "SSID:Home", tfo_behaviour: "on" }])).toThrow();
+    expect(() => parse([{ match: "SSID:Home", cellular_fallback: "yes" }])).toThrow();
+  });
+});

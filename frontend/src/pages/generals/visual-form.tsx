@@ -6,7 +6,8 @@ import { BasicSection } from "./sections/basic";
 import { DnsSection } from "./sections/dns";
 import { MitmSection } from "./sections/mitm";
 import { MtprotoSection } from "./sections/mtproto";
-import { HostsSection, HttpApiSection, SsidSection, SurgeOnlySection } from "./sections/misc";
+import { HostsSection, HttpApiSection, SurgeOnlySection } from "./sections/misc";
+import { SsidSection } from "./sections/ssid";
 
 interface Props {
   data: GeneralPresetData;
@@ -36,7 +37,7 @@ export function GeneralPresetVisualForm({ data, update }: Props) {
           <SubCollapsible title="MTProto (Telegram 代理)" icon={<Send className="h-3.5 w-3.5" />}>
             <MtprotoSection data={data} update={update} />
           </SubCollapsible>
-          <SubCollapsible title="SSID 规则" icon={<Wifi className="h-3.5 w-3.5" />}>
+          <SubCollapsible title="网络环境设置 (Subnet Settings)" icon={<Wifi className="h-3.5 w-3.5" />}>
             <SsidSection data={data} update={update} />
           </SubCollapsible>
           <SubCollapsible title="其他选项" icon={<Wrench className="h-3.5 w-3.5" />}>

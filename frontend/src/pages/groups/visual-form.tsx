@@ -240,9 +240,21 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
               <SelectItem value="fallback">fallback (按顺序故障转移)</SelectItem>
               <SelectItem value="load-balance">load-balance (负载均衡)</SelectItem>
               <SelectItem value="smart">smart [Surge] (Clash 等价 url-test)</SelectItem>
-              <SelectItem value="ssid">ssid / subnet (按网络) [Surge]</SelectItem>
+              {/*
+                subnet 组的行形状是「条件 = 策略」的键值对而不是成员列表(且必须有 default),
+                generator 还没有这条分支 —— 选了会输出普通组形状、缺 default,Surge 拒绝加载整份配置。
+                实现之前禁掉;存量 type: ssid 的组仍能显示当前值并改成别的类型。
+              */}
+              <SelectItem value="ssid" disabled>
+                ssid / subnet (按网络) [Surge] · 未实现
+              </SelectItem>
             </SelectContent>
           </Select>
+          {data.type === "ssid" && (
+            <div className="mt-1 text-[11px] text-destructive">
+              subnet 组尚未实现,生成的 .conf 会缺少必需的 default,Surge 会拒绝加载整份配置。请改成其它类型,按网络分流暂时用 SUBNET 规则。
+            </div>
+          )}
         </Field>
         <Field label="图标 URL (可选)">
           <Input

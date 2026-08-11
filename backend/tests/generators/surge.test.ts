@@ -761,4 +761,56 @@ describe("generateSurgeConfig", () => {
       expect(out).toContain(`http-api = ${key}@0.0.0.0:8890`);
     }
   });
+
+  // `[SSID Setting]`(官方名 Subnet Settings)一行 = subnet 表达式 + **逗号分隔**参数。
+  // 早期实现是空格分隔且会输出手册里不存在的 `policy=`,两者都会让 Surge 读不对。
+  function surgeWithSsidRules(
+    ssid_rules: NonNullable<GeneralPreset["ssid_rules"]>,
+    warnings: string[] = [],
+  ): string {
+    return generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [],
+      general: { id: "g", name: "g", allow_lan: false, mode: "rule", log_level: "notify", ipv6: false, ssid_rules },
+      surgeModules: [],
+      warnings,
+    });
+  }
+
+  it("emits [SSID Setting] with comma-separated params and quotes expressions containing spaces", () => {
+    const out = surgeWithSsidRules([
+      { match: "SSID:Forever.", suspend: true },
+      {
+        match: "SSID:My Home",
+        tfo_behaviour: "force-enabled",
+        cellular_fallback: "off",
+        dns_server: ["192.168.1.1", "system"],
+        encrypted_dns_server: ["off"],
+      },
+      { match: "TYPE:CELLULAR", cellular_mode: true },
+      { match: "ROUTER:192.168.2.1", suspend: false },
+    ]);
+    expect(out).toContain("[SSID Setting]");
+    expect(out).toContain("SSID:Forever. suspend=true");
+    // 列表型参数(自身也用逗号分隔多值)排在最后,靠"token 里有没有 = "区分归属
+    expect(out).toContain(
+      '"SSID:My Home" cellular-fallback=off,tfo-behaviour=force-enabled,dns-server=192.168.1.1,system,encrypted-dns-server=off',
+    );
+    expect(out).toContain("TYPE:CELLULAR cellular-mode=true");
+    expect(out).toContain("ROUTER:192.168.2.1 suspend=false");
+    // 手册里本段没有 policy 参数,任何情况下都不该出现
+    expect(out).not.toContain("policy=");
+  });
+
+  it("skips [SSID Setting] rows with no expression or no effective param, with warnings", () => {
+    const warnings: string[] = [];
+    const out = surgeWithSsidRules([{ match: "" }, { match: "SSID:Empty" }], warnings);
+    // 段名本身还会出现在文件头的 `# WARN:` 里,所以按整行匹配
+    expect(out).not.toMatch(/^\[SSID Setting\]$/m);
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toContain("没填网络匹配表达式");
+    expect(warnings[1]).toContain("SSID:Empty");
+  });
 });

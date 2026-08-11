@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Eye, EyeOff, Plus, Trash2, Route, Globe, Server, Wrench } from "lucide-react";
+import { Eye, EyeOff, Route, Globe, Server, Wrench } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { HostRowsEditor } from "@/components/host-rows-editor";
@@ -21,84 +20,6 @@ const iosBadge = (
 
 export function HostsSection({ data, update }: Props) {
   return <HostRowsEditor value={data.hosts} onChange={(hosts) => update({ hosts })} />;
-}
-
-export function SsidSection({ data, update }: Props) {
-  const rules = data.ssid_rules ?? [];
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        仅 Surge 生效 · 按当前连接的 Wi-Fi 名称自动切换代理行为
-        <InfoHint>
-          连接到指定 SSID 的 Wi-Fi 时套用该规则:可指定使用某条策略,或直接挂起(暂停)代理。常用于在公司 / 家庭网络下走不同分流。
-        </InfoHint>
-      </div>
-      {rules.length === 0 && (
-        <div className="rounded border border-dashed p-3 text-center text-xs text-muted-foreground">
-          暂无 SSID 规则
-        </div>
-      )}
-      {rules.map((r, i) => (
-        <div key={i} className="space-y-2 rounded-md border p-2.5">
-          <div className="flex items-center gap-2">
-            <LabeledField label="Wi-Fi 名称 (SSID)" className="flex-1">
-              <Input
-                value={r.ssid}
-                onChange={(e) => {
-                  const next = rules.slice();
-                  next[i] = { ...r, ssid: e.target.value };
-                  update({ ssid_rules: next });
-                }}
-                placeholder="MyHomeWiFi"
-                className="text-xs"
-              />
-            </LabeledField>
-            <LabeledField
-              label="策略"
-              raw="policy"
-              hint="连接该 Wi-Fi 时使用的策略名(策略组或节点)。留空表示不改变默认分流。"
-              className="flex-1"
-            >
-              <Input
-                value={r.policy ?? ""}
-                onChange={(e) => {
-                  const next = rules.slice();
-                  next[i] = { ...r, policy: e.target.value || undefined };
-                  update({ ssid_rules: next });
-                }}
-                placeholder="可选,如 DIRECT / Proxys"
-                className="text-xs"
-              />
-            </LabeledField>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="mt-5 h-7 w-7 shrink-0"
-              onClick={() => update({ ssid_rules: rules.filter((_, idx) => idx !== i) })}
-              title="删除该规则"
-            >
-              <Trash2 className="h-3.5 w-3.5 text-destructive" />
-            </Button>
-          </div>
-          <ToggleRow
-            label="挂起代理"
-            raw="suspend"
-            hint="连接该 Wi-Fi 时暂停 Surge 代理引擎(所有流量直连),离开后恢复。适合在可信内网关闭代理。"
-            checked={r.suspend ?? false}
-            onChange={(v) => {
-              const next = rules.slice();
-              next[i] = { ...r, suspend: v };
-              update({ ssid_rules: next });
-            }}
-          />
-        </div>
-      ))}
-      <Button size="sm" variant="outline" onClick={() => update({ ssid_rules: [...rules, { ssid: "" }] })}>
-        <Plus className="h-3.5 w-3.5" />
-        添加 SSID 规则
-      </Button>
-    </div>
-  );
 }
 
 export function SurgeOnlySection({ data, update }: Props) {

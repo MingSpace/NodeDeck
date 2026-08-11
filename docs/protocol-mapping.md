@@ -333,6 +333,11 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 > **`external` 不是策略组类型**。Surge 只有 select / url-test / fallback / load-balance / smart / subnet 六种
 > (`ssid` 是 `subnet` 的兼容别名)。`external` 是 `[Proxy]` 段的策略类型且 Mac 独占,写进 `[Proxy Group]`
 > 会让 Surge 解析失败;schema 已把存量的 `type: external` 迁移成 `select`,引入外部策略列表请改用 `policy_path`。
+>
+> **`type: ssid`(subnet 组)目前还不能用**。它的行形状是 `名字 = subnet, default = Proxy, SSID:MyHome = DIRECT`
+> ——「条件 = 策略」的键值对而不是成员列表,必须有 `default`。generator 还没有这条分支(`ssid_params` 从未被读取),
+> 选了这个类型会输出普通组形状、缺 `default =`,Surge 直接拒绝加载整份配置。需要按网络切策略,当前请用
+> `SUBNET` 规则。注意与 `general.ssid_rules`(§19.1,只改设置不选策略)是两个特性。
 
 > Surge 的测速分数取自**两轮 HEAD 请求中的第二轮**(复用已建立的连接),所以它近似"纯请求往返",**不含握手开销**;测试 URL 不支持 keep-alive 时才退化为第一轮全程耗时并给一次性警告。评估链式代理的真实成本时要意识到握手那部分被这个分数隐藏了。参考 [manual: Automatic Testing Group](https://manual.nssurge.com/policy-groups/url-test.html)。
 
@@ -386,6 +391,28 @@ NodeDeck 在 proxy-group schema 上区分"嵌套引用"与"平铺合并",两端 
 |---|---|---|
 | `general.block_quic` | `[General] block-quic = per-policy\|all-proxy\|all\|always-allow` | [S],全局 QUIC 拦截策略(iOS 5.14.6+ / Mac 5.10.3+);Clash 端忽略 |
 | `general.mtproto` | 独立 `[MTProto]` 段(`interface` / `port` / `secret` / `ipv6` / `dc-config-url`) | [S],Telegram MTProto 入站代理(iOS 5.21.0+ / Mac 6.8.0+);secret 必须 32 位 hex(可带 `dd` 前缀),非法时跳过整段 + warning;一个 profile 仅允许一个该段。参考 [manual: MTProto](https://manual.nssurge.com/others/mtproto.html) |
+
+### 19.1 Subnet Settings(产物段名 `[SSID Setting]`)
+
+`general.ssid_rules`([S] 专属,Clash 无等价物):**在匹配的网络下套用一组设置**。官方文档已改称 Subnet Settings,配置里的段名为兼容历史仍是 `[SSID Setting]`。
+
+**它不选策略** —— 这是最容易混淆的一点。"按当前网络自动切策略"是 `[Proxy Group]` 里的 **subnet 组**(`名字 = subnet, default = Proxy, SSID:MyHome = DIRECT`,`ssid` 是其兼容别名)或 `SUBNET` 规则,和本段是两个特性,只共用同一套 subnet 表达式语法。NodeDeck 历史上给本段输出过 `policy=`,但手册里本段从来没有该参数,已移除:老 yaml 里的 `policy` 在 schema parse 阶段丢弃,导入 `.conf` 遇到 `policy=` 给 warning。
+
+行的形状是 `<subnet 表达式> key=value,key=value` —— **参数之间是逗号,不是空格**;表达式含空格时整个表达式要用双引号包住(`"SSID:My Home" tfo-behaviour=force-enabled`)。
+
+| 内部字段 | Surge 输出 | 备注 |
+|---|---|---|
+| `match` | 行首的 subnet 表达式 | `SSID:`(Wi-Fi 名,支持 `*` `?` 通配,大小写敏感)/ `BSSID:`(AP MAC)/ `ROUTER:`(网关 IP)/ `TYPE:WIFI\|WIRED\|CELLULAR` / `MCCMNC:`(运营商,iOS 独占;iOS 16.4 起系统不再给 MCC/MNC,可能失效)。带前缀的形式需 iOS 4.12.0+ / Mac 4.5.0+;无前缀的裸值是 legacy 写法,按 SSID / BSSID / 网关 IP 依次比对 |
+| `suspend` | `suspend=` | 该网络下临时挂起 Surge。**只在切换网络时触发** —— 已连着该网络再手动启动 Surge 不会被挂起 |
+| `cellular_fallback` | `cellular-fallback=` | iOS 独占,`default\|off\|wifi-assist\|hybrid`,覆盖该网络的 Wi-Fi 助理 / 混合网络行为 |
+| `cellular_mode` | `cellular-mode=` | Mac 独占,把该网络当计费网络(Metered Network Mode,只放行允许列表里的应用) |
+| `tfo_behaviour` | `tfo-behaviour=` | `auto\|force-enabled\|force-disabled`(iOS 4.12.0+ / Mac 4.5.0+)。`force-enabled` 会忽略系统黑洞检测,该网络实际不支持 TFO 时代理会完全连不上 |
+| `dns_server` | `dns-server=a,b` | 该网络的 DNS 上游,元素为 IP 或 `system` |
+| `encrypted_dns_server` | `encrypted-dns-server=a,b` | 该网络的加密 DNS URL;全局配了加密 DNS 又想退回传统 DNS 必须显式写 `off` |
+
+两个列表型参数(`dns-server` / `encrypted-dns-server`)的多值也用逗号,与参数分隔符同形,靠"token 里有没有 `=`"区分归属 —— 所以 generator 把它们排在一行的最后。表达式为空或一行没有任何生效参数时跳过该行 + warning(裸表达式在 Surge 里是空操作)。
+
+参考:[manual: Subnet Settings](https://manual.nssurge.com/features/subnet-settings.html)、[manual: Subnet Expressions](https://manual.nssurge.com/rules/protocol-and-network.html)、[manual: Subnet Group](https://manual.nssurge.com/policy-groups/subnet.html)。
 
 ---
 
