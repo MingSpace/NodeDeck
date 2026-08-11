@@ -16,6 +16,12 @@ import { generalPresetSchema } from "../schemas/general-preset.js";
 import { surgeModuleSchema } from "../schemas/surge-module.js";
 import { profileSchema } from "../schemas/profile.js";
 import { refreshProvider } from "../providers/load.js";
+import {
+  findEntityReferences,
+  isReferenceableKind,
+  describeReferences,
+  type EntityReference,
+} from "../refs/entity-references.js";
 import { logger } from "../logger.js";
 
 interface EntityKindDef {
@@ -47,6 +53,16 @@ entitiesRouter.get("/:kind/:id", async (c) => {
   const entry = await def.repo.get(c.req.param("id"));
   if (!entry) return c.json({ error: "not found" }, 404);
   return c.json(entry.data);
+});
+
+// 谁在引用我。前端删除前先查这里,以便在确认弹窗里直接列出引用位置,
+// 而不是等 DELETE 吃一个 409。
+entitiesRouter.get("/:kind/:id/references", async (c) => {
+  const kind = c.req.param("kind");
+  if (!KINDS[kind]) return c.json({ error: "unknown entity kind" }, 404);
+  if (!isReferenceableKind(kind)) return c.json({ references: [] });
+  const references = await findEntityReferences(kind, c.req.param("id"));
+  return c.json({ references });
 });
 
 // 保存 provider 时按需异步重拉一次:
@@ -131,8 +147,36 @@ entitiesRouter.delete("/:kind/:id", async (c) => {
   const def = KINDS[kind];
   if (!def) return c.json({ error: "unknown entity kind" }, 404);
   const id = c.req.param("id");
+  // 删掉一个还被引用的实体 = 给用户留一堆悬空引用(客户端报 policy not found /
+  // 组里凭空少节点),而 yaml 里没有回滚。所以引用检查在这里硬拦,
+  // 用户必须先去引用方解开引用。
+  if (isReferenceableKind(kind)) {
+    const references = await findEntityReferences(kind, id);
+    const blocking = references.filter((r) => r.blocking);
+    if (blocking.length > 0) {
+      logger.info({ kind, id, references: blocking.length }, "Entity delete blocked by references");
+      return c.json(
+        {
+          error: "entity is referenced",
+          message: `无法删除:仍被 ${describeReferences(blocking)} 引用,请先解除引用。`,
+          references,
+        },
+        409,
+      );
+    }
+    logNonBlockingReferences(kind, id, references);
+  }
   await def.repo.delete(id);
   logger.info({ kind, id }, "Entity deleted");
   return c.json({ ok: true });
 });
+
+function logNonBlockingReferences(kind: string, id: string, references: EntityReference[]): void {
+  const soft = references.filter((r) => !r.blocking);
+  if (soft.length === 0) return;
+  logger.warn(
+    { kind, id, references: soft.map((r) => `${r.from_kind}/${r.from_id}:${r.field}`) },
+    "Deleted entity was softly referenced",
+  );
+}
 

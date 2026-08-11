@@ -25,6 +25,7 @@ import { NodeRow, type NodeBrief } from "@/components/node-row";
 import { RefreshedAt } from "@/components/refreshed-at";
 import { useEntityList, useDeleteEntity, useDeleteEntitiesBulk } from "@/api/entities";
 import { EntityVisualDialog } from "@/components/entity-visual-dialog";
+import { DeleteEntityDialog, type DeleteTarget } from "@/components/delete-entity-dialog";
 import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 import {
@@ -116,6 +117,8 @@ export function ProvidersPage() {
 
   const [editing, setEditing] = useState<ProviderData | null>(null);
   const [open, setOpen] = useState(false);
+  // 非空 = 删除确认弹窗打开中(弹窗自己负责引用预检)
+  const [deleteTargets, setDeleteTargets] = useState<DeleteTarget[]>([]);
   // @user_flow: 节点池空态 / dashboard 等位置带 ?new=inline|http 跳进来时,
   // 直接打开新建对话框 + 把模板的 type 切到对应类型,省去用户再点「新建」+ 切 tab。
   // 关闭对话框后 reset,这样手动点「新建」永远是默认 http 模板。
@@ -231,10 +234,27 @@ export function ProvidersPage() {
 
   const clearSelection = () => setSelected(new Set());
 
-  const handleBulkDelete = async () => {
-    const ids = Array.from(validSelected);
-    if (ids.length === 0) return;
-    if (!window.confirm(`确认删除选中的 ${ids.length} 个节点源?此操作不可撤销。`)) return;
+  const openBulkDelete = () => {
+    if (validSelected.size === 0) return;
+    setDeleteTargets(items.filter((p) => validSelected.has(p.id)).map((p) => ({ id: p.id, name: p.name })));
+  };
+
+  // 弹窗只回传没被 profile / 策略组 / 通知设置引用的 id
+  const handleConfirmDelete = async (ids: string[]) => {
+    if (ids.length === 1) {
+      try {
+        await del.mutateAsync(ids[0]);
+        toast({ title: "已删除", variant: "success" });
+      } catch (err) {
+        toast({
+          title: "删除失败",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "error",
+        });
+      }
+      setDeleteTargets([]);
+      return;
+    }
     try {
       const res = await bulkDel.mutateAsync(ids);
       if (res.failed.length === 0) {
@@ -256,6 +276,7 @@ export function ProvidersPage() {
     } catch (err) {
       toast({ title: "批量删除失败", description: String(err), variant: "error" });
     }
+    setDeleteTargets([]);
   };
 
   return (
@@ -330,7 +351,7 @@ export function ProvidersPage() {
                 <Button
                   variant="destructive"
                   size="sm"
-                  onClick={handleBulkDelete}
+                  onClick={openBulkDelete}
                   disabled={bulkDel.isPending}
                 >
                   {bulkDel.isPending ? (
@@ -552,11 +573,8 @@ export function ProvidersPage() {
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={async () => {
-                        if (!window.confirm(`删除 ${p.name}?`)) return;
-                        await del.mutateAsync(p.id);
-                        toast({ title: "已删除", variant: "success" });
-                      }}
+                      onClick={() => setDeleteTargets([{ id: p.id, name: p.name }])}
+                      title="删除"
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
@@ -589,6 +607,17 @@ export function ProvidersPage() {
           );
         })}
       </div>
+
+      <DeleteEntityDialog
+        kind="providers"
+        targets={deleteTargets}
+        open={deleteTargets.length > 0}
+        onOpenChange={(v) => {
+          if (!v) setDeleteTargets([]);
+        }}
+        onConfirm={(ids) => void handleConfirmDelete(ids)}
+        busy={del.isPending || bulkDel.isPending}
+      />
 
       <EntityVisualDialog<ProviderData>
         kind="providers"

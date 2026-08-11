@@ -3,19 +3,25 @@ import { Hono } from "hono";
 import type { Provider } from "../../src/schemas/provider.js";
 
 vi.mock("../../src/storage/repos.js", () => ({
-  providerRepo: { save: vi.fn(), exists: vi.fn() },
-  rulesetRepo: { save: vi.fn(), exists: vi.fn() },
-  proxyGroupRepo: { save: vi.fn(), exists: vi.fn() },
-  generalPresetRepo: { save: vi.fn(), exists: vi.fn() },
-  surgeModuleRepo: { save: vi.fn(), exists: vi.fn() },
-  profileRepo: { save: vi.fn(), exists: vi.fn() },
+  providerRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
+  rulesetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
+  proxyGroupRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
+  generalPresetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
+  surgeModuleRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
+  profileRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn() },
 }));
 vi.mock("../../src/providers/load.js", () => ({
   refreshProvider: vi.fn(),
 }));
+// 引用扫描本身在 tests/refs/entity-references.test.ts 里单测;这里只关心路由怎么用它的结果。
+vi.mock("../../src/refs/entity-references.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/refs/entity-references.js")>();
+  return { ...actual, findEntityReferences: vi.fn() };
+});
 
-import { providerRepo, rulesetRepo } from "../../src/storage/repos.js";
+import { providerRepo, rulesetRepo, proxyGroupRepo, profileRepo } from "../../src/storage/repos.js";
 import { refreshProvider } from "../../src/providers/load.js";
+import { findEntityReferences, type EntityReference } from "../../src/refs/entity-references.js";
 import { entitiesRouter } from "../../src/routes/entities.js";
 import type { RuleSet } from "../../src/schemas/ruleset.js";
 
@@ -24,6 +30,22 @@ const mockedProviderExists = providerRepo.exists as unknown as ReturnType<typeof
 const mockedRulesetSave = rulesetRepo.save as unknown as ReturnType<typeof vi.fn>;
 const mockedRulesetExists = rulesetRepo.exists as unknown as ReturnType<typeof vi.fn>;
 const mockedRefresh = refreshProvider as unknown as ReturnType<typeof vi.fn>;
+const mockedGroupDelete = proxyGroupRepo.delete as unknown as ReturnType<typeof vi.fn>;
+const mockedProfileDelete = profileRepo.delete as unknown as ReturnType<typeof vi.fn>;
+const mockedFindRefs = findEntityReferences as unknown as ReturnType<typeof vi.fn>;
+
+function groupRef(overrides: Partial<EntityReference> = {}): EntityReference {
+  return {
+    from_kind: "profiles",
+    from_id: "p1",
+    from_name: "家用",
+    field: "proxy_groups",
+    via: "id",
+    value: "g-proxy",
+    blocking: true,
+    ...overrides,
+  };
+}
 
 function buildApp(): Hono {
   const app = new Hono();
@@ -77,6 +99,7 @@ beforeEach(() => {
     status: "ok",
     nodes: [],
   });
+  mockedFindRefs.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -327,5 +350,85 @@ describe("PUT /api/entities/:kind/:id", () => {
     expect(mockedRefresh).toHaveBeenCalledTimes(1);
     // 让 microtask 跑一下,确认 .catch 拿到错误后不抛(否则会有 unhandled rejection)
     await new Promise((r) => setImmediate(r));
+  });
+});
+
+describe("DELETE /api/entities/:kind/:id", () => {
+  it("无引用 → 200 + 真的删了", async () => {
+    mockedGroupDelete.mockResolvedValue(true);
+
+    const res = await buildApp().request("/api/entities/groups/g-proxy", { method: "DELETE" });
+
+    expect(res.status).toBe(200);
+    expect(mockedFindRefs).toHaveBeenCalledWith("groups", "g-proxy");
+    expect(mockedGroupDelete).toHaveBeenCalledWith("g-proxy");
+  });
+
+  it("有 blocking 引用 → 409 + 不删 + 返回引用清单", async () => {
+    mockedFindRefs.mockResolvedValue([groupRef(), groupRef({ from_id: "p2", from_name: "备用" })]);
+
+    const res = await buildApp().request("/api/entities/groups/g-proxy", { method: "DELETE" });
+
+    expect(res.status).toBe(409);
+    const json = (await res.json()) as { error: string; message: string; references: EntityReference[] };
+    expect(json.error).toBe("entity is referenced");
+    expect(json.message).toContain("无法删除");
+    expect(json.message).toContain("家用");
+    expect(json.references).toHaveLength(2);
+    expect(mockedGroupDelete).not.toHaveBeenCalled();
+  });
+
+  it("只有 non-blocking 引用 → 照常删除", async () => {
+    mockedFindRefs.mockResolvedValue([
+      groupRef({ from_kind: "rules", from_id: "rs-1", from_name: "规则集 1", field: "policy", blocking: false }),
+    ]);
+    mockedGroupDelete.mockResolvedValue(true);
+
+    const res = await buildApp().request("/api/entities/groups/g-proxy", { method: "DELETE" });
+
+    expect(res.status).toBe(200);
+    expect(mockedGroupDelete).toHaveBeenCalledWith("g-proxy");
+  });
+
+  it("profiles 不做引用检查(没有实体引用 profile)", async () => {
+    mockedProfileDelete.mockResolvedValue(true);
+
+    const res = await buildApp().request("/api/entities/profiles/p1", { method: "DELETE" });
+
+    expect(res.status).toBe(200);
+    expect(mockedFindRefs).not.toHaveBeenCalled();
+    expect(mockedProfileDelete).toHaveBeenCalledWith("p1");
+  });
+
+  it("unknown kind → 404,不查引用也不删", async () => {
+    const res = await buildApp().request("/api/entities/bogus/x", { method: "DELETE" });
+
+    expect(res.status).toBe(404);
+    expect(mockedFindRefs).not.toHaveBeenCalled();
+  });
+});
+
+describe("GET /api/entities/:kind/:id/references", () => {
+  it("返回引用清单(含 non-blocking)", async () => {
+    mockedFindRefs.mockResolvedValue([groupRef()]);
+
+    const res = await buildApp().request("/api/entities/groups/g-proxy/references");
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { references: EntityReference[] };
+    expect(json.references).toEqual([groupRef()]);
+  });
+
+  it("profiles → 空清单,不扫描", async () => {
+    const res = await buildApp().request("/api/entities/profiles/p1/references");
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ references: [] });
+    expect(mockedFindRefs).not.toHaveBeenCalled();
+  });
+
+  it("unknown kind → 404", async () => {
+    const res = await buildApp().request("/api/entities/bogus/x/references");
+    expect(res.status).toBe(404);
   });
 });

@@ -11,6 +11,7 @@ import {
   type EntityKind,
 } from "@/api/entities";
 import { EntityYamlDialog } from "./entity-yaml-dialog";
+import { DeleteEntityDialog, type DeleteTarget } from "./delete-entity-dialog";
 import { toast } from "@/components/ui/toast";
 
 interface EntityListPageProps<T extends { id: string }> {
@@ -48,6 +49,8 @@ export function EntityListPage<T extends { id: string; name?: string }>({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
+  // 非空 = 删除确认弹窗打开中(弹窗自己负责引用预检)
+  const [deleteTargets, setDeleteTargets] = useState<DeleteTarget[]>([]);
 
   const items = list.data?.items ?? [];
 
@@ -123,10 +126,27 @@ export function EntityListPage<T extends { id: string; name?: string }>({
 
   const clearSelection = () => setSelected(new Set());
 
-  const handleBulkDelete = async () => {
-    const ids = Array.from(validSelected);
-    if (ids.length === 0) return;
-    if (!window.confirm(`确认删除选中的 ${ids.length} 项?此操作不可撤销。`)) return;
+  const openBulkDelete = () => {
+    if (validSelected.size === 0) return;
+    setDeleteTargets(items.filter((it) => validSelected.has(it.id)).map((it) => ({ id: it.id, name: it.name })));
+  };
+
+  // 弹窗只回传没被引用的 id;单条走 del、多条走 bulkDel 以保留各自的 toast 文案。
+  const handleConfirmDelete = async (ids: string[]) => {
+    if (ids.length === 1) {
+      try {
+        await del.mutateAsync(ids[0]);
+        toast({ title: "已删除", variant: "success" });
+      } catch (err) {
+        toast({
+          title: "删除失败",
+          description: err instanceof Error ? err.message : String(err),
+          variant: "error",
+        });
+      }
+      setDeleteTargets([]);
+      return;
+    }
     try {
       const res = await bulkDel.mutateAsync(ids);
       if (res.failed.length === 0) {
@@ -148,6 +168,7 @@ export function EntityListPage<T extends { id: string; name?: string }>({
     } catch (err) {
       toast({ title: "批量删除失败", description: String(err), variant: "error" });
     }
+    setDeleteTargets([]);
   };
 
   return (
@@ -208,7 +229,7 @@ export function EntityListPage<T extends { id: string; name?: string }>({
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={handleBulkDelete}
+                    onClick={openBulkDelete}
                     disabled={bulkDel.isPending}
                   >
                     {bulkDel.isPending ? (
@@ -272,15 +293,7 @@ export function EntityListPage<T extends { id: string; name?: string }>({
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={async () => {
-                        if (!window.confirm(`删除 ${item.name ?? item.id}?`)) return;
-                        try {
-                          await del.mutateAsync(item.id);
-                          toast({ title: "已删除", variant: "success" });
-                        } catch (err) {
-                          toast({ title: "删除失败", description: String(err), variant: "error" });
-                        }
-                      }}
+                      onClick={() => setDeleteTargets([{ id: item.id, name: item.name }])}
                       title="删除"
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
@@ -292,6 +305,17 @@ export function EntityListPage<T extends { id: string; name?: string }>({
           </div>
         </Card>
       )}
+
+      <DeleteEntityDialog
+        kind={kind}
+        targets={deleteTargets}
+        open={deleteTargets.length > 0}
+        onOpenChange={(v) => {
+          if (!v) setDeleteTargets([]);
+        }}
+        onConfirm={(ids) => void handleConfirmDelete(ids)}
+        busy={del.isPending || bulkDel.isPending}
+      />
 
       {renderDialog ? (
         renderDialog({

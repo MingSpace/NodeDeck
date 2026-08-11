@@ -272,6 +272,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - 所有 yaml 写入前必须 zod schema 校验通过
 - 改 generator 前先跑一遍 `pnpm test` 拿到干净基线(snapshot 更新流程见 `Testing Strategy`)
 - 引用类字段(节点/组/规则互指)一律走 generator 入口的 `validateChain` / `validateGroupRefs` 管线做悬空降级与环检测,不要旁路自己判
+- 在 schema 里新增「指向其它实体」的字段(按 id 或按 name)时,同步在 `refs/entity-references.ts` 加对应扫描分支 —— 漏了会让 `DELETE /api/entities/:kind/:id` 放过实际还在被引用的实体
 - 涉及 Clash/Surge 字段或新特性时,先按 `Protocol Documentation Lookup` 查文档再动手
 - 提交前 `pnpm typecheck && pnpm lint && pnpm test` 全绿
 
@@ -303,6 +304,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - `[backend/src/generators/group-members.ts](backend/src/generators/group-members.ts)` - selector→节点池筛选 + 组成员索引(clash / surge / chain 三处共用,改这里会同时影响组成员与链式作用域)
 - `[backend/src/generators/hidden-nodes.ts](backend/src/generators/hidden-nodes.ts)` - `profile.hidden_nodes` 解析(「仅作链式落地、不可直接选择」的节点集合)
 - `[backend/src/generators/group-refs.ts](backend/src/generators/group-refs.ts)` - group.proxies 悬空节点引用清理
+- `[backend/src/refs/entity-references.ts](backend/src/refs/entity-references.ts)` - 「谁在引用我」反向索引(删除前的引用检查),schema 新增跨实体引用字段时必须同步这里
 - `[backend/src/routes/sub.ts](backend/src/routes/sub.ts)` - 订阅入口(含 proxy-providers 子路由)
 - `[backend/src/routes/profile-preview.ts](backend/src/routes/profile-preview.ts)` - Web UI 实时预览 + 链式/组引用诊断的唯一后端来源,改 generator 诊断输出时要同步看它
 - `[frontend/src/pages/profile-editor/](frontend/src/pages/profile-editor)` - Web UI 复杂度峰值

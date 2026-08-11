@@ -38,6 +38,43 @@ export function useSaveEntity<T extends { id: string }>(kind: EntityKind) {
   });
 }
 
+// 与 backend/src/refs/entity-references.ts 的 EntityReference 保持同步
+export interface EntityReference {
+  from_kind: "profiles" | "groups" | "generals" | "rules" | "notification";
+  from_id: string;
+  from_name: string;
+  field: string;
+  via: "id" | "name";
+  value: string;
+  /** false = 只影响 UI 展示/默认值,不阻止删除 */
+  blocking: boolean;
+}
+
+/**
+ * 批量查"谁在引用这些条目"。删除前的预检:引用状态随时可能被其它页面改掉,
+ * 所以不缓存(gcTime: 0),每次打开确认弹窗都重新拉。
+ */
+export function useEntityReferences(kind: EntityKind, ids: string[], enabled: boolean) {
+  const sortedIds = [...ids].sort();
+  return useQuery<Record<string, EntityReference[]>>({
+    queryKey: ["entity-references", kind, sortedIds.join(",")],
+    queryFn: async () => {
+      const entries = await Promise.all(
+        sortedIds.map(async (id) => {
+          const res = await api.get<{ references: EntityReference[] }>(
+            `/api/entities/${kind}/${encodeURIComponent(id)}/references`,
+          );
+          return [id, res.references] as const;
+        }),
+      );
+      return Object.fromEntries(entries);
+    },
+    enabled: enabled && sortedIds.length > 0,
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
 export function useDeleteEntity(kind: EntityKind) {
   const qc = useQueryClient();
   return useMutation({
