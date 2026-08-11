@@ -23,6 +23,13 @@ function downgradeClashPolicy(policy: string): string {
   return mapped ? mapped.clash : policy;
 }
 
+// Surge Ponte 的设备策略 `DEVICE:<设备名>`(manual.nssurge.com/rules/overview.html
+// 的 POLICY 说明):把流量交给局域网内另一台 Surge 设备。mihomo 没有等价物,原样写出去
+// 会让客户端在加载时报 policy not found,整份配置失效 —— 所以这类规则在 Clash 端整条跳过。
+function isSurgeDevicePolicy(policy: string): boolean {
+  return /^DEVICE:/i.test(policy.trim());
+}
+
 // Surge manual: https://manual.nssurge.com/rule/ruleset.html#lan
 // LAN 内置 ruleset 在 Clash 端展开为等价的内联规则。
 // 内容与 Surge 文档列出的一致(包含 LAN IP 范围 + .local 后缀)。
@@ -133,6 +140,12 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     // surge_reject_options.type(如 REJECT-DROP)在 Surge 端会覆盖 r.policy;
     // Clash 不识别 Surge 子类型,这里统一降级到合法 REJECT。
     const rawPolicy = rs.surge_reject_options?.type ?? r.policy;
+    if (isSurgeDevicePolicy(rawPolicy)) {
+      input.warnings.push(
+        `Ruleset "${rs.id}" 的策略 "${rawPolicy}" 是 Surge 专属设备策略(Surge Ponte),Clash 无等价物,该规则已跳过`,
+      );
+      continue;
+    }
     const policy = downgradeClashPolicy(rawPolicy);
     const noResolve = rs.surge_flags?.no_resolve ? ",no-resolve" : "";
     // 内联展开路径逐行分发:mihomo 的 no-resolve 同样只对目标 IP 类规则有意义
@@ -202,7 +215,13 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     }
   }
   if (input.geoipFallback) {
-    rules.push(`GEOIP,CN,${downgradeClashPolicy(input.geoipFallback.policy)},no-resolve`);
+    if (isSurgeDevicePolicy(input.geoipFallback.policy)) {
+      input.warnings.push(
+        `GEOIP CN 兜底规则的策略 "${input.geoipFallback.policy}" 是 Surge 专属设备策略,Clash 无等价物,该规则已跳过`,
+      );
+    } else {
+      rules.push(`GEOIP,CN,${downgradeClashPolicy(input.geoipFallback.policy)},no-resolve`);
+    }
   }
   if (input.finalRule) {
     rules.push(`MATCH,${downgradeClashPolicy(input.finalRule.policy)}`);

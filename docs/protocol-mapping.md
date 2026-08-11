@@ -204,11 +204,17 @@ Surge 侧统一是任意 proxy 行追加三个平铺参数。
 
 | 内部抽象 | Clash | Surge | 备注 |
 |---|---|---|---|
-| `no_resolve` | 行尾 `,no-resolve` | 行尾 `,no-resolve` | [CS] |
-| `extended_matching` | — | `,extended-matching` | [S] |
-| `pre_matching` | — | `,pre-matching` | [S] |
+| `no_resolve` | 行尾 `,no-resolve` | 行尾 `,no-resolve` | [CS] 仅适用于目标 IP 类规则:`IP-CIDR` / `IP-CIDR6` / `IP-ASN` / `GEOIP`,以及 Clash 独有的 `IP-SUFFIX`;另可用在 Surge 的 `RULE-SET` / `DOMAIN-SET` 引用行上(强制作用于集合内每条子规则) |
+| `extended_matching` | — | `,extended-matching` | [S] 仅适用于域名类规则:`DOMAIN` / `DOMAIN-SUFFIX` / `DOMAIN-KEYWORD` / `DOMAIN-WILDCARD` / `URL-REGEX`,以及 `RULE-SET` / `DOMAIN-SET` 引用行 |
+| `pre_matching` | — | `,pre-matching` | [S] 策略必须是 REJECT 系;顶层规则专用 |
 | `force_remote_dns` | — | `,force-remote-dns` | [S] |
 | FINAL `dns_failed` | — | `FINAL,Proxy,dns-failed` | [S] |
+
+flags 存在 ruleset 级别,但**落点取决于该 ruleset 的输出形态**:
+
+- 走 `RULE-SET` / `DOMAIN-SET` 引用(`type: remote_url`、`type: surge_internal`,或 `surge_format: inline_ruleset`)时,flags 落在引用行末尾,按 Surge 手册作用于集合内每条子规则
+- 内联展开(`type: inline_list` 展开进 `[Rule]` / `rules:`)时,flags **按每行的规则类型分发**:`no-resolve` 只落到 IP 类行,`extended-matching` 只落到域名类行,适用范围未建模的 flag(如 `pre-matching`)一律透传。混合 payload(域名 + IP 混写)因此只需要开一个规则集级别的开关,不必拆成两个 ruleset。实现见 [`generators/rule-line.ts`](../backend/src/generators/rule-line.ts)
+- payload 行内自带的 per-line option(ruleset 文件语法允许,如 `IP-CIDR,10.0.0.0/8,no-resolve`)在展开时会被重新排到**策略之后** —— `IP-CIDR,10.0.0.0/8,DIRECT,no-resolve`,否则 option 会占掉策略的位置,客户端把它当成策略名
 
 ## 12. REJECT 子类型
 
@@ -258,6 +264,7 @@ Surge 侧统一是任意 proxy 行追加三个平铺参数。
 - Surge `[Module]` 段 → 完全跳过
 - Surge `[URL Rewrite]/[Header Rewrite]/[Script]` → 跳过(Clash 无对应)
 - Surge `Snell` v6 节点 → 跳过 + warning(v1–v5 正常输出,见 §9)
+- Surge 设备策略 `DEVICE:<设备名>`(Surge Ponte,把流量交给局域网内另一台 Surge 设备) → 整条规则跳过 + warning;mihomo 无等价物,原样输出会让客户端报 `policy not found` 而整份配置加载失败
 - Surge `RULE-SET,SYSTEM` → 跳过 + warning(含 USER-AGENT/PROCESS-NAME 无 Clash 等价)
 - Surge `RULE-SET,LAN` → 展开为内联 DOMAIN-SUFFIX,local + IP-CIDR 列表
 - Surge hosts `server:`(指定 DNS) → 转 `dns.proxy-server-nameserver-policy`(按域名 `*.`→`+.`,依赖 `proxy-server-nameserver` 非空);`DOMAIN-SET:` / `RULE-SET:` → 跳过 + warning

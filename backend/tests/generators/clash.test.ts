@@ -210,6 +210,57 @@ describe("generateClashConfig", () => {
     expect(rules.some((r) => r.includes("extended-matching"))).toBe(false);
   });
 
+  // DEVICE:<name> 是 Surge Ponte 的设备策略,mihomo 没有等价物;原样写出去客户端会报
+  // policy not found 导致整份配置加载失败,所以这类规则在 Clash 端整条跳过。
+  it("skips rules whose policy is a Surge device policy", () => {
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [
+        {
+          ref: "nas",
+          policy: "DEVICE:MS-MACMINI",
+          ruleset: {
+            id: "nas",
+            name: "NAS",
+            type: "inline_list",
+            payload: ["DOMAIN,nas.example.com", "IP-CIDR,10.0.0.0/24"],
+            behavior: "classical",
+            format: "yaml",
+            clash_format: "inline",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+        {
+          ref: "keep",
+          policy: "DIRECT",
+          ruleset: {
+            id: "keep",
+            name: "Keep",
+            type: "inline_list",
+            payload: ["DOMAIN-SUFFIX,example.com"],
+            behavior: "classical",
+            format: "yaml",
+            clash_format: "inline",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+      ],
+      geoipFallback: { policy: "DEVICE:MS-MACMINI" },
+      finalRule: { policy: "DIRECT" },
+      warnings,
+    });
+    const rules = (yaml.load(out) as Record<string, unknown>).rules as string[];
+    expect(rules.some((r) => r.includes("DEVICE:"))).toBe(false);
+    expect(rules).toContain("DOMAIN-SUFFIX,example.com,DIRECT");
+    expect(rules).toContain("MATCH,DIRECT");
+    expect(warnings.filter((w) => w.includes("DEVICE:MS-MACMINI"))).toHaveLength(2);
+  });
+
   it("removes dangling node refs from group.proxies after node_filter and emits warning", () => {
     const nodes: Node[] = [
       { name: "🇭🇰 HK-01", type: "trojan", server: "g.com", port: 443, password: "x", sni: "x.com", tls: true, tags: [] },

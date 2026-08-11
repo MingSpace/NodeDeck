@@ -333,6 +333,8 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 | 客户端报 `proxy not found in group "X"` (其他组名,如 `Japan(DIP)`) | 该 group yaml 存在,但 profile.proxy_groups 没把它列出来 → 引用方剔除引用 | warning 会出 notImported 类型并明确指引;到 Profile 编辑器把该 group id 加入 proxy_groups 列表 |
 | `RULE-SET,<url>` 出现在 `GEOSITE` 行里(如 `GEOSITE,https://...`) | 误把 `rs.url` 当成 GEOSITE 分类 | 用 `geosite_category` 字段;同样 GEOIP 用 `geoip_country_code` |
 | Clash 报 `policy not found: REJECT-DROP` | Surge 专属 REJECT 子类型未降级 | 已由 `downgradeClashPolicy` + `REJECT_TYPE_MAP` 处理;新增 policy 类型时记得也加映射 |
+| Clash 报 `policy not found: DEVICE:<设备名>` | 规则策略用了 Surge Ponte 的设备策略,mihomo 没有等价物 | 已由 `clash.ts` 的 `isSurgeDevicePolicy` 整条跳过 + warning(Surge 端照常输出);想在 Clash 侧也生效只能改用普通策略组 |
+| Surge 提示「IP 规则被置于域名规则之前,可能触发不必要的 DNS 请求」 | IP 类规则(含 inline payload 里混写的 `IP-CIDR` 行)排在域名规则前面,客户端为拿目标 IP 被迫提前解析 | 打开该 ruleset 的 `surge_flags.no_resolve`;内联展开时由 `generators/rule-line.ts` 按行分发,只有 IP 类行会带 `no-resolve`,域名行不受影响,不需要为此拆规则集 |
 | Surge `RULE-SET,<id>,POLICY` 而 inline ruleset 段没出现 | `surge_format` 不是 `inline_ruleset` | inline list 想用引用形式必须显式 `surge_format: inline_ruleset`,否则就直接展开 |
 | 启用 `use_proxy_providers` 后 group 没节点 | `selector.from_providers` 没指定,且未启用任何 provider 的 `clash_proxy_provider` | 检查 provider yaml `clash_proxy_provider.enabled: true`;主订阅顶部应能看到 `proxy-providers:` 段 |
 | Subscription-UserInfo 显示 0 | Provider fetch 失败回退到旧缓存,但 header 没缓存 | cache JSON 里 `raw_userinfo_header` + `userinfo` 字段都要写;查 `providers/cache-store.ts` |
