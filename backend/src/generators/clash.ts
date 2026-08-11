@@ -15,6 +15,7 @@ import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { splitClashHosts } from "./hosts.js";
+import { buildExpandedRuleLine } from "./rule-line.js";
 import { refreshIntervalToSeconds } from "../schemas/common.js";
 
 function downgradeClashPolicy(policy: string): string {
@@ -134,6 +135,9 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     const rawPolicy = rs.surge_reject_options?.type ?? r.policy;
     const policy = downgradeClashPolicy(rawPolicy);
     const noResolve = rs.surge_flags?.no_resolve ? ",no-resolve" : "";
+    // 内联展开路径逐行分发:mihomo 的 no-resolve 同样只对目标 IP 类规则有意义
+    // (wiki.metacubex.one/config/rules 附加参数),混合 payload 里的域名行不该带上。
+    const inlineFlags = rs.surge_flags?.no_resolve ? ["no-resolve"] : [];
 
     // 分发顺序:按 rs.type 优先,clash_format 仅在同 type 内部决定细节(如 remote_url 的输出方式)。
     if (rs.type === "remote_url") {
@@ -172,7 +176,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
         continue;
       }
       for (const item of rs.payload) {
-        rules.push(`${item},${policy}`);
+        rules.push(buildExpandedRuleLine({ item, policy, flags: inlineFlags }));
       }
     } else if (rs.type === "geosite") {
       const category = rs.geosite_category ?? rs.id;
@@ -186,7 +190,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
       // - SYSTEM 含 USER-AGENT 等 Clash 不支持的规则 → 跳过 + warning,避免半残转换
       if (rs.surge_internal_name === "LAN") {
         for (const item of SURGE_INTERNAL_LAN_RULES) {
-          rules.push(`${item},${policy}`);
+          rules.push(buildExpandedRuleLine({ item, policy, flags: inlineFlags }));
         }
       } else if (rs.surge_internal_name === "SYSTEM") {
         input.warnings.push(

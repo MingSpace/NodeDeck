@@ -14,6 +14,7 @@ import { buildGroupMemberIndex, resolveGroupMemberEntries } from "./group-member
 import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { buildSurgeHostLines } from "./hosts.js";
+import { buildExpandedRuleLine } from "./rule-line.js";
 
 export interface SurgeGenerateInput {
   profile: Profile;
@@ -213,8 +214,7 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
         lines.push(parts.join(","));
       } else {
         for (const item of rs.payload) {
-          const parts = [item, policy, ...extraParams, ...flags];
-          lines.push(parts.join(","));
+          lines.push(buildExpandedRuleLine({ item, policy, extraParams, flags }));
         }
       }
     } else if (rs.type === "geosite") {
@@ -224,8 +224,7 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
       // 3) 都没有 → warning,跳过
       if (rs.payload && rs.payload.length > 0) {
         for (const item of rs.payload) {
-          const parts = [item, policy, ...extraParams, ...flags];
-          lines.push(parts.join(","));
+          lines.push(buildExpandedRuleLine({ item, policy, extraParams, flags }));
         }
       } else if (rs.url) {
         lines.push(`DOMAIN-SET,${rs.url},${policy}${flagSuffix}`);

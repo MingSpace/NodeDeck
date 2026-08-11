@@ -168,6 +168,48 @@ describe("generateClashConfig", () => {
     expect(out).toMatch(/# WARN:.*SYSTEM/);
   });
 
+  // mihomo 的 no-resolve 同样只对目标 IP 类规则有意义(wiki.metacubex.one/config/rules 附加参数),
+  // 所以混合 payload 展开时按行分发;行内自带的 option 也要挪到策略之后。
+  it("distributes no-resolve to IP lines only when expanding inline payload", () => {
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [
+        {
+          ref: "nas",
+          policy: "DIRECT",
+          ruleset: {
+            id: "nas",
+            name: "NAS",
+            type: "inline_list",
+            payload: [
+              "DOMAIN,nas.example.com",
+              "IP-CIDR,10.0.0.0/24",
+              "IP-SUFFIX,8.8.8.8/24,no-resolve",
+              "PROCESS-NAME,Transmission",
+            ],
+            behavior: "classical",
+            format: "yaml",
+            surge_flags: { no_resolve: true, extended_matching: true },
+            clash_format: "inline",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+      ],
+      finalRule: { policy: "DIRECT" },
+      warnings: [],
+    });
+    const rules = (yaml.load(out) as Record<string, unknown>).rules as string[];
+    expect(rules).toContain("DOMAIN,nas.example.com,DIRECT");
+    expect(rules).toContain("IP-CIDR,10.0.0.0/24,DIRECT,no-resolve");
+    expect(rules).toContain("IP-SUFFIX,8.8.8.8/24,DIRECT,no-resolve");
+    expect(rules).toContain("PROCESS-NAME,Transmission,DIRECT");
+    // Surge 专属的 extended-matching 不该漏进 Clash 产物
+    expect(rules.some((r) => r.includes("extended-matching"))).toBe(false);
+  });
+
   it("removes dangling node refs from group.proxies after node_filter and emits warning", () => {
     const nodes: Node[] = [
       { name: "🇭🇰 HK-01", type: "trojan", server: "g.com", port: 443, password: "x", sni: "x.com", tls: true, tags: [] },

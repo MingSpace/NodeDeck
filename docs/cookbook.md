@@ -231,6 +231,13 @@ surge_format: inline_ruleset   # 在 conf 中生成 [Ruleset my-private] 段
 
 → Clash 把 `payload` 直接展开到 `rules:` 段。Surge 在 `surge_format: inline_ruleset` 下**不在 `[Rule]` 内联展开**,而是输出一条 `RULE-SET,my-private,<policy>` 引用 + 在文件末尾生成 `[Ruleset my-private]` 段承载规则内容(Mac 5.3.1+ 支持);若把 `surge_format` 设为其它值(如缺省),Surge 端才会把每行直接展开进 `[Rule]`。
 
+**域名与 IP 混写时的 `no-resolve`**: IP 类规则(`IP-CIDR` / `IP-CIDR6` / `IP-SUFFIX` / `IP-ASN` / `GEOIP`)一旦排在域名规则之前,客户端为了拿到目标 IP 会被迫提前触发一次本地 DNS 解析(Surge 会直接给出「这可能会触发不必要的 DNS 请求」的告警)。两种写法都可以避免:
+
+- **行内写**: 像上面示例那样在该行末尾加 `no-resolve`。展开进 `[Rule]` / `rules:` 时它会被自动排到策略之后 —— `IP-CIDR,10.0.0.0/8,DIRECT,no-resolve`,而不是顶掉策略的位置
+- **开关写**: 打开规则集的 `surge_flags.no_resolve`。展开时按每行的规则类型分发,只有 IP 类行会带上 `no-resolve`;同理 `extended_matching` 只会落到域名类行(`DOMAIN` / `DOMAIN-SUFFIX` / `DOMAIN-KEYWORD` / `DOMAIN-WILDCARD` / `URL-REGEX`)。所以混合列表开一个开关就够,不会给不适用的行挂上无效修饰符
+
+如果整个规则集是通过 `RULE-SET` / `DOMAIN-SET` 引用出去的(`type: remote_url`,或 `surge_format: inline_ruleset`),`no-resolve` 会落在引用行上,按 Surge 手册的定义强制作用于集合内每条子规则。
+
 ### 2.3 GEOSITE (按分类)
 
 ```yaml

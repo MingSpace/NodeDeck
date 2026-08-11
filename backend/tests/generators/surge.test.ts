@@ -662,6 +662,51 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("DOMAIN-SUFFIX,nflxvideo.net");
   });
 
+  // 混合 payload(域名 + IP 混写)展开进 [Rule] 时,规则集级别的 no-resolve 只对 IP 行有意义;
+  // 挂到 DOMAIN 行上属于不适用参数(manual.nssurge.com/rules/overview.html 参数表)。
+  it("distributes inline payload flags by rule type and keeps the policy ahead of options", () => {
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [
+        {
+          ref: "nas",
+          policy: "DEVICE:MS-MACMINI",
+          ruleset: {
+            id: "nas",
+            name: "NAS",
+            type: "inline_list",
+            payload: [
+              "DOMAIN,nas.example.com",
+              "IP-CIDR,10.0.0.0/24",
+              // 用户在行内自己写了 option:必须挪到策略之后
+              "IP-CIDR6,fd00::/8,no-resolve",
+              "PROCESS-NAME,Transmission",
+            ],
+            behavior: "classical",
+            format: "yaml",
+            surge_flags: { no_resolve: true, extended_matching: true },
+            clash_format: "inline",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+      ],
+      surgeModules: [],
+      warnings: [],
+    });
+    expect(out).toContain("DOMAIN,nas.example.com,DEVICE:MS-MACMINI,extended-matching");
+    expect(out).toContain("IP-CIDR,10.0.0.0/24,DEVICE:MS-MACMINI,no-resolve");
+    expect(out).toContain("IP-CIDR6,fd00::/8,DEVICE:MS-MACMINI,no-resolve");
+    expect(out).toContain("PROCESS-NAME,Transmission,DEVICE:MS-MACMINI");
+    // 域名行不该带 no-resolve,IP 行不该带 extended-matching
+    expect(out).not.toContain("DOMAIN,nas.example.com,DEVICE:MS-MACMINI,no-resolve");
+    expect(out).not.toContain("IP-CIDR,10.0.0.0/24,DEVICE:MS-MACMINI,extended-matching");
+    // 行内 option 不能顶掉策略的位置
+    expect(out).not.toContain("IP-CIDR6,fd00::/8,no-resolve,DEVICE:MS-MACMINI");
+  });
+
   it("emits Surge internal ruleset (SYSTEM/LAN) as RULE-SET,<name>,POLICY", () => {
     const out = generateSurgeConfig({
       profile: baseProfile(),
