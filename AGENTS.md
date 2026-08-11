@@ -270,8 +270,54 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - **协议矩阵 snapshot**: `tests/generators/protocol-matrix.test.ts` + `tests/generators/__fixtures__/protocol-matrix.ts`,每协议 × 两端各一份 snapshot;改字段映射后用 `pnpm -F backend exec vitest run -u` 更新,review diff 时逐条比对上游文档
 - **综合 fixture**: `tests/generators/fixture.test.ts`(全 Profile 端到端 snapshot,输入在 `__fixtures__/example-profile.input.ts`)
 - **/sub 集成测试**: `tests/routes/sub.test.ts` 用 `vi.mock` 隔离 storage,断言 status / Subscription-UserInfo / Profile-Update-Interval / Content-Disposition / body 形态
-- **真实客户端验证**(手动,但必做): 任何涉及 generator / protocol-mapping 的改动,至少在 Clash Verge + Surge(最新版)各导入一次,看客户端日志无 error/warn
+- **Surge 输出离线校验**(macOS 开发机,能自动化): `surge-cli -c <生成的 .conf>`,详见下面小节 —— 改 generator 后先过这道,再去手工导入
+- **真实客户端验证**(手动,但必做): 任何涉及 generator / protocol-mapping 的改动,至少在 Clash Verge + Surge(最新版)各导入一次,看客户端日志无 error/warn。Clash 侧目前没接本机自动校验,仍然只能手工导入
 - 覆盖率是**目标不是门槛**(CI 不卡):parsers + generators 尽量 ≥ 90%,其余按需;要看数据跑 `pnpm -F backend exec vitest run --coverage`
+
+### Surge 侧本机校验与诊断(`surge-cli`)
+
+Surge Mac 6.8.0 / iOS 5.21.0 起,CLI 扩成了完整的管理 + 诊断接口(见 [官方更新说明](https://nssurge.com/blog/surge-cli-updates/))。开发机装了 Surge Mac,但 CLI **不在 PATH 里**,用固定路径:
+
+```bash
+S=/Applications/Surge.app/Contents/Applications/surge-cli
+$S version   # Surge / Core / Controller Protocol 版本;某命令报 Unknown command 时先看这里
+$S --help    # 命令分组总览,细节用 `$S help <command>`
+```
+
+**最有价值的一条:离线校验生成的 `.conf`** —— 不需要导入 GUI,也不碰用户正在跑的 profile:
+
+```bash
+$S -c /tmp/out.conf   # 合法 → 打印 OK、exit 0;有错 → 打印「第 N 行 + 行内容 + 原因」、exit 1
+```
+
+实测能力边界(2026-08 / Surge Mac 6.9.0):
+
+- **能查出**: 段内语法错误、非法规则类型或参数(如 `GEOSITE,<不存在的分类>`)、**悬空策略引用**(`Rule #0 include an unknown policy name: X`)—— 正好是 `validateGroupRefs` / `downgradeClashPolicy` 要防的那类事故
+- **查不出**: 节点行里的未知参数(塞个 `bogus-field=1` 照样 OK)、组行的 legacy `url=` 也不报 → **`-c` 返回 OK 不代表键名对**,字段名仍然只认 `Protocol Documentation Lookup`
+- fail-fast: 只报第一个错,修完要重跑
+- 报错文案跟随系统语言(中文机器出中文),脚本里判 exit code,不要正则匹配文案
+
+要拿 fixture 的输出来校验:在 `backend/` 下写个临时 ts 调 `generateSurgeConfig`(输入用 `tests/generators/__fixtures__/example-profile.input.ts`)写到 `/tmp/*.conf`,再 `$S -c`;用 `pnpm -F backend exec tsx <file>`(cwd 是 `backend/`,且 `tsx -e "..."` 实测不执行代码),**跑完删掉临时文件**。
+
+profile 已经装进 Surge 之后,这些只读命令不产生流量也不改状态,可以随便用:
+
+| 命令 | 用途 |
+| --- | --- |
+| `$S rule match <host> [port]` / `$S --raw rule explain <url>` | 验证规则顺序与最终落地策略;`explain` 会走完每个策略组 hop 并给决策原因 |
+| `$S dump profile original\|effective` / `$S profile diff` | 模块应用前后的 unified diff,验证 `[Module]` / 模块 URL 的实际效果 |
+| `$S external-resource list` | 列出 `RULE-SET,<url>` 等外部资源的 ready / updatedAt,确认远端 ruleset 真拉到了 |
+| `$S log memory 200` / `$S logbook 50` | 导入后抓 error/warn,比翻 GUI 快;`log watch` 可持续跟流 |
+| `$S status` | 当前 profile 及路径、outbound mode、feature 开关 |
+
+**会改运行状态的命令属于 Ask First**: `switch-profile` / `reload` / `set` / `feature set` / `module enable|disable` / `managed-profile update`。用户本机的 Surge 是常驻在用的,别为了验证一次输出就把他的 profile 切走或改掉开关。
+
+命令语义、完整命令表、environment 键定义优先查 Surge 自带的 agent skill(比网上转载准,随 app bundle 更新):
+
+- `/Applications/Surge.app/Contents/Resources/Skills/surge/SKILL.md`
+- `/Applications/Surge.app/Contents/Resources/Skills/surge/references/command-reference.md`
+- 在线版 `https://manual.nssurge.com/tools/cli.html`
+
+`surge-cli` 还支持 `--remote <host:port>` 操作远端实例,密码走 `SURGE_CLI_PASSWORD` / `--password-stdin` / 交互式提示,**不要把密码写进命令行参数**(会进 process 列表和 shell history)。
 
 ## Boundaries
 
@@ -290,6 +336,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - 修改 `protocol-mapping.ts`(影响所有 generator 输出)
 - 修改 zod schema 的破坏性改动(会让用户已有 yaml 失效)
 - 修改 `data/` 目录结构
+- 在用户本机 Surge 上跑会改运行状态的 `surge-cli` 命令(`switch-profile` / `reload` / `set` / `feature set` / `module` / `managed-profile update`);只读校验与诊断(`-c`、`status`、`rule match`、`dump`、`log`)不用问
 
 ### Never
 
@@ -343,15 +390,17 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 | Hysteria2 obfs 不工作 | obfs-password 没设(salamander 必填) | schema 加联动校验;客户端日志会写明缺哪个字段 |
 | host 的 `server:` 在 Clash 不生效 | generals DNS 的 `proxy-server-nameserver` 为空,而 `proxy-server-nameserver-policy` 需它非空才生效 | 在 generals DNS 填 `proxy-server-nameserver`(通用 DoH);`server:` 由 `splitClashHosts` 投到 `dns.proxy-server-nameserver-policy`(`*.`→`+.`),`DOMAIN-SET:`/`RULE-SET:` 仍跳过 + warning(`backend/src/generators/hosts.ts`) |
 | provider / 机场 `[Host]`、`hosts:` 段没带进订阅 | ① provider `emit_hosts` 关了或该源被禁用;② 上游 host 的 key 与本源节点 server 域名无关,被有意过滤(本项目只带**节点域名相关**的 host) | 输出 hosts = `general.hosts` + 各启用源手动 `provider.hosts` + 各源自动解析的 `cache.extracted_hosts`,由 `mergeHostMaps` 去重合并;自动解析由 `deriveProviderHostOverrides`(`import/extract-hosts.ts`)在每次刷新时只挑两类:① Clash 顶层 `hosts:` / Surge `[Host]` 中命中本源节点 server 域名(精确 + 通配父域)的条目;② Surge `encrypted-dns-server`(机场自建 DoH)为每个域名型节点推导 `节点域名 = server:<DoH>`。无关条目丢弃、节点 server 为 IP 跳过;`profile-resolver` 按 `emit_hosts` 并入(编辑页「节点源 Host」区有只读预览,`GET /api/providers/:id/extracted-hosts`)。base64/uri 列表无 hosts 段、节点全 IP 解析为空都属正常 |
+| `surge-cli -c` 报 OK,但导入客户端后某字段不生效 | Surge 对节点行的**未知参数是静默忽略**的,`-c` 只校验语法/规则/策略引用,不校验协议键名 | 别把 `-c` 当字段名的证据;按 `Protocol Documentation Lookup` 查上游文档确认键名,再用 `$S rule match` / `$S log memory` 看实际行为 |
 | 节点源报「content 为空(…上游仍返回空 body)」 | 机场按 User-Agent 网关,Surge 系 UA 返回 200 + 空 body(实测部分机场即此) | 默认 `user_agent` 已改空字符串,fetcher 拿到空 body 会自动回退 `clash-verge`/`ClashMeta`/`mihomo` 等 UA 重试(`providers/fetcher.ts` 的 `FALLBACK_USER_AGENTS`);仍全空则订阅多半失效或需特定 UA,可在节点源手动指定 User-Agent |
 
 
 ## When You're Stuck
 
 1. 按 `Protocol Documentation Lookup` 的顺序查文档(项目映射表 → mihomo wiki → Surge manual → 上游 issue/changelog)
-2. 用真实 Surge / Clash Verge 客户端 import 输出文件,看报错行号 —— 客户端日志最权威
-3. 在 `backend/tests/generators/__fixtures__/protocol-matrix.ts` 加一份最小 fixture 复现问题 → `pnpm -F backend exec vitest run -u` 锁定 baseline → 再修
-4. 仍然不确定 → 把"已查的链接 + 客户端报错原文 + 当前生成的 yaml/conf 片段"一并发给用户确认,不要瞎试
+2. Surge 侧先用 `surge-cli -c <conf>` 拿到精确的「行号 + 行内容 + 原因」(见 `Testing Strategy` 的 surge-cli 小节),再用真实 Surge / Clash Verge 客户端 import,看报错行号与日志 —— 客户端最权威
+3. 规则走向类问题(「为什么这条命中了那个策略」)用 `surge-cli rule match` / `rule explain`,不要靠读生成的 conf 猜顺序
+4. 在 `backend/tests/generators/__fixtures__/protocol-matrix.ts` 加一份最小 fixture 复现问题 → `pnpm -F backend exec vitest run -u` 锁定 baseline → 再修
+5. 仍然不确定 → 把"已查的链接 + 客户端报错原文 + 当前生成的 yaml/conf 片段"一并发给用户确认,不要瞎试
 
 ## Git Workflow
 
