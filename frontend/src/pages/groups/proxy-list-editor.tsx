@@ -9,7 +9,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, GripVertical, Info, Pin, PinOff, RefreshCw, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, GripVertical, Info, Layers, Pin, PinOff, RefreshCw, Search, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -64,16 +64,24 @@ interface Props {
   allPoolNodeNames: Set<string>;
 }
 
-// @business_rule: 三态划分用于「已锁定」段每行徽标。
-// 规范: g.proxies 数组里**只**放节点名 + 内置 policy (DIRECT / REJECT*);
-// 其它策略组的嵌套引用一律走 g.nested_groups 数组 (UI 里下方"嵌套引用的策略组"段)。
-// 因此这里识别的是 "这个名字是不是池里的节点 / 内置 policy", 组名会被归到 unknown 提醒用户挪走。
+// @business_rule: 四态划分用于「已锁定」段每行徽标。
+// g.proxies 默认放节点名 + 内置 policy (DIRECT / REJECT*), 其它策略组的嵌套引用一般走
+// g.nested_groups 数组 (UI 里下方"嵌套引用的策略组"段)。
+//
+// 但组名写进 g.proxies 是**合法且有时必需**的: resolveGroupMemberEntries 的入列顺序是
+// proxies → include_other_group → nested_groups → selector, 显式 proxies 永远在最前。
+// 所以当需要"组排在内置 policy 之前"时 (典型是 fallback 组要 `代理组, DIRECT` —— 代理优先、
+// DIRECT 兜底), 组名只能写进 g.proxies; 挪到 nested_groups 会得到 `DIRECT, 代理组`,
+// 而 fallback 取首个可用成员、DIRECT 永远可用 → 全程直连且不产生任何 warning。
+// 详见 docs/cookbook.md §9.3。故已知组名单独归为 group-ref 态, 不再误报"未知引用"。
+//
 //   node-in: 在当前 selector 命中节点池 ∪ 内置 policy → 不显示额外徽标 (正常行/由 isSpecial 走"内置"徽标)
 //   node-out: 在全量节点池里但 selector 不命中 → 灰色"selector 不命中" hint
 //             (订阅里仍输出, 锁定优先于 selector; 提示用户考虑解锁或放宽 selector)
-//   unknown: 完全不在节点池且不是内置 policy → 橘色"未知引用" 警告
-//            (机场改名 / 节点被删 / 拼写错误 / 把组名误写进 g.proxies 而非 nested_groups)
-type RowClassification = "node-in" | "node-out" | "unknown";
+//   group-ref: 是已知策略组名 → 蓝色"策略组"标识, 属正常用法而非错误
+//   unknown: 既不是节点、也不是已知组名、也不是内置 policy → 橘色"未知引用" 警告
+//            (机场改名 / 节点被删 / 拼写错误)
+type RowClassification = "node-in" | "node-out" | "group-ref" | "unknown";
 
 export function ProxyListEditor({
   proxies: proxiesProp,
@@ -115,9 +123,17 @@ export function ProxyListEditor({
     return s;
   }, [candidateNodes]);
 
+  // 节点优先于组名, 与后端 group-refs.ts 的 validNodeNames → activeGroupNames 判定次序一致,
+  // 保证同名时 UI 徽标与订阅产物里的实际解析结果不会互相矛盾。
+  const candidateGroupNamesSet = useMemo(
+    () => new Set(candidateGroups.map((g) => g.name)),
+    [candidateGroups],
+  );
+
   const classifyRowName = (name: string): RowClassification => {
     if (candidateNamesSet.has(name) || BUILTIN_SET.has(name)) return "node-in";
     if (allPoolNodeNames.has(name)) return "node-out";
+    if (candidateGroupNamesSet.has(name)) return "group-ref";
     return "unknown";
   };
 
@@ -720,12 +736,13 @@ function SortableRow({
           内置
         </Badge>
       )}
-      {/* @user_flow: 三态 hint 一目了然(只在非 builtin 行显示):
+      {/* @user_flow: 四态 hint 一目了然(只在非 builtin 行显示):
           - node-in: 当前 selector 命中 → 不额外标 (整行就是普通锁定项)
           - node-out: 节点在池里但 selector 不命中 → 灰色"selector 不命中"
                       (订阅里仍输出, 因为锁定优先于 selector 过滤; 提示用户考虑解锁)
-          - unknown: 完全不在节点池且不是 builtin → 橘色"未知引用"警告
-                     (机场改名 / 节点被删 / 拼写错误 / 把组名误写进 g.proxies 而非 g.nested_groups) */}
+          - group-ref: 已知策略组名 → 蓝色"策略组", 正常用法 (排在内置 policy 之前时必须这么写)
+          - unknown: 既不是节点也不是已知组名也不是 builtin → 橘色"未知引用"警告
+                     (机场改名 / 节点被删 / 拼写错误) */}
       {!isSpecial && classification === "node-out" && (
         <Badge
           variant="outline"
@@ -736,11 +753,21 @@ function SortableRow({
           selector 不命中
         </Badge>
       )}
+      {!isSpecial && classification === "group-ref" && (
+        <Badge
+          variant="outline"
+          className="text-[10px] text-sky-700 dark:text-sky-300 border-sky-500/50 bg-sky-500/10 gap-1 shrink-0"
+          title="该名字是另一个策略组。放在这里(g.proxies)而不是下方嵌套组区域(g.nested_groups)通常是有意为之:成员入列顺序为 proxies → nested_groups → selector,只有写进 proxies 才能让这个组排在 DIRECT 等内置 policy 之前(如 fallback 组要「代理优先、DIRECT 兜底」)。不需要控制顺序时,用下方嵌套组区域语义更清晰。"
+        >
+          <Layers className="h-3 w-3" />
+          策略组
+        </Badge>
+      )}
       {!isSpecial && classification === "unknown" && (
         <Badge
           variant="outline"
           className="text-[10px] text-amber-700 dark:text-amber-300 border-amber-500/50 bg-amber-500/10 gap-1 shrink-0"
-          title="该引用名当前不在节点池且不是内置 policy,可能已失效(机场改名 / 节点被删 / 拼写错误)。如果是组名,请挪到上方 ProxyListEditor 快捷区的「嵌套组」chip 行(对应 g.nested_groups 数组)"
+          title="该引用名既不在节点池、也不是已知策略组名、也不是内置 policy,可能已失效(机场改名 / 节点被删 / 拼写错误)。"
         >
           <AlertTriangle className="h-3 w-3" />
           未知引用

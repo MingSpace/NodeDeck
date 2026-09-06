@@ -666,13 +666,15 @@ mihomo / Surge 客户端加载后,Stream 的选择面板会显示两行:一个�
 
 | 字段 | 数据形态 | 语义 |
 |---|---|---|
-| `g.proxies: string[]` | 节点名 / 内置 policy (DIRECT/REJECT*) | 显式锁定的成员,顺序决定 fallback / url-test 优先级 |
+| `g.proxies: string[]` | 节点名 / 内置 policy (DIRECT/REJECT*),需要控顺序时也可放组 name | 显式锁定的成员,顺序决定 fallback / url-test 优先级 |
 | `g.nested_groups: string[]` | **其它组的 name** | 把其它组作为单个 proxy 项嵌套引用(客户端可点进去) |
 | `g.selector` | regex / from_providers / include_region / exclude_type | 动态筛选独立节点(从节点池里"挑出"满足条件的节点加进来) |
 | `g.include_other_group: string` | 单个组 name (Surge only) | Surge 原生 `include-other-group` 参数,把那个组的成员**平铺**展开到当前组(跟 nested_groups 的"嵌套引用"语义相反) |
 | `g.underlying_proxy: string` | 节点名 / 组 name (Surge only) | 组级链式:组内每个**代理成员**都经它出站(见 7.4) |
 
 > **老 yaml 自动迁移**: 在旧版本里这事是通过 `selector.include_other_group` 数组实现的(名字误导)。NodeDeck v2 起读取旧 yaml 时,schema transform 会把那个字段的值搬到顶层 `nested_groups`,首次保存后写回的就是新字段形态。无需手动改 yaml。
+
+> **例外:需要组排在内置 policy 之前时,组名要写进 `g.proxies`。** 成员入列顺序是「`proxies` → `include_other_group` → `nested_groups` → `selector`」,`nested_groups` 永远排在显式 `proxies` 之后,所以做不出 `代理组, DIRECT` 这种「组在前、DIRECT 兜底」的排列。典型场景见 [9.3](#93-策略组必须能回退直连)。
 
 ### 7.4 让整组成员共用一个前置(`underlying_proxy`,仅 Surge)
 
@@ -806,7 +808,9 @@ proxies:
   - DIRECT      # 兜底:代理全挂时退回直连,保住国内 App 推送
 ```
 
-> **成员顺序是这个配方的关键,而且写错不报错。** 别用 `selector` 圈节点再把 `DIRECT` 写进 `proxies` —— `resolveGroupMemberEntries` 的入列顺序是「显式 `proxies` → `nested_groups` → `selector` 动态匹配」,显式项永远在前,结果会是 `APNs = fallback,DIRECT,JP-01,JP-02`。`fallback` 取第一个可用成员,而 DIRECT 永远可用,于是 APNs 全程直连、推送照样收不到,且**不会有任何 warning**。要控顺序就全部走显式 `proxies`,把已有的自动选择组当成一个成员填进去。
+> **成员顺序是这个配方的关键,而且写错不报错。** 别用 `selector` 圈节点再把 `DIRECT` 写进 `proxies` —— `resolveGroupMemberEntries` 的入列顺序是「显式 `proxies` → `include_other_group` → `nested_groups` → `selector` 动态匹配」,显式项永远在前,结果会是 `APNs = fallback,DIRECT,JP-01,JP-02`。`fallback` 取第一个可用成员,而 DIRECT 永远可用,于是 APNs 全程直连、推送照样收不到,且**不会有任何 warning**。要控顺序就全部走显式 `proxies`,把已有的自动选择组当成一个成员填进去。
+
+> **这里把组名写进 `proxies` 是有意为之,不是笔误。** 一般情况下嵌套引用其它策略组应该走 `nested_groups`(见 [第 7 节](#7-嵌套引用其它策略组-nested_groups)),但 `nested_groups` 排在显式 `proxies` 之后,做不出「组在前、`DIRECT` 兜底」这个顺序。所以只要需要组排在内置 policy 之前,就只能写进 `proxies`。Web UI 的策略组编辑器会给这类行标一个蓝色「策略组」徽标,表示识别到了、属正常用法;只有既不是节点、也不是已知组名的引用才会标橘色「未知引用」。
 
 ### 9.4 客户端侧收尾(配置管不了的部分)
 

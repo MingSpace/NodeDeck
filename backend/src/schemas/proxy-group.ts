@@ -51,8 +51,13 @@ const proxyGroupBaseSchema = z.object({
     proxyGroupTypeSchema.default("select"),
   ),
 
-  // explicit list — 仅放 *节点名* 与内置 policy (DIRECT / REJECT*);
-  // 其它策略组的嵌套引用走专门的 nested_groups 字段,不要混进来。
+  // explicit list — 放 *节点名* 与内置 policy (DIRECT / REJECT*)。
+  // 其它策略组的嵌套引用默认走 nested_groups 字段(语义更清晰),但**需要控制成员顺序时
+  // 必须写在这里**: resolveGroupMemberEntries 的入列顺序是
+  // proxies → include_other_group → nested_groups → selector,显式 proxies 永远在最前。
+  // 典型场景是 fallback 组要 `代理组, DIRECT`(代理优先、DIRECT 兜底)——把组名放进
+  // nested_groups 会得到 `DIRECT, 代理组`,而 fallback 取首个可用成员、DIRECT 永远可用,
+  // 结果是全程直连且不产生任何 warning。详见 docs/cookbook.md §9.3。
   proxies: z.array(z.string()).default([]),
 
   /**
