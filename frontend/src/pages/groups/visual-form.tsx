@@ -116,6 +116,12 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
     include_region: [],
   };
 
+  // @business_rule: selector 缺席 ≠ selector 为空。缺席 = 本组只要显式成员(proxies / nested_groups);
+  // 空对象 = 筛选条件全空 = 命中整个节点池。`sel` 为了让下面各输入框有值可读做了 ?? 兜底,
+  // 所以"启用与否"必须直接看 data.selector,不能看 sel,否则候选区会把一个无 selector 的组
+  // 显示成"自动包含 257",与后端实际产出的 0 个动态成员对不上。
+  const selectorEnabled = data.selector !== undefined;
+
   const ensureSelector = () => sel;
 
   // @business_rule: nested_groups (嵌套引用其它策略组) 数据源 — 兜底空数组,
@@ -141,6 +147,9 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
   // 无需重新请求后端。pipeline 顺序与后端 clash.ts / surge.ts 保持一致:
   //   from_providers → include_region → exclude_type → include_regex → exclude_regex
   const candidateNodes = useMemo<NodeCandidate[]>(() => {
+    // selector 关闭时本组不动态引入任何节点,候选区必须为空 —— 与后端
+    // resolveGroupMemberEntries 里 `if (g.selector)` 的短路保持一致。
+    if (!selectorEnabled) return [];
     // 筛选逻辑与列表页共用 lib/group-composition.ts(那边对齐后端 group-members.ts),
     // 这样"编辑器里看到几个候选"和"列表行显示几个成员"永远不会各算各的。
     const filtered = filterNodesBySelector(nodePool.data?.nodes ?? [], {
@@ -152,6 +161,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
     });
     return filtered.map((n) => ({ name: n.name, type: n.type, source_provider_id: n.source_provider_id }));
   }, [
+    selectorEnabled,
     nodePool.data?.nodes,
     sel.from_providers,
     sel.exclude_type,
@@ -330,7 +340,37 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
 
       <fieldset className="border rounded-md p-3">
         <legend className="text-xs font-medium px-1">动态选择器 (selector,可选)</legend>
-        <div className="space-y-2">
+        {/* @user_flow: "可选"必须真的能关掉 —— 关闭写回 selector: undefined(yaml.dump 会省略该键),
+            此时本组只保留显式成员;打开则写回一个筛选条件全空的 selector,语义是「命中整个节点池」。
+            两者产出的订阅差别极大(0 个动态成员 vs 全部节点),所以这里给一个显式开关而不是靠字段留空。 */}
+        <label className="flex items-start gap-1.5 mb-2 cursor-pointer">
+          <input
+            type="checkbox"
+            className="h-3 w-3 mt-0.5 shrink-0 accent-primary"
+            checked={selectorEnabled}
+            onChange={(e) =>
+              update({
+                selector: e.target.checked
+                  ? { from_providers: [], exclude_type: [], include_region: [] }
+                  : undefined,
+              })
+            }
+          />
+          <span className="text-[11px] text-muted-foreground leading-snug">
+            启用动态选择器。
+            {selectorEnabled ? (
+              <>
+                当前<span className="font-medium text-foreground">已启用</span>,下方筛选条件全空时表示
+                <span className="font-medium text-foreground">命中整个节点池</span>。
+              </>
+            ) : (
+              <>
+                当前<span className="font-medium text-foreground">已关闭</span>,本组只包含显式锁定的成员与嵌套组,不会自动引入节点池里的节点。
+              </>
+            )}
+          </span>
+        </label>
+        <div className={selectorEnabled ? "space-y-2" : "space-y-2 opacity-50 pointer-events-none"}>
           <div className="grid grid-cols-2 gap-3">
             <Field label="include_regex">
               <Input

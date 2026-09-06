@@ -33,7 +33,14 @@ function normalizeFromTemplate<T extends object>(parsed: T, template?: Partial<T
     if (Array.isArray(tplVal)) {
       if (curVal == null) result[key] = [];
     } else if (isPlainObject(tplVal)) {
-      if (curVal == null) {
+      // @business_rule: 可选对象字段"整个缺席"与"存在但为空"可能是两种语义,不能一律补成空容器。
+      // 典型是 proxy group 的 selector: 缺席 = 不动态引入任何节点; 空对象 = 所有筛选条件为空 =
+      // 命中**整个节点池**(filterNodesBySelector 从全量 nodes.slice() 起步, 只在条件非空时收窄)。
+      // 早先这里用 `curVal == null` 连 undefined 一起补, 于是「打开一个只有显式成员的组 → 直接保存」
+      // 就会凭空长出一个空 selector, 把它变成"包含全部节点"—— 用户没有任何操作却改了语义。
+      // 现在只认显式 null(用户在 yaml 里写了 `selector:` 空标量), 缺席与 undefined 都保持缺席;
+      // 新建实体走 `{ id, ...templateValue }` 展开, selector 本就带值, 默认行为不受影响。
+      if (curVal === null) {
         result[key] = JSON.parse(JSON.stringify(tplVal));
       } else if (isPlainObject(curVal)) {
         result[key] = normalizeFromTemplate(

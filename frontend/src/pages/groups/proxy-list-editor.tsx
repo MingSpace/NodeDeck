@@ -182,7 +182,8 @@ export function ProxyListEditor({
           每段都是「整行可拖」(整个边框可点击拖拽), 删除按钮的 pointerdown 被 stop 掉避免误触发拖拽。 */}
       <div className="flex items-center justify-between text-[11px] text-muted-foreground px-0.5 pt-1">
         <span>
-          已锁定 · 节点 {proxies.length}
+          {/* g.proxies 里除了节点还可能有内置 policy 与策略组名,统称"显式项"更准确 */}
+          已锁定 · 显式项 {proxies.length}
           {nestedGroups.length > 0 && ` + 嵌套组 ${nestedGroups.length}`}
         </span>
         <div className="flex items-center gap-3">
@@ -438,7 +439,12 @@ function Picker({
       </div>
 
       {/* @user_flow: 嵌套引用其它策略组 chip 行,跟 BUILTIN_POLICIES 同一类"非节点池的 proxy 项"。
-          点击 chip 切换加入/移除 g.nested_groups。
+          chip 分两半:左半点击 = 加入/移除;右半图钉 = 在「嵌套组区域」与「显式列表」之间搬。
+          @business_rule: 两个落点顺序语义不同,这是图钉存在的唯一理由 ——
+          resolveGroupMemberEntries 的入列顺序是 proxies → include_other_group → nested_groups → selector,
+          nested_groups 永远排在显式 proxies 之后。所以「组排最后」用嵌套组区域即可,
+          而「组必须排在 DIRECT / 已锁定节点之前」(典型:fallback 组要「代理优先、DIRECT 兜底」)
+          只能把组名放进 g.proxies。两处互斥,搬过去会从另一处移除,避免同名重复项。
           @business_rule: 数据存 group **name**(不是 id),跟后端 yaml 输出直接对接;
           客户端把每个嵌套组项展示成可点开的子选择器。
           @user_flow: 当全局还没有其它 group 可选时(新装环境),整行折叠为单行 hint
@@ -447,34 +453,67 @@ function Picker({
         <div className="flex items-start gap-1.5 px-2 py-1.5 border-b flex-wrap">
           <span
             className="text-[11px] text-muted-foreground shrink-0 mr-0.5 mt-0.5"
-            title="把其它策略组作为单个 proxy 项嵌套引用 — 客户端展开后可点进去再选那个组的成员"
+            title="把其它策略组作为单个 proxy 项引用 — 客户端展开后可点进去再选那个组的成员。点 chip 右半的图钉可把它放进显式列表以控制顺序。"
           >
             嵌套组:
           </span>
           {candidateGroups.map((g) => {
-            const added = nestedGroups.includes(g.name);
+            const inProxies = pinnedSet.has(g.name);
+            const inNested = nestedGroups.includes(g.name);
+            const added = inProxies || inNested;
+            const chipBase = "px-2 py-0.5 text-[11px] font-medium border inline-flex items-center gap-1";
+            const activeCls = "bg-primary text-primary-foreground border-primary";
+            const idleCls = "bg-background text-foreground hover:bg-accent border-input";
             return (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => {
-                  if (added) onNestedGroupsChange(nestedGroups.filter((n) => n !== g.name));
-                  else onNestedGroupsChange([...nestedGroups, g.name]);
-                }}
-                className={
-                  added
-                    ? "px-2 py-0.5 rounded text-[11px] font-medium border bg-primary text-primary-foreground border-primary inline-flex items-center gap-1"
-                    : "px-2 py-0.5 rounded text-[11px] font-medium border bg-background text-foreground hover:bg-accent border-input inline-flex items-center gap-1"
-                }
-                title={
-                  added
-                    ? `已嵌套引用 "${g.name}" (点击移除)`
-                    : `把 "${g.name}" 作为嵌套 proxy 项加入当前组(客户端可点开选成员)`
-                }
-              >
-                {added && <Pin className="h-2.5 w-2.5" strokeWidth={2.5} />}
-                {g.name}
-              </button>
+              <span key={g.id} className="inline-flex shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!added) {
+                      onNestedGroupsChange([...nestedGroups, g.name]);
+                      return;
+                    }
+                    if (inNested) onNestedGroupsChange(nestedGroups.filter((n) => n !== g.name));
+                    if (inProxies) onChange(proxies.filter((p) => p !== g.name));
+                  }}
+                  className={`${chipBase} rounded-l ${added ? activeCls : idleCls}`}
+                  title={
+                    added
+                      ? `已引用 "${g.name}" (点击移除)`
+                      : `把 "${g.name}" 作为单个 proxy 项加入当前组(客户端可点开选成员)`
+                  }
+                >
+                  {g.name}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (inProxies) {
+                      // 显式列表 → 嵌套组区域
+                      onChange(proxies.filter((p) => p !== g.name));
+                      onNestedGroupsChange([...nestedGroups.filter((n) => n !== g.name), g.name]);
+                    } else {
+                      // 嵌套组区域(或未加入)→ 显式列表,追加在末尾后由用户拖拽定序
+                      onNestedGroupsChange(nestedGroups.filter((n) => n !== g.name));
+                      onChange([...proxies, g.name]);
+                    }
+                  }}
+                  className={`${chipBase} rounded-r border-l-0 px-1 ${
+                    inProxies ? activeCls : "bg-background text-muted-foreground hover:bg-accent border-input"
+                  }`}
+                  title={
+                    inProxies
+                      ? `"${g.name}" 当前在显式列表里,可拖拽调整顺序。点击移回嵌套组区域(会排到所有显式成员之后)`
+                      : `把 "${g.name}" 放进显式列表 —— 只有这样它才能排在 DIRECT / 已锁定节点之前。fallback 组要「代理优先、DIRECT 兜底」必须这么配`
+                  }
+                >
+                  {inProxies ? (
+                    <Pin className="h-2.5 w-2.5" strokeWidth={2.5} />
+                  ) : (
+                    <PinOff className="h-2.5 w-2.5" />
+                  )}
+                </button>
+              </span>
             );
           })}
         </div>
