@@ -28,6 +28,28 @@ const DOMAIN_RULE_TYPES = new Set([
   "URL-REGEX",
 ]);
 
+/**
+ * 只有 Surge 认识的规则类型。这几条匹配的都是「客户端自身所处的网络 / 设备环境」,
+ * 而不是请求的目标 —— mihomo 的规则类型表里没有对应关键字
+ * (已逐条核对 https://wiki.metacubex.one/config/rules/ 的完整清单)。
+ * 原样写进 clash yaml 会让 mihomo 加载时报未知规则、整份配置失效,
+ * 因此 Clash 端按行跳过 + warning;Surge 端照常输出。
+ *
+ * 来源:https://manual.nssurge.com/rules/protocol-and-network.html
+ */
+const SURGE_ONLY_RULE_TYPES = new Set([
+  "SUBNET", // 当前接入的网络:SSID / BSSID / ROUTER / TYPE / MCCMNC
+  "PROTOCOL", // mihomo 只有语义更窄的 NETWORK(仅 tcp/udp),关键字不通用
+  "HOSTNAME-TYPE", // Mac 5.7.3+
+  "CELLULAR-RADIO", // iOS 独占
+  "CELLULAR-CARRIER", // iOS 独占
+]);
+
+/** 该规则类型是否为 Surge 独有(Clash 端应整行跳过)。 */
+export function isSurgeOnlyRuleType(ruleType: string): boolean {
+  return SURGE_ONLY_RULE_TYPES.has(ruleType.trim().toUpperCase());
+}
+
 // 行尾可能出现的无值 option。用于把行内自带的 option 与 VALUE 区分开。
 const INLINE_OPTION_FLAGS = new Set([
   "no-resolve",

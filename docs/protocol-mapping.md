@@ -266,6 +266,7 @@ flags 存在 ruleset 级别,但**落点取决于该 ruleset 的输出形态**:
 - Surge `Snell` v6 节点 → 跳过 + warning(v1–v5 正常输出,见 §9)
 - 组级 `timeout`(Surge 语义 = 候选延迟阈值,秒) → mihomo `timeout`(健康检查超时,毫秒),按 ×1000 换算输出;两端语义不等价,策略组编辑器的「超时」字段下有提示
 - Surge 设备策略 `DEVICE:<设备名>`(Surge Ponte,把流量交给局域网内另一台 Surge 设备) → 整条规则跳过 + warning;mihomo 无等价物,原样输出会让客户端报 `policy not found` 而整份配置加载失败
+- Surge 专属规则类型 `SUBNET` / `PROTOCOL` / `HOSTNAME-TYPE` / `CELLULAR-RADIO` / `CELLULAR-CARRIER` → **按行**跳过 + warning。这几条匹配的是客户端自身所处的网络 / 设备环境而非请求目标,[mihomo 规则类型表](https://wiki.metacubex.one/config/rules/)里没有对应关键字(`PROTOCOL` 与 mihomo `NETWORK` 语义不等价,后者只有 tcp/udp)。跳过是行级的,同一个 `inline_list` payload 里的普通规则照常输出;Surge 端原样保留。判定见 [`generators/rule-line.ts`](../backend/src/generators/rule-line.ts) 的 `isSurgeOnlyRuleType`
 - Surge `RULE-SET,SYSTEM` → 跳过 + warning(含 USER-AGENT/PROCESS-NAME 无 Clash 等价)
 - Surge `RULE-SET,LAN` → 展开为内联 DOMAIN-SUFFIX,local + IP-CIDR 列表
 - Surge hosts `server:`(指定 DNS) → 转 `dns.proxy-server-nameserver-policy`(按域名 `*.`→`+.`,依赖 `proxy-server-nameserver` 非空);`DOMAIN-SET:` / `RULE-SET:` → 跳过 + warning

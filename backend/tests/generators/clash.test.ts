@@ -290,6 +290,52 @@ describe("generateClashConfig", () => {
     expect(warnings.filter((w) => w.includes("DEVICE:MS-MACMINI"))).toHaveLength(2);
   });
 
+  // SUBNET / PROTOCOL / CELLULAR-* 匹配的是客户端自身所处的网络环境,mihomo 规则表里
+  // 没有对应关键字(wiki.metacubex.one/config/rules),原样写出去整份配置会加载失败。
+  // 同一个 payload 里的普通规则必须照常保留 —— 跳过是按行的,不是整条 ruleset。
+  it("skips Surge-only rule types per line when expanding inline payload", () => {
+    const warnings: string[] = [];
+    const out = generateClashConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [
+        {
+          ref: "home",
+          policy: "DIRECT",
+          ruleset: {
+            id: "home",
+            name: "Home",
+            type: "inline_list",
+            payload: [
+              "SUBNET,ROUTER:10.0.0.12",
+              "SUBNET,SSID:Forever.",
+              "PROTOCOL,QUIC",
+              "CELLULAR-RADIO,LTE",
+              "HOSTNAME-TYPE,IPv6",
+              "DOMAIN-SUFFIX,example.com",
+            ],
+            behavior: "classical",
+            format: "yaml",
+            clash_format: "inline",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+      ],
+      finalRule: { policy: "DIRECT" },
+      warnings,
+    });
+    const rules = (yaml.load(out) as Record<string, unknown>).rules as string[];
+    for (const t of ["SUBNET", "PROTOCOL", "CELLULAR-RADIO", "HOSTNAME-TYPE"]) {
+      expect(rules.some((r) => r.startsWith(`${t},`))).toBe(false);
+    }
+    // 同一 ruleset 里的合法规则不受影响
+    expect(rules).toContain("DOMAIN-SUFFIX,example.com,DIRECT");
+    expect(rules).toContain("MATCH,DIRECT");
+    expect(warnings.filter((w) => w.includes("Surge 专属规则类型"))).toHaveLength(5);
+  });
+
   it("removes dangling node refs from group.proxies after node_filter and emits warning", () => {
     const nodes: Node[] = [
       { name: "🇭🇰 HK-01", type: "trojan", server: "g.com", port: 443, password: "x", sni: "x.com", tls: true, tags: [] },

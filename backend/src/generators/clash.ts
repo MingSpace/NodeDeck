@@ -15,7 +15,7 @@ import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { logger } from "../logger.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { splitClashHosts } from "./hosts.js";
-import { buildExpandedRuleLine } from "./rule-line.js";
+import { buildExpandedRuleLine, isSurgeOnlyRuleType, parseInlineRuleLine } from "./rule-line.js";
 import { refreshIntervalToSeconds } from "../schemas/common.js";
 
 function downgradeClashPolicy(policy: string): string {
@@ -189,6 +189,15 @@ export function generateClashConfig(input: ClashGenerateInput): string {
         continue;
       }
       for (const item of rs.payload) {
+        // Surge 专属规则类型(SUBNET 等)在 mihomo 没有等价关键字,整行跳过 —— 与
+        // isSurgeDevicePolicy 同一思路:宁可少一条规则,也不能让整份配置加载失败。
+        const { type } = parseInlineRuleLine(item);
+        if (isSurgeOnlyRuleType(type)) {
+          input.warnings.push(
+            `Ruleset "${rs.id}" 的 "${item.trim()}" 是 Surge 专属规则类型 ${type},mihomo 无等价关键字,该行已跳过`,
+          );
+          continue;
+        }
         rules.push(buildExpandedRuleLine({ item, policy, flags: inlineFlags }));
       }
     } else if (rs.type === "geosite") {

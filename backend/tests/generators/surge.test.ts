@@ -707,6 +707,40 @@ describe("generateSurgeConfig", () => {
     expect(out).not.toContain("IP-CIDR6,fd00::/8,no-resolve,DEVICE:MS-MACMINI");
   });
 
+  // Clash 端会按行跳过 SUBNET 等 Surge 专属类型;Surge 端必须原样保留,
+  // 否则「按接入网络切策略」这类配置会两端一起失效。
+  it("keeps Surge-only rule types (SUBNET / PROTOCOL / CELLULAR-*) in the output", () => {
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [
+        {
+          ref: "home",
+          policy: "DIRECT",
+          ruleset: {
+            id: "home",
+            name: "Home",
+            type: "inline_list",
+            payload: ["SUBNET,ROUTER:10.0.0.12", "SUBNET,SSID:Forever.", "PROTOCOL,QUIC"],
+            behavior: "classical",
+            format: "yaml",
+            clash_format: "inline",
+            surge_format: "rule_set",
+            update_interval: 86400,
+          } satisfies RuleSet,
+        },
+      ],
+      surgeModules: [],
+      warnings,
+    });
+    expect(out).toContain("SUBNET,ROUTER:10.0.0.12,DIRECT");
+    expect(out).toContain("SUBNET,SSID:Forever.,DIRECT");
+    expect(out).toContain("PROTOCOL,QUIC,DIRECT");
+    expect(warnings).toHaveLength(0);
+  });
+
   it("emits Surge internal ruleset (SYSTEM/LAN) as RULE-SET,<name>,POLICY", () => {
     const out = generateSurgeConfig({
       profile: baseProfile(),
