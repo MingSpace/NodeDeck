@@ -293,7 +293,7 @@ $S -c /tmp/out.conf   # 合法 → 打印 OK、exit 0;有错 → 打印「第 N 
 实测能力边界(2026-08 / Surge Mac 6.9.0):
 
 - **能查出**: 段内语法错误、非法规则类型或参数(如 `GEOSITE,<不存在的分类>`)、**悬空策略引用**(`Rule #0 include an unknown policy name: X`)—— 正好是 `validateGroupRefs` / `downgradeClashPolicy` 要防的那类事故
-- **查不出**: 节点行里的未知参数(塞个 `bogus-field=1` 照样 OK)、组行的 legacy `url=` 也不报 → **`-c` 返回 OK 不代表键名对**,字段名仍然只认 `Protocol Documentation Lookup`
+- **查不出**: 节点行里的未知参数(塞个 `bogus-field=1` 照样 OK)、组行的 legacy `url=` 也不报、**`[General]` 里的未知键**(`bogus-key-xyz = false` 照样 OK)、**规则里表达式的内容**(`SUBNET,BOGUSPREFIX:xxx` 照样 OK,只校验到 `SUBNET` 这个类型合法) → **`-c` 返回 OK 不代表键名对**,字段名仍然只认 `Protocol Documentation Lookup`
 - fail-fast: 只报第一个错,修完要重跑
 - 报错文案跟随系统语言(中文机器出中文),脚本里判 exit code,不要正则匹配文案
 
