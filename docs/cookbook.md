@@ -764,6 +764,8 @@ include_apns: true            # 让 Surge VIF 接管 APNs 流量
 `include_apns` 必须配合 `include_all_networks` —— Surge 侧单开是**静默忽略**的,所以 schema 直接拒绝这种组合,不会让你拿到一份看着有效实际无效的 conf。蜂窝网络下尤其需要这两项,否则只在 Wi-Fi 下生效。
 
 > `include_all_networks` 可能影响 AirDrop、Xcode 调试和 USB 控制台,这是 Surge 手册明确标注的副作用。
+>
+> 另一个手册没写的副作用(2026-09 实测,iOS 27):**Apple Watch 借 iPhone 上网的流量会被丢弃**,既不进 Surge 也不直连。表现是 Watch 查不了系统更新、打不开 App Store、下载不了 App,断开 iPhone 蓝牙让 Watch 走自己的 Wi-Fi 才恢复。这是 iOS kill-switch 的行为,改规则救不了。用 Apple Watch 的话,推送问题优先考虑网关层代理 APNs 或第三方 TG 客户端。
 
 ### 9.2 给 Apple 推送域名配一条走代理的规则
 
