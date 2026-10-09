@@ -181,6 +181,9 @@ export const nodeSchema = z.object({
 
   // metadata (not exported to client config)
   source_provider_id: z.string().optional(),
+  // 运行期字段,不落盘:uniquifyNodeNames 加来源前缀 / ` #2` 后缀时记下改名前的名字,
+  // selector 正则 / include_nodes / chain_rules.via 兼认它(见 generators/node-naming.ts)
+  unprefixed_name: z.string().optional(),
   region: regionCodeSchema.optional(),
   level: z.string().optional(),
   line: z.string().optional(),

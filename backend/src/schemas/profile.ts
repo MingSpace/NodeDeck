@@ -12,6 +12,10 @@ export const nodeFilterSchema = z.object({
   // 开启后输出节点按地区聚类:HK→TW→JP→SG→US→其他地区字母序→未识别地区,
   // 同地区内保持原始顺序(见 generators/node-sort.ts)
   sort_by_region: z.boolean().default(false),
+  // 节点名来源前缀 `【标识】`(标识见 provider.name_prefix):
+  // - conflict:只给跨机场撞名的节点加(默认,也是此前的行为)
+  // - always:所有来自节点源的节点都加,机场多时一眼看出来源
+  source_prefix: z.enum(["conflict", "always"]).default("conflict"),
 });
 
 export const ruleModuleRefSchema = z.union([

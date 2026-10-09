@@ -99,6 +99,7 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
       rename_rules: draft?.node_filter.rename_rules ?? [],
       exclude_types: draft?.node_filter.exclude_types ?? [],
       sort_by_region: draft?.node_filter.sort_by_region ?? false,
+      source_prefix: draft?.node_filter.source_prefix ?? "conflict",
     },
     300,
   );
@@ -113,6 +114,7 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
           exclude_types: debouncedKey.exclude_types,
           rename_rules: debouncedKey.rename_rules,
           sort_by_region: debouncedKey.sort_by_region,
+          source_prefix: debouncedKey.source_prefix,
         },
       }),
     enabled: !!id && !!draft,

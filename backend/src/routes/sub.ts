@@ -254,6 +254,7 @@ async function handleProviderClashYaml(c: import("hono").Context) {
   // 改名 warning 覆盖全量池,对单机场产物是噪音,丢进单独的数组不并入响应头。
   const uniqued = uniquifyNodeNames(poolSorted, [], {
     providerLabels: buildProviderLabels(resolved.providers),
+    prefixAll: profile.node_filter.source_prefix === "always",
   });
   const hiddenNodes = resolveHiddenNodeNames(uniqued.nodes, profile.hidden_nodes);
   const chained = applyChainRules(uniqued.nodes, profile, {

@@ -123,6 +123,23 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
               onCheckedChange={(checked) => onFilterChange({ sort_by_region: checked })}
             />
           </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs font-medium block" htmlFor="source-prefix-all">
+                全部节点加来源前缀
+              </label>
+              <span className="text-[11px] text-muted-foreground">
+                如【奶】🇭🇰 香港 01;关闭时只给撞名节点加。前缀在节点源里设置
+              </span>
+            </div>
+            <Switch
+              id="source-prefix-all"
+              checked={draft.node_filter.source_prefix === "always"}
+              onCheckedChange={(checked) =>
+                onFilterChange({ source_prefix: checked ? "always" : "conflict" })
+              }
+            />
+          </div>
         </div>
       </div>
 

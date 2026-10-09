@@ -43,6 +43,7 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   const filtered = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const uniqued = uniquifyNodeNames(filtered, input.warnings, {
     providerLabels: buildProviderLabels(input.providers ?? []),
+    prefixAll: profile.node_filter.source_prefix === "always",
     groups: input.groups,
   });
   // Surge 专属:把 = , " 等会破坏 INI 行解析的字符替换掉,且同步改写所有引用。

@@ -9,7 +9,7 @@ import { loadConfig } from "../storage/config-store.js";
 import { buildNodePool } from "../providers/pool.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
 import { sortNodesByRegion } from "../generators/node-sort.js";
-import { uniquifyNodeNames, buildProviderLabels } from "../generators/node-naming.js";
+import { uniquifyNodeNames, buildProviderLabels, buildNodeRefResolver } from "../generators/node-naming.js";
 import { buildGroupMemberIndex } from "../generators/group-members.js";
 import { buildFlowGraph } from "../generators/flow-graph.js";
 import { resolveHiddenNodeNames } from "../generators/hidden-nodes.js";
@@ -206,7 +206,7 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
   // Caller may still pass an existing profile id for context, but providers/node_filter override it.
   void id;
   // 同 preview:节点池预览也走 SWR,无 cache 的机场后台刷新、不卡首屏。
-  // providers 实体并发取:uniquify 改名时要按来源 tag/首字母算 `【标识】` 前缀,与订阅产物一致。
+  // providers 实体并发取:uniquify 改名时要按 name_prefix / 名称取字算 `【标识】` 前缀,与订阅产物一致。
   const [pool, providerEntries] = await Promise.all([
     buildNodePool({
       providerIds: parsed.data.providers,
@@ -222,6 +222,7 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
     rename_rules: [],
     exclude_types: [],
     sort_by_region: false,
+    source_prefix: "conflict" as const,
   };
   // 与 generator 入口管线保持同序(filter → sort → uniquify),预览名即订阅名。
   // Surge 端的 escapeSurgeNames 与链式改写发生在 target 相关的 generator 内,预览不做。
@@ -230,6 +231,7 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
   const renameWarnings: string[] = [];
   const { nodes: filtered } = uniquifyNodeNames(sorted, renameWarnings, {
     providerLabels: buildProviderLabels(providers),
+    prefixAll: filter.source_prefix === "always",
   });
   const byProvider: Record<string, number> = {};
   for (const [provId, nodes] of pool.byProvider) {
@@ -295,6 +297,7 @@ profilePreviewRouter.post("/:id/chain-preview", async (c) => {
   const sorted = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const uniqued = uniquifyNodeNames(sorted, [], {
     providerLabels: buildProviderLabels(resolved.providers ?? []),
+    prefixAll: profile.node_filter.source_prefix === "always",
     groups: resolved.groups,
   });
 
@@ -309,12 +312,14 @@ profilePreviewRouter.post("/:id/chain-preview", async (c) => {
   const paths = resolveChainPaths(validated, { groupNames });
 
   const nodeNames = new Set(uniqued.nodes.map((n) => n.name));
+  // via 可能存的是加来源前缀前的名字,applyChainRules 会把它解析到最终名,这里同口径
+  const resolveRef = buildNodeRefResolver(uniqued.nodes, groupNames);
   const viaStatus = (via: string): "node" | "group" | "builtin" | "missing" =>
     CHAIN_BUILTINS.has(via)
       ? "builtin"
       : groupNames.has(via)
         ? "group"
-        : nodeNames.has(via)
+        : nodeNames.has(resolveRef(via))
           ? "node"
           : "missing";
 
@@ -386,6 +391,7 @@ profilePreviewRouter.post("/:id/flow-preview", async (c) => {
   const sorted = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const uniqued = uniquifyNodeNames(sorted, [], {
     providerLabels: buildProviderLabels(resolved.providers ?? []),
+    prefixAll: profile.node_filter.source_prefix === "always",
     groups: resolved.groups,
   });
 

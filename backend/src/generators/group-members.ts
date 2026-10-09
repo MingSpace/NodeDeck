@@ -1,5 +1,6 @@
 import type { Node } from "../schemas/node.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
+import { testNodeName } from "./node-naming.js";
 
 /**
  * group / chain selector 里"按节点属性筛选"那部分字段的最小结构。
@@ -47,11 +48,11 @@ export function filterNodesBySelector<T extends Node>(nodes: T[], selector: Node
   }
   if (selector.include_regex) {
     const re = compileRegex(selector.include_regex);
-    if (re) pool = pool.filter((n) => re.test(n.name));
+    if (re) pool = pool.filter((n) => testNodeName(re, n));
   }
   if (selector.exclude_regex) {
     const re = compileRegex(selector.exclude_regex);
-    if (re) pool = pool.filter((n) => !re.test(n.name));
+    if (re) pool = pool.filter((n) => !testNodeName(re, n));
   }
   return pool;
 }

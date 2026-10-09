@@ -1,5 +1,6 @@
 import type { Node } from "../schemas/node.js";
 import type { Profile } from "../schemas/profile.js";
+import { buildNodeRefResolver, nodeNameIn, testNodeName } from "../generators/node-naming.js";
 
 /**
  * chain_rules 的作用域选择器(结构见 schemas/profile.ts chainSelectorSchema)。
@@ -52,11 +53,13 @@ function enabledRules(profile: Profile): ChainRuleLike[] {
 export function applyChainRules(nodes: Node[], profile: Profile, ctx?: ChainContext): Node[] {
   const rules = enabledRules(profile);
   if (rules.length === 0) return nodes;
+  // via 存的可能是加来源前缀之前的节点名(规则先配、后打开 source_prefix=always),解析到最终名
+  const resolveRef = buildNodeRefResolver(nodes, ctx?.groupMembers);
   return nodes.map((node) => {
     for (const rule of rules) {
       if (!matchesSelector(node, rule.selector ?? {}, ctx)) continue;
       if (rule.mode === "fill" && node.chain_via) return node;
-      return { ...node, chain_via: rule.via };
+      return { ...node, chain_via: resolveRef(rule.via) };
     }
     return node;
   });
@@ -80,8 +83,8 @@ export function matchesSelector(node: Node, selector: ChainSelectorLike, ctx?: C
   const nodeScope = selector.include_nodes ?? [];
   const groupScope = selector.include_groups ?? [];
   if (nodeScope.length > 0 || groupScope.length > 0) {
-    // 节点名是 Clash/Surge 的主键,精确比较、不做大小写折叠。
-    const byNode = nodeScope.includes(node.name);
+    // 节点名是 Clash/Surge 的主键,精确比较、不做大小写折叠;加来源前缀前的名字也认。
+    const byNode = nodeNameIn(nodeScope, node);
     const byGroup = !byNode && groupScope.some((g) => ctx?.groupMembers?.get(g)?.has(node.name) === true);
     if (!byNode && !byGroup) return false;
   }
@@ -107,7 +110,7 @@ export function matchesSelector(node: Node, selector: ChainSelectorLike, ctx?: C
   if (selector.include_regex) {
     try {
       const re = new RegExp(selector.include_regex, "i");
-      if (!re.test(node.name)) return false;
+      if (!testNodeName(re, node)) return false;
     } catch {
       // 非法 include 正则 => 判为不匹配。链式代理宁可不生效,也不能把整个节点池
       // 意外挂到某个前置上(group selector 取相反策略,详见 group-members.ts)。
@@ -117,7 +120,7 @@ export function matchesSelector(node: Node, selector: ChainSelectorLike, ctx?: C
   if (selector.exclude_regex) {
     try {
       const re = new RegExp(selector.exclude_regex, "i");
-      if (re.test(node.name)) return false;
+      if (testNodeName(re, node)) return false;
     } catch {
       // 非法 exclude 正则 => 忽略该条件(排除项失效只会让作用域变大,不会误伤)
     }

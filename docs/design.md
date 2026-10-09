@@ -46,7 +46,7 @@ Providers → Fetch + Cache → Parse → Normalize (region/level/line tag)
          → Dedup (sha1 of type+server+port+secret, keep-first)
          → Profile Filter + Rename (node_filter: include/exclude/rename)
          → [可选] sort_by_region 地区聚类
-         → uniquifyNodeNames (撞名加来源前缀)
+         → uniquifyNodeNames (撞名 / 全部加来源前缀,见 node_filter.source_prefix)
          → [仅 Surge] escapeSurgeNames (净化 = , ")
          → resolveHiddenNodeNames (hidden_nodes: 算出"仅供链式使用"的节点)
          → applyChainRules (写 chain_via)

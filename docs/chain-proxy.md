@@ -87,7 +87,7 @@ chain_rules:
 | 字段 | 说明 |
 |---|---|
 | `include_groups: [string]` | **按策略组圈定**。存组 **name**;组成员 = 该组的显式 `proxies` + `selector` 动态成员 + `nested_groups` 递归展开 |
-| `include_nodes: [string]` | **点名具体节点**。精确匹配、**大小写敏感**(节点名是客户端主键);注意要写改名后的最终名,含 `【标识】` 前缀 |
+| `include_nodes: [string]` | **点名具体节点**。精确匹配、**大小写敏感**(节点名是客户端主键);写改名后的最终名(含 `【标识】` 前缀)或加前缀前的原名都认 |
 | `from_providers: [string]` | 限制匹配某些 Provider 的节点;留空 = 不限(含以后新增的机场) |
 | `include_type: [string]` | 协议白名单,留空 = 不限 |
 | `exclude_type: [string]` | 排除某些协议类型(避免给 wireguard 自己加 wireguard 前置) |
@@ -292,7 +292,7 @@ Profile 编辑器 →「链式代理」tab 顶部有可视化配置区,实时显
 |---|---|
 | Surge 报"underlying-proxy not found" | 确认 `via` 指向的节点/组名拼写一致(注意空格);UI 里出口会标红为「未找到」 |
 | Clash 报"dialer-proxy: not found" | 同上 |
-| 规则填了但命中数是 0 | UI 顶部看节点池是否为空;`include_nodes` 要写**改名后**的最终名(含 `【标识】` 前缀);`include_groups` 要写组 **name** 而不是 id |
+| 规则填了但命中数是 0 | UI 顶部看节点池是否为空;`include_nodes` 写的名字要与节点池里的最终名或加前缀前的原名一致;`include_groups` 要写组 **name** 而不是 id |
 | 规则命中了但一个都不生效(UI 标「被遮蔽」) | 命中的节点全被更靠前的规则抢走了;拖动卡片把它排到前面 |
 | `include_groups` 选不到某个组 | 候选只列 `profile.proxy_groups` 已引入的组 —— 先到「规则 & 策略组」tab 把它加进来 |
 | 订阅头出现 `# WARN: Chain cycle detected` | chain_rules 形成了 A→B 又 B→A 的环,环上节点已被自动降级为直连;修正规则消除环即可恢复 |

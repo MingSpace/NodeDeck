@@ -4,11 +4,12 @@ import { generateSurgeConfig } from "../../src/generators/surge.js";
 import { emptyProfile, protocolFixtures } from "./__fixtures__/protocol-matrix.js";
 import type { Node } from "../../src/schemas/node.js";
 import type { ProxyGroup } from "../../src/schemas/proxy-group.js";
+import type { Profile } from "../../src/schemas/profile.js";
 import { providerSchema, type Provider } from "../../src/schemas/provider.js";
 import { generalPresetSchema } from "../../src/schemas/general-preset.js";
 
-function makeProvider(id: string, name: string, tags: string[] = []): Provider {
-  return providerSchema.parse({ id, name, type: "http", url: "https://example.com/sub", tags });
+function makeProvider(id: string, name: string, namePrefix?: string): Provider {
+  return providerSchema.parse({ id, name, type: "http", url: "https://example.com/sub", name_prefix: namePrefix });
 }
 
 function normalize(text: string): string {
@@ -126,8 +127,8 @@ describe("protocol matrix snapshot", () => {
     expect(surge).toMatch(/^Tokyo 01 = ss,/m);
   });
 
-  it("provider 有 tag → 前缀用第一个 tag 的完整文本", () => {
-    const providers = [makeProvider("kona", "Kona", ["主力", "高速"]), makeProvider("apex", "Apex")];
+  it("provider 填了 name_prefix → 前缀用它", () => {
+    const providers = [makeProvider("kona", "Kona", "主力"), makeProvider("apex", "Apex")];
     const nodes: Node[] = [
       { name: "Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
       { name: "Hong Kong 01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, source_provider_id: "apex", tags: [] },
@@ -135,6 +136,63 @@ describe("protocol matrix snapshot", () => {
     const out = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], warnings: [] });
     expect(out).toContain("【主力】Hong Kong 01");
     expect(out).toContain("【A】Hong Kong 01");
+  });
+
+  describe("source_prefix=always", () => {
+    const providers = [makeProvider("kona", "Kona"), makeProvider("naixi", "奶昔云")];
+    const alwaysProfile = (overrides: Partial<Profile> = {}) =>
+      emptyProfile({
+        node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false, source_prefix: "always" },
+        ...overrides,
+      });
+    const nodes: Node[] = [
+      { name: "🇭🇰 Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
+      { name: "🇯🇵 Tokyo 01", type: "ss", server: "b.example.com", port: 8388, cipher: "aes-128-gcm", password: "p2", source_provider_id: "naixi", tags: [] },
+      { name: "Landing", type: "ss", server: "c.example.com", port: 8388, cipher: "aes-128-gcm", password: "p3", source_provider_id: "naixi", tags: [] },
+    ];
+
+    it("所有带来源的节点都加前缀,且不产生改名 warning", () => {
+      const warnings: string[] = [];
+      const clash = generateClashConfig({ profile: alwaysProfile(), nodes, providers, groups: [], rules: [], warnings });
+      expect(clash).toContain("name: 【K】🇭🇰 Hong Kong 01");
+      expect(clash).toContain("name: 【奶】🇯🇵 Tokyo 01");
+      expect(warnings.filter((w) => w.includes("renamed to"))).toEqual([]);
+
+      const surge = generateSurgeConfig({ profile: alwaysProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings: [] });
+      expect(surge).toMatch(/^【K】🇭🇰 Hong Kong 01 = ss,/m);
+    });
+
+    it("组 selector 的锚定正则按原名仍能命中,也能按前缀圈机场", () => {
+      const groups: ProxyGroup[] = [
+        { id: "HK", name: "HK", type: "select", proxies: [], nested_groups: [], selector: { include_regex: "^🇭🇰" } },
+        { id: "Naixi", name: "Naixi", type: "select", proxies: [], nested_groups: [], selector: { include_regex: "^【奶】", exclude_regex: "^Landing$" } },
+      ];
+      const surge = generateSurgeConfig({ profile: alwaysProfile(), nodes, providers, groups, rules: [], surgeModules: [], warnings: [] });
+      expect(surge).toMatch(/^HK = select,【K】🇭🇰 Hong Kong 01$/m);
+      expect(surge).toMatch(/^Naixi = select,【奶】🇯🇵 Tokyo 01$/m);
+    });
+
+    it("chain_rules 的 via / include_nodes 与 hidden_nodes 写原名照样生效", () => {
+      const profile = alwaysProfile({
+        chain_rules: [
+          {
+            enabled: true,
+            mode: "override",
+            via: "Landing",
+            selector: { include_nodes: ["🇭🇰 Hong Kong 01"], include_groups: [], include_type: [], from_providers: [], include_region: [], exclude_type: [] },
+          },
+        ],
+        hidden_nodes: { include_nodes: ["Landing"], from_providers: [], include_region: [], include_type: [], exclude_type: [] },
+      });
+      const groups: ProxyGroup[] = [
+        { id: "All", name: "All", type: "select", proxies: [], nested_groups: [], selector: {} },
+      ];
+      const warnings: string[] = [];
+      const clash = generateClashConfig({ profile, nodes, providers, groups, rules: [], warnings });
+      expect(clash).toContain("dialer-proxy: 【奶】Landing");
+      expect(clash).toContain("proxies: [【K】🇭🇰 Hong Kong 01, 【奶】🇯🇵 Tokyo 01]");
+      expect(warnings.some((w) => w.includes("Landing"))).toBe(false);
+    });
   });
 
   it("加前缀后仍撞名(同一 provider 内同名)→ 继续追加 #2 兜底", () => {

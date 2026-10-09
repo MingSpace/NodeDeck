@@ -240,12 +240,12 @@ function fakeNode(name: string, sourceProviderId: string): Node {
   };
 }
 
-function providerEntry(id: string, name: string, tags: string[] = []) {
+function providerEntry(id: string, name: string, namePrefix?: string) {
   return {
     id,
     path: "",
     mtimeMs: 0,
-    data: { id, name, enabled: true, tags } as unknown as Provider,
+    data: { id, name, enabled: true, tags: [], name_prefix: namePrefix } as unknown as Provider,
   };
 }
 
@@ -267,7 +267,7 @@ describe("POST /api/profiles/:id/node-pool-preview", () => {
     mockedProviderGet.mockImplementation((pid: string) =>
       Promise.resolve(
         pid === "prov-a"
-          ? providerEntry("prov-a", "Aurora", ["主力"])
+          ? providerEntry("prov-a", "Aurora", "主力")
           : providerEntry("prov-b", "Backup"),
       ),
     );
@@ -277,6 +277,24 @@ describe("POST /api/profiles/:id/node-pool-preview", () => {
     const json = (await res.json()) as { nodes: { name: string }[]; count: number };
     expect(json.nodes.map((n) => n.name)).toEqual(["【主力】Hong Kong 01", "【B】Hong Kong 01"]);
     expect(json.count).toBe(2);
+  });
+
+  it("source_prefix=always → 不撞名的节点也带前缀", async () => {
+    mockedBuildNodePool.mockResolvedValue({
+      nodes: [fakeNode("Hong Kong 01", "prov-a"), fakeNode("Tokyo 01", "prov-b")],
+      byProvider: new Map(),
+      revalidating: [],
+    });
+    mockedProviderGet.mockImplementation((pid: string) =>
+      Promise.resolve(pid === "prov-a" ? providerEntry("prov-a", "奶昔云") : providerEntry("prov-b", "Backup")),
+    );
+
+    const res = await postNodePool(buildApp(), "home", {
+      providers: ["prov-a", "prov-b"],
+      node_filter: { source_prefix: "always" },
+    });
+    const json = (await res.json()) as { nodes: { name: string }[] };
+    expect(json.nodes.map((n) => n.name)).toEqual(["【奶】Hong Kong 01", "【B】Tokyo 01"]);
   });
 
   it("rename_rules 参与预览(后端应用,与订阅一致)", async () => {
@@ -320,7 +338,7 @@ describe("POST /api/profiles/:id/node-pool-preview", () => {
       byProvider: new Map(),
       revalidating: [],
     });
-    mockedProviderGet.mockResolvedValue(providerEntry("prov-a", "Aurora", ["主力"]));
+    mockedProviderGet.mockResolvedValue(providerEntry("prov-a", "Aurora", "主力"));
 
     const res = await postNodePool(buildApp(), "home", { providers: ["prov-a"] });
     expect(res.status).toBe(200);

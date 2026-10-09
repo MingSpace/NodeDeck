@@ -39,6 +39,14 @@ export const providerSchema = z
     parser_hint: parserHintSchema.default("auto"),
     enabled: z.boolean().default(true),
     tags: tagsSchema,
+    // 节点名来源前缀 `【xx】` 里的标识;留空则从 name 自动取 1~2 个字(见 generators/node-naming.ts)。
+    // 禁 `= , "`:前缀会进 Surge 节点名,这几个字符会被 escapeSurgeNames 改成 `_`。
+    name_prefix: z
+      .string()
+      .trim()
+      .refine((s) => [...s].length <= 4, "前缀最多 4 个字符(建议 1~2 个字)")
+      .refine((s) => !/[=,"\r\n【】]/.test(s), "前缀不能包含 = , \" 【 】")
+      .optional(),
     notes: z.string().optional(),
     clash_proxy_provider: clashProxyProviderSchema.default({
       enabled: false,

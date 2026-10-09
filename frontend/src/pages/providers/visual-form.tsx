@@ -60,6 +60,9 @@ export interface ProviderData {
   parser_hint: ParserHint;
   enabled: boolean;
   tags: string[];
+  // 节点名来源前缀 `【xx】` 的标识;留空 = 后端从显示名自动取 1~2 个字
+  // 与 backend/src/schemas/provider.ts name_prefix 保持同步
+  name_prefix?: string;
   notes?: string;
   clash_proxy_provider: ClashProxyProvider;
   // 针对该节点源的 DNS 解析覆盖;emit_hosts 控制订阅输出时是否自动带出(默认带出)。
@@ -218,7 +221,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-[1fr_1fr_8rem] gap-3">
         <Field label="ID (文件名,字母数字下划线)">
           <Input
             value={data.id}
@@ -231,6 +234,14 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
           <Input
             value={data.name}
             onChange={(e) => update({ name: e.target.value })}
+          />
+        </Field>
+        <Field label="节点前缀">
+          <Input
+            value={data.name_prefix ?? ""}
+            onChange={(e) => update({ name_prefix: e.target.value.trim() || undefined })}
+            placeholder={`自动 · ${guessPrefix(data.name)}`}
+            title="节点名前缀【xx】里的标识,建议 1~2 个字;留空按显示名自动取字,多个机场首字相同时自动扩到 2 个字"
           />
         </Field>
       </div>
@@ -526,6 +537,13 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
       </CollapsibleSection>
     </div>
   );
+}
+
+// 自动前缀的单机场粗略预估,只用于 placeholder:真实取字在后端 buildProviderLabels,
+// 会与同一 profile 内其它机场一起消歧(首字撞了扩成 2 个字),这里不知道其它机场所以只给首字。
+function guessPrefix(name: string): string {
+  const ch = [...name.normalize("NFKC")].find((c) => /[\p{L}\p{N}]/u.test(c));
+  return ch ? ch.toUpperCase() : "?";
 }
 
 function Field({

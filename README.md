@@ -9,7 +9,7 @@
 ## 特性
 
 - **多 Profile**:一份配置中心生成多套订阅,每个 Profile 独立 URL 和 token,可一键重生。
-- **节点源混合**:在线订阅 + 本地文件 + 手动录入,自动去重;多机场重名节点自动加来源前缀(如 `【主力】香港 01`)区分,避免客户端加载冲突。
+- **节点源混合**:在线订阅 + 本地文件 + 手动录入,自动去重;多机场重名节点自动加来源前缀(如 `【奶】香港 01`)区分,避免客户端加载冲突;机场多时也可以让所有节点都带前缀。
 - **可视化拼装**:规则、策略组、Surge 模块、DNS / TUN 等配置全部在 Web UI 编辑,支持 RULE-SET / inline / GEOSITE / GEOIP / DOMAIN-SET 等规则形态。
 - **链式代理**:任意节点可设前置代理(Clash `dialer-proxy` / Surge `underlying-proxy`),生成前自动做环检测和悬空引用降级;落地节点可标为「仅作链式使用」,不出现在策略组的自动筛选里。
 - **主流协议**:SS / VMess / VLESS(Reality)/ Trojan / Hysteria2 / TUIC v5 / WireGuard / Snell 等,Clash 与 Surge 两端字段自动对齐。

@@ -4,6 +4,8 @@ export interface NodeFilter {
   rename_rules: { pattern: string; replace: string; flags?: string }[];
   exclude_types: string[];
   sort_by_region?: boolean;
+  /** conflict = 只给跨机场撞名的节点加【来源】前缀;always = 所有节点都加 */
+  source_prefix?: "conflict" | "always";
 }
 
 /**

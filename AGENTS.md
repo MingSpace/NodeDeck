@@ -229,7 +229,7 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 - generator 入口的固定 pipeline(`clash.ts` / `surge.ts` 两端必须一致,改顺序前要慎重):
   1. `applyNodeFilter` — include/exclude/rename
   2. `sortNodesByRegion` — 仅当 `profile.node_filter.sort_by_region` 打开;必须在 uniquify **之前**,否则去重后缀会跟着顺序变动而抖
-  3. `uniquifyNodeNames` — 撞名加来源前缀,回退 ` #2` 后缀
+  3. `uniquifyNodeNames` — 撞名加来源前缀(`node_filter.source_prefix: always` 时全部加),回退 ` #2` 后缀;改名的节点记 `unprefixed_name`,selector 正则 / `include_nodes` / chain `via` 兼认原名
   4. `escapeSurgeNames` — **仅 Surge** 净化 `=` `,` `"`
   5. `resolveHiddenNodeNames` — `profile.hidden_nodes`(可选)命中的节点仍进 `proxies` / `[Proxy]`(所以 `chain_via` 指得到),但从两端 `resolveGroupMembers` 与 `buildGroupMemberIndex` 的 **selector 动态匹配**里剔除;`group.proxies` 显式点名保留。判定复用 `chain/apply.ts` 的 `matchesSelector`,但**全空 = 不隐藏**(与 chain selector 相反)
  6. `applyChainRules` — 写 `chain_via`;selector 支持按策略组成员(`include_groups`)/ 点名节点(`include_nodes`)圈定,两者 OR、与其余条件 AND,所需的「组 name → 成员节点名」索引由 `generators/group-members.ts` 的 `buildGroupMemberIndex` 在入口现算(与写进产物的组成员同源)。每条规则有 `enabled` 与 `mode`(`override` / `fill`);**一个节点只能有一条链**(两端字段都是每节点单值),命中多条以最靠前为准
@@ -373,7 +373,7 @@ profile 已经装进 Surge 之后,这些只读命令不产生流量也不改状�
 | --- | --- | --- |
 | Clash 加载报 `unknown field: ws-headers` | 用了 Surge 风格键名 | 查 protocol-mapping.ts,Clash 是 `ws-opts.headers` |
 | Surge 节点行被截断 | 密码含 `,` `"` 未引号包裹 | `buildSurgeProxyLine` 内部用 `escapeValue` 包密码;节点名含 `=` `,` `"` 由 `escapeSurgeNames` 自动净化 |
-| 多机场节点同名,Clash 加载 `duplicate key` | 老路径(uniquify 没接入) | 已由 `uniquifyNodeNames` 自动给撞名节点加来源前缀 `【tag或首字母】`(查不到来源 / 前缀后仍撞名时回退 ` #2` 后缀);新增 generator 时务必走入口 pipeline 并传 providers,不要直接消费原始 nodes |
+| 多机场节点同名,Clash 加载 `duplicate key` | 老路径(uniquify 没接入) | 已由 `uniquifyNodeNames` 自动给撞名节点加来源前缀 `【name_prefix 或名称自动取的 1~2 字】`(查不到来源 / 前缀后仍撞名时回退 ` #2` 后缀);新增 generator 时务必走入口 pipeline 并传 providers,不要直接消费原始 nodes |
 | 链式代理报环 / chain_via 指向不存在节点 | A→B→A 或 chain_via 写错 | 已由 `validateChain` 自动断环 + 悬空降级 + warning;响应文件头 `# WARN:` 注释里能看到具体节点 |
 | 客户端报 `proxy not found in group "X"` (节点名) | node_filter include/exclude 把节点过滤掉,但 group.proxies 显式还引用着该节点名 | 已由 `validateGroupRefs` 自动剔除 + nodeDangling warning;调整 node_filter 或在 group 编辑页删掉对应节点条目 |
 | 配了 `hidden_nodes` 但节点在客户端仍可直接选 | ① 某个 group 的 `proxies` 显式点名了它(设计如此,显式优先);② Clash `use_proxy_providers` 模式下组靠 `use:` 引用整个机场,成员由客户端展开;③ Surge 组开了 `include_all_proxies` / `policy_regex_filter` | ①按预期,不想要就从该组成员里删掉;②③ 属客户端侧展开,本地过滤不到 —— ② 生成时会给 warning |

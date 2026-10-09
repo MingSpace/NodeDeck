@@ -73,6 +73,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
   const filtered = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const uniqued = uniquifyNodeNames(filtered, input.warnings, {
     providerLabels: buildProviderLabels(input.providers ?? []),
+    prefixAll: profile.node_filter.source_prefix === "always",
     groups: input.groups,
   });
   // hidden_nodes 在改名之后算:用户点名的节点名与最终产物里的一致。
