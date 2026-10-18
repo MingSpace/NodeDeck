@@ -29,6 +29,9 @@ services:
       PORT: 8080
       DATA_DIR: /app/data
       LOG_LEVEL: info
+      # [建议] 节点源「每月重置日 / 到期日 / 排除到某天」都按这个时区的零点算;
+      # 不设就是 UTC,北京时间要晚 8 小时才恢复
+      TZ: Asia/Shanghai
 
       # [必改] 首次启动密码,登录后系统会强制改密
       INITIAL_PASSWORD: changeme-please

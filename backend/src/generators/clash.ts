@@ -59,6 +59,9 @@ export interface ClashGenerateInput {
   // 2. proxy-providers 模式合成 mihomo 拉取 URL(配合 baseUrl + profileToken,
   //    仅在 profile.clash_options.use_proxy_providers === true 时生效)
   providers?: Provider[];
+  // 流量用完 / 已到期被排除的 provider(见 providers/quota.ts):节点已不在 nodes 里,
+  // proxy-providers 段也不再给它们出条目,否则客户端会自己去拉回来
+  excludedProviderIds?: ReadonlySet<string>;
   baseUrl?: string;
   profileToken?: string;
   // 系统中所有 group 的 name 集合,仅供 validateGroupRefs 做"组未引入"诊断;
@@ -99,7 +102,9 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     && Boolean(input.baseUrl)
     && Boolean(input.profileToken);
   const eligibleProviders = useProxyProviders
-    ? (input.providers ?? []).filter((p) => p.clash_proxy_provider.enabled)
+    ? (input.providers ?? []).filter(
+        (p) => p.clash_proxy_provider.enabled && !input.excludedProviderIds?.has(p.id),
+      )
     : [];
   const eligibleProviderIds = new Set(eligibleProviders.map((p) => p.id));
 

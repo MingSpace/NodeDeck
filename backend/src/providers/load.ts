@@ -9,6 +9,7 @@ import { deriveProviderHostOverrides } from "../import/extract-hosts.js";
 import { parseUserInfoHeader } from "../schemas/userinfo.js";
 import { providerRepo } from "../storage/repos.js";
 import { REFRESH_INTERVAL_MINUTES } from "../schemas/common.js";
+import { evaluateProviderQuota } from "./quota.js";
 import {
   notifyProviderRefreshFailed,
   notifyProviderZeroNodes,
@@ -37,7 +38,7 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
     // 周期 / on_request 只在 ok cache 未过期时复用;stale/error 仍按周期重试。
     if (cached.status === "ok" && minutes > 0) {
       const ageMin = (Date.now() - cached.fetched_at) / 1000 / 60;
-      if (ageMin < minutes) {
+      if (ageMin < effectiveRefreshMinutes(provider, cached, minutes)) {
         return cached;
       }
     }
@@ -120,6 +121,19 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
     await writeProviderCache(fail);
     return fail;
   }
+}
+
+// 上游 userinfo 显示用完 / 到期而被排除的源,周期缩到 1 小时:机场重置或续费后尽快恢复,
+// 不必干等一个 24h 周期。手动标记的排除靠日期恢复,与重拉无关,不缩短。
+const QUOTA_RECHECK_MINUTES = 60;
+
+function effectiveRefreshMinutes(provider: Provider, cached: ProviderCache, minutes: number): number {
+  if (!cached.userinfo || minutes <= QUOTA_RECHECK_MINUTES) return minutes;
+  const quota = evaluateProviderQuota(provider, cached.userinfo);
+  const upstreamBlocked =
+    quota.excluded &&
+    (quota.reason === "traffic_exhausted" || (quota.reason === "expired" && quota.expire_source === "upstream"));
+  return upstreamBlocked ? QUOTA_RECHECK_MINUTES : minutes;
 }
 
 /**

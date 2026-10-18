@@ -209,6 +209,49 @@ describe("refreshProvider - 周期模式 (4h)", () => {
   });
 });
 
+describe("refreshProvider - 上游流量用完 / 到期时缩短到每小时重拉", () => {
+  const GB = 1024 ** 3;
+
+  it("上游显示流量用完:24h 周期下 cache 超过 60min 就重拉", async () => {
+    const provider = fakeProvider({ interval: "24h" });
+    mockedReadCache.mockResolvedValue({
+      ...okCache(61),
+      userinfo: { upload: 0, download: 150 * GB, total: 150 * GB, expire: 0 },
+    });
+
+    await refreshProvider(provider);
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("流量没用完:仍按原周期,不提前重拉", async () => {
+    const provider = fakeProvider({ interval: "24h" });
+    mockedReadCache.mockResolvedValue({
+      ...okCache(61),
+      userinfo: { upload: 0, download: 10 * GB, total: 150 * GB, expire: 0 },
+    });
+
+    await refreshProvider(provider);
+
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it("auto_exclude 关闭时不缩短周期", async () => {
+    const provider = providerSchema.parse({
+      ...fakeProvider({ interval: "24h" }),
+      quota: { auto_exclude: false },
+    }) as Provider;
+    mockedReadCache.mockResolvedValue({
+      ...okCache(61),
+      userinfo: { upload: 0, download: 150 * GB, total: 150 * GB, expire: 0 },
+    });
+
+    await refreshProvider(provider);
+
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+});
+
 describe("loadProviderNodes - 非 on_request 模式优先走 cache", () => {
   it("cache 有节点直接返回,不调用 refreshProvider", async () => {
     const provider = fakeProvider({ interval: "12h" });

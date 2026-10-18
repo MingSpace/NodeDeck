@@ -4,6 +4,7 @@ import { providerRepo } from "../storage/repos.js";
 import { loadProviderNodes } from "./load.js";
 import { dedupeNodes } from "../parsers/dedup.js";
 import { readProviderCache } from "./cache-store.js";
+import { evaluateProviderQuota, type ProviderQuotaStatus } from "./quota.js";
 
 export interface NodePoolItem {
   node: Node;
@@ -58,12 +59,14 @@ export interface ProviderSummary {
   status?: "ok" | "stale" | "error";
   node_count: number;
   error?: string;
+  quota: ProviderQuotaStatus;
 }
 
 export async function listProvidersWithCache(): Promise<ProviderSummary[]> {
   const all = await providerRepo.list();
   // 并发读 cache 文件,N 个机场从 O(N×stat+read) 降到 O(stat+read)。
   const caches = await Promise.all(all.map((entry) => readProviderCache(entry.data.id)));
+  const now = Date.now();
   return all.map((entry, i) => {
     const cache = caches[i];
     return {
@@ -73,6 +76,7 @@ export async function listProvidersWithCache(): Promise<ProviderSummary[]> {
       status: cache?.status,
       node_count: cache?.nodes.length ?? 0,
       error: cache?.error,
+      quota: evaluateProviderQuota(entry.data, cache?.userinfo, now),
     };
   });
 }

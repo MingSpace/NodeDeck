@@ -172,6 +172,33 @@ NodeDeck 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers
 
 **遇到新形态没被识别怎么办**:把节点 name 加到 `backend/tests/parsers/info-node-filter.test.ts` 的 `POSITIVE_NAMES` 列表(或 `NEGATIVE_NAMES` 反向测试),跑 `pnpm test`,根据 fail case 在 `KEYWORDS` 或 `STRONG_SEP/WEAK_SEP` 里加一条即可。
 
+
+### 1.3 流量用完 / 到期时自动排除节点源
+
+机场流量用完后,节点往往还能连上 TCP、只是立刻断开,Surge 的 Smart 组把这种连接当成正常而不切走,结果整组卡死在不可用的机场上。NodeDeck 在生成订阅时直接把这类节点源拿掉,到期后自动放回来。判定逻辑在 `backend/src/providers/quota.ts`,只读 provider yaml 和 cache,不保存任何额外状态。
+
+| 情况 | 怎么判定 | 怎么恢复 |
+|---|---|---|
+| 在线源,上游返回 `Subscription-UserInfo` | `upload + download >= total`(`total=0` 视为不限量) | 排除期间每小时重拉一次(原周期更短则按原周期),上游重置后的那次刷新即恢复 |
+| 离线源 / 上游不给流量信息 | 手动标记 `quota.exhausted_until` | 到这天零点自动恢复 |
+| 已到期 | 上游 `expire` 优先,没有才用手填的 `quota.expire` | 续费后上游数据更新,或改手填日期 |
+
+```yaml
+# data/providers/flower.yaml(节选)
+quota:
+  reset_day: 2                  # 每月流量重置日;当月没有这一天按月末算
+  expire: "2027-04-02"          # 手填到期日(上游给了 expire 时以上游为准)
+  exhausted_until: "2026-11-02" # 手动标记用完,排除到这天零点
+  # auto_exclude: false         # 只显示状态、不排除
+```
+
+Web UI 节点源编辑页的「流量 / 到期」模块可以一键「排除到下个重置日」;列表卡片会显示流量用量、到期日和「已排除 · 11/2 恢复」徽标。
+
+- 被排除的源仍参与节点名前缀消歧(`【F】` 不会因为别的源被排除就变成别的字),所以恢复后客户端里手选过的节点名不变
+- 一个 profile 引用的源**全部**被排除时不做排除、只给 warning:空订阅会让所有策略组失效,比连不上的节点更糟
+- 每个被排除的源都会在订阅头部写一行 `# WARN:`,Profile 预览里同样能看到
+- 客户端要更新托管配置才能看到变化(Surge 按 `#!MANAGED-CONFIG interval` 周期更新,急的话手动更新一次)
+- 日期按进程时区计算,容器记得设 `TZ`(见 `docs/deployment.md`)
 ---
 
 ## 2. 四种规则形态

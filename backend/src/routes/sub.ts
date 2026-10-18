@@ -112,6 +112,7 @@ async function handleSubInner(
       profile,
       nodes: resolved.nodes,
       providers: resolved.providers,
+      excludedProviderIds: resolved.excludedProviderIds,
       baseUrl,
       profileToken: profile.token,
       groups: resolved.groups,

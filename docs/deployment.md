@@ -42,6 +42,8 @@ PUBLIC_BASE_URL: https://sub.your-domain.com
 
 > `PUBLIC_BASE_URL` 一定要写反代后的公网 URL,否则 Surge 的 `#!MANAGED-CONFIG` 头会指向 localhost,客户端无法自动更新订阅。
 
+> `TZ` 建议保持 `Asia/Shanghai`(或机场所在时区):节点源的「每月重置日」「到期日」「排除到某天」都按进程时区的零点计算,容器默认是 UTC。
+
 > Session 加密密钥(`SESSION_SECRET`)默认不需要配,首次启动会自动生成并保存到 `data/secret.key`,后续启动直接复用,不会让登录态失效。只有想在多实例间共享会话、或用 k8s Secret 注入时才显式指定。
 
 ---

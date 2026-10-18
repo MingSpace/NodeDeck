@@ -24,6 +24,30 @@ export const clashProxyProviderSchema = z.object({
   health_check_interval: z.number().int().min(60).max(86400).default(300),
 });
 
+const localDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式为 YYYY-MM-DD")
+  .refine((s) => {
+    // new Date(2026, 1, 30) 会静默进位成 3 月 2 日,回读比对才能拦住非法日期
+    const [y, m, d] = s.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d;
+  }, "无效日期");
+
+// 流量 / 到期配额。在线源上游带 Subscription-UserInfo 时以上游为准,这里的手填值只作补充;
+// 离线源(inline / 拿不到 userinfo 的源)全靠这里。判定逻辑见 providers/quota.ts。
+// 日期一律按进程本地时区的零点解释(容器需设 TZ,见 docs/deployment.md)。
+export const providerQuotaSchema = z.object({
+  // 用完或过期时,生成订阅自动排除该源;关掉则只展示状态、照常输出
+  auto_exclude: z.boolean().default(true),
+  // 每月流量重置日;当月没有这一天(如 31 号)按月末算
+  reset_day: z.number().int().min(1).max(31).optional(),
+  // 手填到期日;上游 userinfo 带 expire 时以上游为准
+  expire: localDateSchema.optional(),
+  // 手动标记「流量用完」,排除到这天零点自动恢复
+  exhausted_until: localDateSchema.optional(),
+});
+
 export const providerSchema = z
   .object({
     id: idSchema,
@@ -57,6 +81,7 @@ export const providerSchema = z
     // 典型用途:机场为规避封锁,给代理节点域名指定多个 server: DoH(同 key 多行)。
     hosts: z.record(z.union([z.string(), z.array(z.string())])).optional(),
     emit_hosts: z.boolean().default(true),
+    quota: providerQuotaSchema.optional(),
   })
   .superRefine((p, ctx) => {
     if (p.type === "http" && !p.url) {
@@ -71,3 +96,4 @@ export const providerSchema = z
   });
 
 export type Provider = z.infer<typeof providerSchema>;
+export type ProviderQuota = z.infer<typeof providerQuotaSchema>;

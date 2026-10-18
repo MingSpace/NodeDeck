@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { RefreshedAt, UpdatedAt } from "@/components/refreshed-at";
 import { api } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { cn, formatBytes } from "@/lib/utils";
 import { useEntityList, useDeleteEntity, useSaveEntity } from "@/api/entities";
 import { toast } from "@/components/ui/toast";
 
@@ -362,18 +362,6 @@ function AirportCard({ airport }: { airport: AirportItem }) {
       )}
     </Card>
   );
-}
-
-function formatBytes(b: number): string {
-  if (b === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB", "PB"];
-  let i = 0;
-  let v = b;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
-  }
-  return `${v.toFixed(v >= 100 ? 0 : v >= 10 ? 1 : 2)} ${units[i]}`;
 }
 
 function randomToken(len: number): string {

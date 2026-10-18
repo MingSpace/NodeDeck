@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/select";
 import { toast } from "@/components/ui/toast";
 import { HostRowsEditor } from "@/components/host-rows-editor";
+import { QuotaEditor, type ProviderQuota } from "./quota";
 
 export type ProviderType = "http" | "file" | "inline";
 
@@ -68,6 +69,7 @@ export interface ProviderData {
   // 针对该节点源的 DNS 解析覆盖;emit_hosts 控制订阅输出时是否自动带出(默认带出)。
   hosts?: Record<string, string | string[]>;
   emit_hosts?: boolean;
+  quota?: ProviderQuota;
 }
 
 export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
@@ -394,6 +396,16 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
           </Field>
         </CollapsibleSection>
       )}
+
+      <CollapsibleSection title="流量 / 到期 (用完自动排除)" autoOpen={!!data.quota}>
+        <QuotaEditor
+          providerId={data.id}
+          isNew={isNew}
+          isInline={data.type === "inline"}
+          quota={data.quota}
+          onChange={(quota) => update({ quota })}
+        />
+      </CollapsibleSection>
 
       <CollapsibleSection title="Clash proxy-providers 暴露 (mihomo)" autoOpen={hasClashProvider}>
         <div className="space-y-3">

@@ -8,13 +8,17 @@ import type { Provider } from "../schemas/provider.js";
 import { providerRepo, proxyGroupRepo, rulesetRepo, generalPresetRepo, surgeModuleRepo } from "../storage/repos.js";
 import { buildNodePool } from "../providers/pool.js";
 import { readProviderCache } from "../providers/cache-store.js";
+import { describeQuotaExclusion, evaluateProviderQuota } from "../providers/quota.js";
 import { mergeHostMaps } from "./hosts.js";
 
 export interface ResolvedProfile {
   profile: Profile;
   nodes: Node[];
-  // 启用且被该 profile 引用的 provider 元数据(给 clash proxy-providers 模式合成 URL 用)
+  // 启用且被该 profile 引用的 provider 元数据(给 clash proxy-providers 模式合成 URL 用)。
+  // 含被配额排除的源:节点名前缀在这批源之间消歧,排除谁都不能让其它源的前缀跟着变。
   providers: Provider[];
+  // 流量用完 / 已到期而被排除的 provider id(节点已不在 nodes 里,proxy-providers 段也要跳过)
+  excludedProviderIds: Set<string>;
   groups: ProxyGroup[];
   /**
    * 系统中**所有** group 的 name 集合(不只是 profile.proxy_groups 引用的)。
@@ -43,27 +47,31 @@ export async function resolveProfile(
 ): Promise<ResolvedProfile> {
   const warnings: string[] = [];
 
-  // 把所有 IO(节点池 / providers / groups / rulesets / general / surge modules / 全 group 列表)
-  // 全部并发起飞。warnings 仍然按 profile 中的原始顺序生成,与串行版输出一致。
+  // providers 先串行读出来算配额,其余 IO(节点池 / groups / rulesets / general / surge modules /
+  // 全 group 列表)再全部并发起飞。warnings 仍然按 profile 中的原始顺序生成,与串行版输出一致。
   const ruleRefs = profile.rule_modules.flatMap((m) =>
     "final" in m || "geoip_cn" in m || m.enabled === false ? [] : [m.ref],
   );
 
-  const [pool, providerEntries, groupEntries, ruleEntries, generalEntry, surgeModuleEntries, allGroupEntries] =
+  // 配额要先于节点池算出来:被排除的源不进池,也就不会为它去拉机场。
+  // 判定用的是上次刷新写进 cache 的 userinfo,on_request 源因此最多滞后一次请求。
+  const providerEntries = await Promise.all(profile.providers.map((id) => providerRepo.get(id)));
+  const providers = providerEntries.flatMap((entry) => (entry && entry.data.enabled ? [entry.data] : []));
+  const excludedProviderIds = await quotaExcludedIds(providers, warnings);
+  const activeProviders = providers.filter((p) => !excludedProviderIds.has(p.id));
+
+  const [pool, groupEntries, ruleEntries, generalEntry, surgeModuleEntries, allGroupEntries] =
     await Promise.all([
-      buildNodePool({ providerIds: profile.providers, staleWhileRevalidate: opts.staleWhileRevalidate }),
-      Promise.all(profile.providers.map((id) => providerRepo.get(id))),
+      buildNodePool({
+        providerIds: profile.providers.filter((id) => !excludedProviderIds.has(id)),
+        staleWhileRevalidate: opts.staleWhileRevalidate,
+      }),
       Promise.all(profile.proxy_groups.map((id) => proxyGroupRepo.get(id))),
       Promise.all(ruleRefs.map((ref) => rulesetRepo.get(ref))),
       profile.general_preset ? generalPresetRepo.get(profile.general_preset) : Promise.resolve(null),
       Promise.all(profile.surge_modules.map((id) => surgeModuleRepo.get(id))),
       proxyGroupRepo.list(),
     ]);
-
-  const providers: Provider[] = [];
-  providerEntries.forEach((entry) => {
-    if (entry && entry.data.enabled) providers.push(entry.data);
-  });
 
   const groups: ProxyGroup[] = [];
   profile.proxy_groups.forEach((id, i) => {
@@ -110,8 +118,8 @@ export async function resolveProfile(
   // emit_hosts 关闭的 provider 两类都不带出。自动解析结果随刷新写入 provider cache
   // (buildNodePool 上面已跑过,on_request 源此刻 cache 是最新的),故"每次更新自动解析并应用"。
   // 同 key 多值会在 Surge 端展开多行 / Clash 端走 proxy-server-nameserver-policy。
-  const providerCaches = await Promise.all(providers.map((p) => readProviderCache(p.id)));
-  const emitProviders = providers
+  const providerCaches = await Promise.all(activeProviders.map((p) => readProviderCache(p.id)));
+  const emitProviders = activeProviders
     .map((p, i) => ({ provider: p, cache: providerCaches[i] }))
     .filter(({ provider }) => provider.emit_hosts !== false);
   const mergedHosts = mergeHostMaps(
@@ -125,6 +133,7 @@ export async function resolveProfile(
     profile,
     nodes: pool.nodes,
     providers,
+    excludedProviderIds,
     groups,
     allKnownGroupNames,
     rules,
@@ -137,4 +146,23 @@ export async function resolveProfile(
     // mock 测试可能不返回该字段,容错为空数组。
     revalidating: pool.revalidating ?? [],
   };
+}
+
+/**
+ * 剔除流量用完 / 已到期的节点源(判定见 providers/quota.ts),每个被剔除的源记一条 warning。
+ * 全部源都被剔除时宁可照常输出:空订阅会让客户端所有策略组失效,比连不上的节点更糟。
+ */
+async function quotaExcludedIds(providers: Provider[], warnings: string[]): Promise<Set<string>> {
+  const caches = await Promise.all(providers.map((p) => readProviderCache(p.id)));
+  const now = Date.now();
+  const statuses = providers.map((p, i) => evaluateProviderQuota(p, caches[i]?.userinfo, now));
+  const excluded = new Set(providers.filter((_, i) => statuses[i].excluded).map((p) => p.id));
+  if (excluded.size > 0 && excluded.size === providers.length) {
+    warnings.push("所有节点源都流量用完或已到期,本次不做排除,照常输出全部节点");
+    return new Set();
+  }
+  providers.forEach((p, i) => {
+    if (statuses[i].excluded) warnings.push(describeQuotaExclusion(p.name, statuses[i]));
+  });
+  return excluded;
 }

@@ -36,6 +36,7 @@ import {
   type ProviderType,
   type RefreshInterval,
 } from "./visual-form";
+import { QuotaBadge, QuotaSummary, type ProviderQuotaStatus } from "./quota";
 
 interface ProviderNodesResp {
   provider_id: string;
@@ -73,6 +74,7 @@ interface ProviderStatusItem {
   node_count: number;
   fetched_at?: number;
   error?: string;
+  quota?: ProviderQuotaStatus;
 }
 
 export function ProvidersPage() {
@@ -453,6 +455,7 @@ export function ProvidersPage() {
                       最新
                     </div>
                   )}
+                  <QuotaSummary status={s?.quota} />
                   {/* 与「上次刷新」区分:那是从机场拉节点的时间,这是这份节点源配置本身被改动的时间 */}
                   {updatedAt !== undefined && (
                     <div className="text-xs text-muted-foreground mt-1">
@@ -482,6 +485,7 @@ export function ProvidersPage() {
                         <Ban className="h-3 w-3" /> 已禁用
                       </Badge>
                     )}
+                    {p.enabled && <QuotaBadge status={s?.quota} />}
                     {s?.status === "ok" && s.node_count > 0 && (
                       <Badge
                         variant="success"
