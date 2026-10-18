@@ -63,7 +63,7 @@ describe("evaluateProviderQuota", () => {
   });
 
   it("在线源上游流量用完 → 排除,有重置日时给出恢复时间", () => {
-    const s = evaluateProviderQuota(provider({ reset_day: 2 }, "http"), userinfo(153, 150), NOW);
+    const s = evaluateProviderQuota(provider({ reset_day: 2 }, "http"), { userinfo: userinfo(153, 150) }, NOW);
     expect(s.excluded).toBe(true);
     expect(s.reason).toBe("traffic_exhausted");
     expect(s.restore_at).toBe(new Date(2026, 10, 2).getTime());
@@ -71,13 +71,13 @@ describe("evaluateProviderQuota", () => {
   });
 
   it("上游流量没用完 → 不排除", () => {
-    const s = evaluateProviderQuota(provider(undefined, "http"), userinfo(179, 200), NOW);
+    const s = evaluateProviderQuota(provider(undefined, "http"), { userinfo: userinfo(179, 200) }, NOW);
     expect(s.excluded).toBe(false);
     expect(s.reason).toBeUndefined();
   });
 
   it("total=0 视为不限量", () => {
-    const s = evaluateProviderQuota(provider(undefined, "http"), userinfo(500, 0), NOW);
+    const s = evaluateProviderQuota(provider(undefined, "http"), { userinfo: userinfo(500, 0) }, NOW);
     expect(s.excluded).toBe(false);
     expect(s.traffic).toBeUndefined();
   });
@@ -95,7 +95,7 @@ describe("evaluateProviderQuota", () => {
 
   it("上游 expire 已过 → 排除,且优先于手填到期日", () => {
     const pastSec = Math.floor(NOW / 1000) - 60;
-    const s = evaluateProviderQuota(provider({ expire: "2030-01-01" }, "http"), userinfo(1, 100, pastSec), NOW);
+    const s = evaluateProviderQuota(provider({ expire: "2030-01-01" }, "http"), { userinfo: userinfo(1, 100, pastSec) }, NOW);
     expect(s.excluded).toBe(true);
     expect(s.reason).toBe("expired");
     expect(s.expire_source).toBe("upstream");
@@ -116,6 +116,44 @@ describe("evaluateProviderQuota", () => {
   });
 });
 
+describe("evaluateProviderQuota - 订阅信息节点", () => {
+  const info = { expire: "2027-06-18", traffic: { used: 150 * GB, total: 150 * GB }, reset_at: new Date(2026, 9, 25).getTime() };
+
+  it("离线源只用信息节点的到期日,不用快照流量和重置倒计时", () => {
+    const s = evaluateProviderQuota(provider(), { info_quota: info }, NOW);
+    expect(s.expire_at).toBe(parseLocalDate("2027-06-18"));
+    expect(s.expire_source).toBe("info_node");
+    expect(s.traffic).toBeUndefined();
+    expect(s.next_reset_at).toBeUndefined();
+    expect(s.excluded).toBe(false);
+  });
+
+  it("在线源没有 header 时用信息节点的流量与重置日判定", () => {
+    const s = evaluateProviderQuota(provider(undefined, "http"), { info_quota: info }, NOW);
+    expect(s.traffic_source).toBe("info_node");
+    expect(s.reason).toBe("traffic_exhausted");
+    expect(s.restore_at).toBe(new Date(2026, 9, 25).getTime());
+  });
+
+  it("header 优先于信息节点,手填到期优先于信息节点", () => {
+    const s = evaluateProviderQuota(
+      provider({ expire: "2027-01-01" }, "http"),
+      { userinfo: userinfo(10, 150), info_quota: info },
+      NOW,
+    );
+    expect(s.traffic).toEqual({ used: 10 * GB, total: 150 * GB });
+    expect(s.traffic_source).toBe("upstream");
+    expect(s.expire_source).toBe("manual");
+    expect(s.excluded).toBe(false);
+  });
+
+  it("信息节点的到期日已过 → 排除", () => {
+    const s = evaluateProviderQuota(provider(), { info_quota: { expire: "2026-10-01" } }, NOW);
+    expect(s.reason).toBe("expired");
+    expect(s.excluded).toBe(true);
+  });
+});
+
 describe("describeQuotaExclusion", () => {
   it("带恢复日期", () => {
     const s = evaluateProviderQuota(provider({ exhausted_until: "2026-11-02" }), undefined, NOW);
@@ -125,7 +163,7 @@ describe("describeQuotaExclusion", () => {
   });
 
   it("在线源没配重置日 → 说明下次刷新恢复", () => {
-    const s = evaluateProviderQuota(provider(undefined, "http"), userinfo(150, 150), NOW);
+    const s = evaluateProviderQuota(provider(undefined, "http"), { userinfo: userinfo(150, 150) }, NOW);
     expect(describeQuotaExclusion("K", s)).toContain("下次刷新自动恢复");
   });
 });

@@ -3,6 +3,7 @@ import { cachePath } from "../storage/paths.js";
 import { readJson, writeJson } from "../storage/yaml-io.js";
 import { userinfoSchema, type UserInfo } from "../schemas/userinfo.js";
 import { nodeSchema, type Node } from "../schemas/node.js";
+import type { InfoNodeQuota } from "../parsers/info-node-extract.js";
 
 export interface ProviderCache {
   provider_id: string;
@@ -15,6 +16,9 @@ export interface ProviderCache {
   // 上游配置自带的 hosts 段(Clash 顶层 hosts: / Surge [Host]),刷新时解析存这里;
   // 生成订阅时按 provider.emit_hosts 自动并入主订阅 hosts(与 nodes 一样属"上游派生缓存")。
   extracted_hosts?: Record<string, string | string[]>;
+  // 从机场「信息节点」名字里提取的到期 / 流量 / 重置日(parsers/info-node-extract.ts),
+  // 离线源唯一的配额信息来源;判定优先级见 providers/quota.ts。
+  info_quota?: InfoNodeQuota;
 }
 
 const cacheSchema = z.object({
@@ -26,6 +30,13 @@ const cacheSchema = z.object({
   userinfo: userinfoSchema.optional(),
   nodes: z.array(nodeSchema).default([]),
   extracted_hosts: z.record(z.union([z.string(), z.array(z.string())])).optional(),
+  info_quota: z
+    .object({
+      expire: z.string().optional(),
+      traffic: z.object({ used: z.number().nonnegative(), total: z.number().positive() }).optional(),
+      reset_at: z.number().optional(),
+    })
+    .optional(),
 });
 
 export async function readProviderCache(providerId: string): Promise<ProviderCache | null> {

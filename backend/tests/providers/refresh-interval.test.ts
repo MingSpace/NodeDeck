@@ -211,9 +211,18 @@ describe("refreshProvider - 周期模式 (4h)", () => {
 
 describe("refreshProvider - 上游流量用完 / 到期时缩短到每小时重拉", () => {
   const GB = 1024 ** 3;
+  const httpProvider = (quota?: Record<string, unknown>) =>
+    providerSchema.parse({
+      id: "p1",
+      name: "P1",
+      type: "http",
+      url: "https://sub.example.com/s",
+      refresh: { interval: "24h" },
+      ...(quota ? { quota } : {}),
+    }) as Provider;
 
   it("上游显示流量用完:24h 周期下 cache 超过 60min 就重拉", async () => {
-    const provider = fakeProvider({ interval: "24h" });
+    const provider = httpProvider();
     mockedReadCache.mockResolvedValue({
       ...okCache(61),
       userinfo: { upload: 0, download: 150 * GB, total: 150 * GB, expire: 0 },
@@ -225,7 +234,7 @@ describe("refreshProvider - 上游流量用完 / 到期时缩短到每小时重�
   });
 
   it("流量没用完:仍按原周期,不提前重拉", async () => {
-    const provider = fakeProvider({ interval: "24h" });
+    const provider = httpProvider();
     mockedReadCache.mockResolvedValue({
       ...okCache(61),
       userinfo: { upload: 0, download: 10 * GB, total: 150 * GB, expire: 0 },
@@ -236,11 +245,30 @@ describe("refreshProvider - 上游流量用完 / 到期时缩短到每小时重�
     expect(mockedFetch).not.toHaveBeenCalled();
   });
 
+  it("信息节点显示流量用完的在线源同样缩短", async () => {
+    mockedReadCache.mockResolvedValue({
+      ...okCache(61),
+      info_quota: { traffic: { used: 150 * GB, total: 150 * GB } },
+    });
+
+    await refreshProvider(httpProvider());
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("离线源不缩短:重拉只是重新解析同一份文本", async () => {
+    mockedReadCache.mockResolvedValue({
+      ...okCache(61),
+      userinfo: { upload: 0, download: 150 * GB, total: 150 * GB, expire: 0 },
+    });
+
+    await refreshProvider(fakeProvider({ interval: "24h" }));
+
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
   it("auto_exclude 关闭时不缩短周期", async () => {
-    const provider = providerSchema.parse({
-      ...fakeProvider({ interval: "24h" }),
-      quota: { auto_exclude: false },
-    }) as Provider;
+    const provider = httpProvider({ auto_exclude: false });
     mockedReadCache.mockResolvedValue({
       ...okCache(61),
       userinfo: { upload: 0, download: 150 * GB, total: 150 * GB, expire: 0 },

@@ -76,7 +76,7 @@ export async function listProvidersWithCache(): Promise<ProviderSummary[]> {
       status: cache?.status,
       node_count: cache?.nodes.length ?? 0,
       error: cache?.error,
-      quota: evaluateProviderQuota(entry.data, cache?.userinfo, now),
+      quota: evaluateProviderQuota(entry.data, cache, now),
     };
   });
 }

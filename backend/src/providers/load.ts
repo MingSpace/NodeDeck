@@ -2,7 +2,8 @@ import type { Provider } from "../schemas/provider.js";
 import type { Node } from "../schemas/node.js";
 import { fetchProviderContent } from "./fetcher.js";
 import { readProviderCache, writeProviderCache, type ProviderCache } from "./cache-store.js";
-import { parseSubscription } from "../parsers/index.js";
+import { parseSubscriptionWithInfo } from "../parsers/index.js";
+import { extractInfoNodeQuota } from "../parsers/info-node-extract.js";
 import { annotateNodes } from "../parsers/normalize.js";
 import { filterInfoNodes } from "../parsers/info-node-filter.js";
 import { deriveProviderHostOverrides } from "../import/extract-hosts.js";
@@ -46,7 +47,8 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
   }
   try {
     const result = await fetchProviderContent(provider);
-    const rawNodes = parseSubscription(result.text, provider.parser_hint);
+    const { nodes: rawNodes, infoNodeNames } = parseSubscriptionWithInfo(result.text, provider.parser_hint);
+    const info_quota = extractInfoNodeQuota(infoNodeNames, result.fetched_at);
     const nodes = annotateNodes(rawNodes).map((n) => ({ ...n, source_provider_id: provider.id }));
     const userinfo = parseUserInfoHeader(result.userinfo_header) ?? undefined;
     // 只挑「与本源节点 server 域名相关」的 host 覆盖随刷新存入 cache:命中节点域名的上游
@@ -79,6 +81,7 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
         userinfo,
         nodes: [],
         extracted_hosts,
+        info_quota,
       };
       await writeProviderCache(cache);
       logger.warn({ providerId: provider.id, reason }, "Provider parsed 0 nodes");
@@ -94,6 +97,7 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
       userinfo,
       nodes,
       extracted_hosts,
+      info_quota,
     };
     await writeProviderCache(cache);
     logger.info(
@@ -123,16 +127,17 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
   }
 }
 
-// 上游 userinfo 显示用完 / 到期而被排除的源,周期缩到 1 小时:机场重置或续费后尽快恢复,
-// 不必干等一个 24h 周期。手动标记的排除靠日期恢复,与重拉无关,不缩短。
+// 按上游数据(userinfo 或信息节点)判定用完 / 到期而被排除的在线源,周期缩到 1 小时:
+// 机场重置或续费后尽快恢复,不必干等一个 24h 周期。手动标记 / 手填到期靠日期恢复,与重拉无关,不缩短;
+// 离线源重拉也只是重新解析同一份文本,同样不缩短。
 const QUOTA_RECHECK_MINUTES = 60;
 
 function effectiveRefreshMinutes(provider: Provider, cached: ProviderCache, minutes: number): number {
-  if (!cached.userinfo || minutes <= QUOTA_RECHECK_MINUTES) return minutes;
-  const quota = evaluateProviderQuota(provider, cached.userinfo);
+  if (provider.type === "inline" || minutes <= QUOTA_RECHECK_MINUTES) return minutes;
+  const quota = evaluateProviderQuota(provider, cached);
   const upstreamBlocked =
     quota.excluded &&
-    (quota.reason === "traffic_exhausted" || (quota.reason === "expired" && quota.expire_source === "upstream"));
+    (quota.reason === "traffic_exhausted" || (quota.reason === "expired" && quota.expire_source !== "manual"));
   return upstreamBlocked ? QUOTA_RECHECK_MINUTES : minutes;
 }
 

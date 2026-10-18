@@ -1,5 +1,12 @@
 import type { Provider } from "../schemas/provider.js";
 import type { UserInfo } from "../schemas/userinfo.js";
+import type { InfoNodeQuota } from "../parsers/info-node-extract.js";
+
+/** 判定要用到的 cache 字段(readProviderCache 的结果可直接传) */
+export interface QuotaSources {
+  userinfo?: UserInfo;
+  info_quota?: InfoNodeQuota;
+}
 
 export type QuotaReason = "expired" | "manual_exhausted" | "traffic_exhausted";
 
@@ -10,10 +17,11 @@ export interface ProviderQuotaStatus {
   reason?: QuotaReason;
   /** 预计恢复时间(ms);undefined = 无法预估(在线源等下次刷新 / 过期等续费) */
   restore_at?: number;
-  /** 上游 Subscription-UserInfo 给出的流量(total=0 视为不限量,不给出) */
+  /** 流量(total=0 视为不限量,不给出) */
   traffic?: { used: number; total: number };
+  traffic_source?: "upstream" | "info_node";
   expire_at?: number;
-  expire_source?: "upstream" | "manual";
+  expire_source?: "upstream" | "manual" | "info_node";
   next_reset_at?: number;
 }
 
@@ -41,21 +49,29 @@ export function nextResetAt(resetDay: number, now = Date.now()): number {
  * 判定节点源当前是否因流量 / 到期需要排除。纯函数,所有输入来自 provider yaml + cache,
  * 不维护任何内存状态,所以「刷新日自动恢复」只是时间过了重新算一遍的结果。
  *
- * 优先级:过期 > 手动标记用完 > 上游流量用完。
- * - 在线源:上游 userinfo 的 used >= total 视为用完,下次刷新拿到重置后的数据即恢复
- * - 离线源:拿不到 userinfo,只能靠 quota.exhausted_until 手动标记,到日子自动恢复
- * - 到期:上游 expire 优先,没有才用手填的 quota.expire
+ * 优先级:过期 > 手动标记用完 > 流量用完。各项数据的来源:
+ * - 到期:上游 Subscription-UserInfo > 手填 quota.expire > 订阅里的信息节点
+ * - 流量:上游 userinfo > 信息节点;**离线源(inline)的信息节点流量不用**——那是导入时的快照,早已过时
+ * - 重置日:手填 quota.reset_day > 信息节点倒计时(同样只认在线源)
+ * - 离线源没有实时流量,用完只能靠 quota.exhausted_until 手动标记,到日子自动恢复
  */
 export function evaluateProviderQuota(
   provider: Provider,
-  userinfo: UserInfo | undefined,
+  sources: QuotaSources | null | undefined,
   now = Date.now(),
 ): ProviderQuotaStatus {
   const quota = provider.quota;
+  const userinfo = sources?.userinfo;
+  const info = sources?.info_quota;
+  const live = provider.type !== "inline";
   const status: ProviderQuotaStatus = { excluded: false };
 
   if (userinfo && userinfo.total > 0) {
     status.traffic = { used: userinfo.upload + userinfo.download, total: userinfo.total };
+    status.traffic_source = "upstream";
+  } else if (live && info?.traffic) {
+    status.traffic = info.traffic;
+    status.traffic_source = "info_node";
   }
   if (userinfo && userinfo.expire > 0) {
     status.expire_at = userinfo.expire * 1000;
@@ -63,8 +79,12 @@ export function evaluateProviderQuota(
   } else if (quota?.expire) {
     status.expire_at = parseLocalDate(quota.expire);
     status.expire_source = "manual";
+  } else if (info?.expire) {
+    status.expire_at = parseLocalDate(info.expire);
+    status.expire_source = "info_node";
   }
   if (quota?.reset_day) status.next_reset_at = nextResetAt(quota.reset_day, now);
+  else if (live && info?.reset_at !== undefined && info.reset_at > now) status.next_reset_at = info.reset_at;
 
   const manualUntil = quota?.exhausted_until ? parseLocalDate(quota.exhausted_until) : undefined;
 

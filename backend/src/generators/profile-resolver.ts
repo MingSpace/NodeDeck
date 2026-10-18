@@ -155,7 +155,7 @@ export async function resolveProfile(
 async function quotaExcludedIds(providers: Provider[], warnings: string[]): Promise<Set<string>> {
   const caches = await Promise.all(providers.map((p) => readProviderCache(p.id)));
   const now = Date.now();
-  const statuses = providers.map((p, i) => evaluateProviderQuota(p, caches[i]?.userinfo, now));
+  const statuses = providers.map((p, i) => evaluateProviderQuota(p, caches[i], now));
   const excluded = new Set(providers.filter((_, i) => statuses[i].excluded).map((p) => p.id));
   if (excluded.size > 0 && excluded.size === providers.length) {
     warnings.push("所有节点源都流量用完或已到期,本次不做排除,照常输出全部节点");

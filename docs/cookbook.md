@@ -168,6 +168,7 @@ NodeDeck 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers
 **不会丢的事**:
 
 - userinfo(流量 / 到期)从 HTTP `Subscription-UserInfo` header 读取,**与节点池无关**,过滤不影响 Dashboard / 订阅响应头
+- 被丢掉的信息节点名会先交给 `parsers/info-node-extract.ts`,提取出到期日 / 流量 / 重置倒计时存进 cache 的 `info_quota`,供 1.3 的配额判定用
 - 自建 inline Provider 的节点同样走 parser,但只要 name 不带 `流量/到期` 这种典型关键字就不会被命中(本来也不应该长这样)
 
 **遇到新形态没被识别怎么办**:把节点 name 加到 `backend/tests/parsers/info-node-filter.test.ts` 的 `POSITIVE_NAMES` 列表(或 `NEGATIVE_NAMES` 反向测试),跑 `pnpm test`,根据 fail case 在 `KEYWORDS` 或 `STRONG_SEP/WEAK_SEP` 里加一条即可。
@@ -180,8 +181,11 @@ NodeDeck 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers
 | 情况 | 怎么判定 | 怎么恢复 |
 |---|---|---|
 | 在线源,上游返回 `Subscription-UserInfo` | `upload + download >= total`(`total=0` 视为不限量) | 排除期间每小时重拉一次(原周期更短则按原周期),上游重置后的那次刷新即恢复 |
-| 离线源 / 上游不给流量信息 | 手动标记 `quota.exhausted_until` | 到这天零点自动恢复 |
-| 已到期 | 上游 `expire` 优先,没有才用手填的 `quota.expire` | 续费后上游数据更新,或改手填日期 |
+| 在线源,header 没有但订阅里有信息节点 | 信息节点的 `Traffic: 已用 \| 总量` / `剩余流量:剩余 \| 总量` | 同上 |
+| 离线源 | 手动标记 `quota.exhausted_until` | 到这天零点自动恢复 |
+| 已到期 | 上游 header `expire` > 手填 `quota.expire` > 信息节点 `Expire: 2027-04-02` | 续费后上游数据更新,或改手填日期 |
+
+信息节点的数据来自 1.2 里被丢掉的那些伪节点名,每次刷新重新提取。**离线源只取其中的到期日**:流量和「还剩 N 天重置」是导入那一刻的快照,拿来判定只会误判;在线源三样都用(header 有的以 header 为准),重置倒计时换算成日期后当作 `reset_day` 的兜底。
 
 ```yaml
 # data/providers/flower.yaml(节选)

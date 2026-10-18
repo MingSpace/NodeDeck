@@ -22,8 +22,9 @@ export interface ProviderQuotaStatus {
   reason?: "expired" | "manual_exhausted" | "traffic_exhausted";
   restore_at?: number;
   traffic?: { used: number; total: number };
+  traffic_source?: "upstream" | "info_node";
   expire_at?: number;
-  expire_source?: "upstream" | "manual";
+  expire_source?: "upstream" | "manual" | "info_node";
   next_reset_at?: number;
 }
 
@@ -102,7 +103,9 @@ export function QuotaSummary({ status }: { status?: ProviderQuotaStatus }) {
     const pct = Math.round((status.traffic.used / status.traffic.total) * 100);
     parts.push(`流量 ${formatBytes(status.traffic.used)} / ${formatBytes(status.traffic.total)}(${pct}%)`);
   }
-  if (status.expire_at !== undefined) parts.push(`${toLocalDate(status.expire_at)} 到期`);
+  if (status.expire_at !== undefined) {
+    parts.push(`${toLocalDate(status.expire_at)} 到期${status.expire_source === "info_node" ? "(信息节点)" : ""}`);
+  }
   if (status.next_reset_at !== undefined) parts.push(`${toLocalDate(status.next_reset_at)} 重置`);
   if (parts.length === 0) return null;
   return (
@@ -132,6 +135,7 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
   const upstream = statusQuery.data?.items.find((i) => i.provider.id === providerId)?.quota;
   const hasUpstreamTraffic = !!upstream?.traffic;
   const hasUpstreamExpire = upstream?.expire_source === "upstream";
+  const infoExpire = upstream?.expire_source === "info_node" ? upstream.expire_at : undefined;
 
   const q = quota ?? {};
   // 全是默认值时整个字段写 undefined,yaml 里不留空壳
@@ -153,7 +157,7 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
         <div className="rounded-md border bg-muted/30 p-2.5 text-[11px] text-muted-foreground leading-relaxed">
           {hasUpstreamTraffic || hasUpstreamExpire ? (
             <>
-              上游数据(上次刷新):
+              {upstream?.traffic_source === "info_node" ? "订阅信息节点(上次刷新):" : "上游数据(上次刷新):"}
               {upstream?.traffic && (
                 <span className="font-medium text-foreground">
                   {" "}
@@ -166,7 +170,17 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
               。流量用完时自动排除,上游重置后下次刷新即恢复(排除期间每小时重拉一次)。
             </>
           ) : isInline ? (
-            "静态节点拿不到上游流量信息:用完时在下面手动标记,到日子自动恢复。"
+            <>
+              静态节点拿不到实时流量:用完时在下面手动标记,到日子自动恢复。
+              {infoExpire !== undefined && (
+                <>
+                  {" "}
+                  订阅里的信息节点写着
+                  <span className="font-medium text-foreground"> {toLocalDate(infoExpire)} 到期</span>
+                  ,下面到期日留空就用它。
+                </>
+              )}
+            </>
           ) : (
             "上游没有返回流量信息(Subscription-UserInfo):用完时在下面手动标记,到日子自动恢复。"
           )}
@@ -195,7 +209,14 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
           />
         </div>
         <div>
-          <Label className="text-xs">到期日{hasUpstreamExpire && "(上游已提供,以上游为准)"}</Label>
+          <Label className="text-xs">
+            到期日
+            {hasUpstreamExpire
+              ? "(上游已提供,以上游为准)"
+              : infoExpire !== undefined && !q.expire
+                ? `(留空 = 用信息节点的 ${toLocalDate(infoExpire)})`
+                : ""}
+          </Label>
           <Input
             className="mt-1"
             type="date"

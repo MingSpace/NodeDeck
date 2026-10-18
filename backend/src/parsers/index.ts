@@ -4,7 +4,7 @@ import { parseClashYaml } from "./clash.js";
 import { parseSurgeConf, parseSurgeProxyLine } from "./surge.js";
 import { parsePlainUriList, parseV2raySubscription } from "./v2ray.js";
 import { parseProxyUri } from "./uri.js";
-import { filterInfoNodes } from "./info-node-filter.js";
+import { filterInfoNodesWithReport } from "./info-node-filter.js";
 
 export type ParserHint = Provider["parser_hint"];
 
@@ -35,14 +35,25 @@ const BARE_SURGE_LINE_RE = new RegExp(
 const URI_LINE_RE = /^(ss|ssr|vmess|vless|trojan|hysteria2|hy2|tuic|socks5|socks):\/\//;
 
 export function parseSubscription(text: string, hint: ParserHint = "auto"): Node[] {
+  return parseSubscriptionWithInfo(text, hint).nodes;
+}
+
+/**
+ * 同 parseSubscription,另外交出被剔除的信息节点名,供 info-node-extract.ts 提取到期 / 流量。
+ */
+export function parseSubscriptionWithInfo(
+  text: string,
+  hint: ParserHint = "auto",
+): { nodes: Node[]; infoNodeNames: string[] } {
   const trimmed = text.trim();
-  if (!trimmed) return [];
+  if (!trimmed) return { nodes: [], infoNodeNames: [] };
 
   const raw = parseByHint(trimmed, hint);
   // 在 dispatcher 出口统一剔除机场塞的"信息节点"(Traffic/Expire/公告/官网...)。
   // 见 `info-node-filter.ts`:这些 name 形如 `Traffic: 59.17 GB | 150 GB` 的伪节点会跟真节点
   // 共用 server/port/password,导致 `dedupeNodes` 把真节点合并掉、用户在客户端只看到伪节点。
-  return filterInfoNodes(raw);
+  const { kept, dropped } = filterInfoNodesWithReport(raw);
+  return { nodes: kept, infoNodeNames: dropped.map((n) => n.name) };
 }
 
 function parseByHint(trimmed: string, hint: ParserHint): Node[] {
