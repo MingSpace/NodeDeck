@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import type { Provider } from "../schemas/provider.js";
 import { logger } from "../logger.js";
+import { createProxiedFetch, describeFetchError, redactProxyUrl } from "./fetch-proxy.js";
 
 export interface FetchResult {
   text: string;
@@ -14,7 +15,13 @@ export interface FetchResult {
 export type ProviderFetchInput = Pick<
   Provider,
   "id" | "type" | "url" | "path" | "content" | "user_agent"
->;
+> &
+  Partial<Pick<Provider, "fetch_proxy">>;
+
+export interface FetchOptions {
+  /** 单次请求超时;Web UI「测试拉取」用更短的值,免得页面干等。 */
+  timeoutMs?: number;
+}
 
 const FETCH_TIMEOUT_MS = 30_000;
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -40,11 +47,16 @@ interface FetchOnceResult {
 }
 
 /** 单次 HTTP GET(独立 timeout)。非 2xx 不抛错,以 ok=false 返回,交给上层决定是否换 UA。 */
-async function fetchOnce(url: string, userAgent: string): Promise<FetchOnceResult> {
+async function fetchOnce(
+  fetchImpl: typeof globalThis.fetch,
+  url: string,
+  userAgent: string,
+  timeoutMs: number,
+): Promise<FetchOnceResult> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const res = await fetch(url, {
+    const res = await fetchImpl(url, {
       method: "GET",
       headers: {
         // 空 UA 也显式发送空串:让"留空"成为一个真实的候选(部分机场对空 UA 有专门分支)。
@@ -89,7 +101,10 @@ async function fetchOnce(url: string, userAgent: string): Promise<FetchOnceResul
   }
 }
 
-export async function fetchProviderContent(provider: ProviderFetchInput): Promise<FetchResult> {
+export async function fetchProviderContent(
+  provider: ProviderFetchInput,
+  opts: FetchOptions = {},
+): Promise<FetchResult> {
   if (provider.type === "inline") {
     return {
       text: provider.content ?? "",
@@ -106,7 +121,27 @@ export async function fetchProviderContent(provider: ProviderFetchInput): Promis
     };
   }
   // type === "http"
+  const proxy = provider.fetch_proxy;
+  if (!proxy) return fetchHttp(provider, globalThis.fetch, opts);
+  const proxied = createProxiedFetch(proxy);
+  try {
+    return await fetchHttp(provider, proxied.fetch, opts);
+  } finally {
+    // close 等在途请求结束;这里请求都已完成或已 abort,不会卡住
+    await proxied.close().catch(() => undefined);
+  }
+}
+
+async function fetchHttp(
+  provider: ProviderFetchInput,
+  fetchImpl: typeof globalThis.fetch,
+  opts: FetchOptions,
+): Promise<FetchResult> {
   const url = provider.url!;
+  const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
+  const proxyLabel = provider.fetch_proxy ? redactProxyUrl(provider.fetch_proxy) : undefined;
+  // 订阅 token 多在 query / path 里,日志会落盘并推到 Web UI,只记 host
+  const logUrl = redactSubscriptionUrl(url);
 
   // 候选 UA = [用户配置(默认空), ...回退列表],去重保序。
   const configured = provider.user_agent ?? "";
@@ -121,20 +156,24 @@ export async function fetchProviderContent(provider: ProviderFetchInput): Promis
   // 至少有一次 200 但 body 为空时记下来,用于"全空"时回传(让 load.ts 报更友好的错误)。
   let lastOkEmpty: { userinfo_header: string | null; ua: string } | null = null;
   let lastError: Error | null = null;
+  const statuses: number[] = [];
 
   for (const ua of candidates) {
     let attempt: FetchOnceResult;
     try {
-      attempt = await fetchOnce(url, ua);
+      attempt = await fetchOnce(fetchImpl, url, ua, timeoutMs);
     } catch (err) {
-      lastError = err instanceof Error ? err : new Error(String(err));
-      logger.warn({ err, providerId: provider.id, url, userAgent: ua }, "Provider fetch attempt errored, trying next UA");
-      continue;
+      // 连不上 / 超时 / 代理拒绝 / 超出大小上限都与 UA 无关,换 UA 只会把同一个错误再等 N 遍
+      // (代理挂掉时最坏 6 × 30s)。直接抛,让 load.ts 回退旧 cache。
+      const reason = describeFetchError(err);
+      logger.warn({ providerId: provider.id, url: logUrl, userAgent: ua, proxy: proxyLabel, reason }, "Provider fetch errored");
+      throw new Error(proxyLabel ? `经代理 ${proxyLabel} 拉取失败: ${reason}` : reason, { cause: err });
     }
     if (!attempt.ok) {
-      lastError = new Error(`HTTP ${attempt.status}`);
+      statuses.push(attempt.status);
+      lastError = new Error(describeHttpStatus(attempt.status, statuses, proxyLabel));
       logger.warn(
-        { providerId: provider.id, url, userAgent: ua, status: attempt.status },
+        { providerId: provider.id, url: logUrl, userAgent: ua, status: attempt.status, proxy: proxyLabel },
         "Provider fetch non-2xx, trying next UA",
       );
       continue;
@@ -142,7 +181,7 @@ export async function fetchProviderContent(provider: ProviderFetchInput): Promis
     if (attempt.text.trim().length === 0) {
       lastOkEmpty = { userinfo_header: attempt.userinfo_header, ua };
       logger.info(
-        { providerId: provider.id, url, userAgent: ua, status: attempt.status },
+        { providerId: provider.id, url: logUrl, userAgent: ua, status: attempt.status },
         "Provider fetch 200 but empty body, trying next UA",
       );
       continue;
@@ -154,6 +193,7 @@ export async function fetchProviderContent(provider: ProviderFetchInput): Promis
         bytes: attempt.text.length,
         userAgent: ua,
         hasUserinfo: !!attempt.userinfo_header,
+        proxy: proxyLabel,
       },
       "Provider HTTP fetch ok",
     );
@@ -169,7 +209,7 @@ export async function fetchProviderContent(provider: ProviderFetchInput): Promis
   if (lastOkEmpty) {
     // 至少有一次 200 空响应:回传空文本,由 load.ts 给出"已尝试多 UA 仍空"的提示。
     logger.warn(
-      { providerId: provider.id, url, triedUserAgents: candidates },
+      { providerId: provider.id, url: logUrl, triedUserAgents: candidates },
       "Provider fetch: all User-Agents returned empty body",
     );
     return {
@@ -180,6 +220,26 @@ export async function fetchProviderContent(provider: ProviderFetchInput): Promis
     };
   }
   // 全部非 2xx / 网络错误:抛出最后一个错误(沿用现行为,不掩盖真实 HTTP 错误)。
-  logger.warn({ providerId: provider.id, url }, "Provider fetch failed for all User-Agents");
+  logger.warn({ providerId: provider.id, url: logUrl }, "Provider fetch failed for all User-Agents");
   throw lastError ?? new Error("Provider fetch failed: no response");
+}
+
+/**
+ * 换遍 UA 全是 403:绝大多数是机场 / Cloudflare 按来源 IP 拦截(境外服务器、机房 IP),
+ * 而不是 UA 问题。直连时把这个判断写进报错,指给用户「拉取代理」这个出口。
+ */
+function describeHttpStatus(status: number, statuses: number[], proxyLabel: string | undefined): string {
+  if (proxyLabel) return `HTTP ${status}(经代理 ${proxyLabel})`;
+  if (statuses.every((s) => s === 403)) {
+    return `HTTP ${status}(上游拒绝了服务器的请求,常见于按来源 IP 拦截境外服务器;可在节点源配置「拉取代理」借其它机器的出口)`;
+  }
+  return `HTTP ${status}`;
+}
+
+function redactSubscriptionUrl(url: string): string {
+  try {
+    return `${new URL(url).origin}/…`;
+  } catch {
+    return "(invalid url)";
+  }
 }

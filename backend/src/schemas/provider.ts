@@ -48,6 +48,24 @@ export const providerQuotaSchema = z.object({
   exhausted_until: localDateSchema.optional(),
 });
 
+export const FETCH_PROXY_PROTOCOLS = ["http:", "https:", "socks5:", "socks:"] as const;
+
+// 拉取订阅时走的代理。典型用途:机场按来源 IP 拦截(服务器在境外被 403),
+// 借另一台机器的网络出口去拉。空串视为未配置(直连),方便 Web UI 清空字段。
+export const fetchProxySchema = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z
+    .string()
+    .trim()
+    .url("代理地址格式不对,示例 http://172.18.0.1:18888 或 socks5://127.0.0.1:1080")
+    .refine(
+      // .url() 失败时 zod 仍会跑 refine,new URL 要兜住
+      (s) => URL.canParse(s) && (FETCH_PROXY_PROTOCOLS as readonly string[]).includes(new URL(s).protocol),
+      "代理只支持 http:// / https:// / socks5://",
+    )
+    .optional(),
+);
+
 export const providerSchema = z
   .object({
     id: idSchema,
@@ -59,6 +77,8 @@ export const providerSchema = z
     // 默认留空:很多机场按 UA 网关,Surge 系会被吐空 body。空 UA 先试,拿到空响应时
     // fetcher 会自动回退到 Clash 系等候选 UA(见 providers/fetcher.ts FALLBACK_USER_AGENTS)。
     user_agent: z.string().default(""),
+    // 仅 http 类型生效;见 providers/fetch-proxy.ts
+    fetch_proxy: fetchProxySchema,
     refresh: refreshSchema.default({ interval: "12h" }),
     parser_hint: parserHintSchema.default("auto"),
     enabled: z.boolean().default(true),

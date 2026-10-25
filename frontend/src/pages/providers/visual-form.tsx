@@ -18,6 +18,7 @@ import {
 import { toast } from "@/components/ui/toast";
 import { HostRowsEditor } from "@/components/host-rows-editor";
 import { QuotaEditor, type ProviderQuota } from "./quota";
+import { FetchProxyField } from "./fetch-proxy";
 
 export type ProviderType = "http" | "file" | "inline";
 
@@ -57,6 +58,9 @@ export interface ProviderData {
   path?: string;
   content?: string;
   user_agent: string;
+  // 拉取订阅走的代理(http/https/socks5),仅 URL 订阅生效
+  // 与 backend/src/schemas/provider.ts fetch_proxy 保持同步
+  fetch_proxy?: string;
   refresh: ProviderRefresh;
   parser_hint: ParserHint;
   enabled: boolean;
@@ -290,6 +294,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
               此时后端会自动换 clash-verge / mihomo 等 UA 重试,直到拿到内容。需要钉死某个 UA 再手动填。
             </p>
           </Field>
+          <FetchProxyField data={data} update={update} />
         </TabsContent>
         <TabsContent value="inline" className="space-y-2 pt-3">
           <Field label="节点文本">

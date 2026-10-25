@@ -14,6 +14,7 @@ import {
   Ban,
   Loader2,
   X,
+  Route,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -37,6 +38,7 @@ import {
   type RefreshInterval,
 } from "./visual-form";
 import { QuotaBadge, QuotaSummary, type ProviderQuotaStatus } from "./quota";
+import { proxyHost } from "./fetch-proxy";
 
 interface ProviderNodesResp {
   provider_id: string;
@@ -441,6 +443,17 @@ export function ProvidersPage() {
                       ) : (
                         p.path
                       )}
+                    </div>
+                  )}
+                  {p.type === "http" && p.fetch_proxy && (
+                    <div
+                      className="text-xs text-muted-foreground mt-1 flex items-center gap-1 min-w-0"
+                      title={`经代理 ${proxyHost(p.fetch_proxy)} 拉取订阅`}
+                    >
+                      <Route className="h-3 w-3 shrink-0" />
+                      <span className="truncate">
+                        经代理 <span className="font-mono">{proxyHost(p.fetch_proxy)}</span> 拉取
+                      </span>
                     </div>
                   )}
                   {s?.fetched_at && !isInline && (

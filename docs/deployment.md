@@ -193,10 +193,48 @@ git commit -m "config snapshot"
 | 容器启动后无法访问 | 看 `docker logs nodedeck`,确认监听端口与 docker-compose ports 映射一致 |
 | 首次登录密码不对 | 删除 `data/config.yaml`,重启容器,会用新的 `INITIAL_PASSWORD` 重建 |
 | 改了 Web UI 配置后客户端订阅没更新 | 确认你修改的是正确的 Profile;客户端可能有自己的缓存 |
-| 节点源 fetch 失败 | Web UI 仪表板会显示错误信息;常见原因: VPS 出口 IP 被机场封禁、订阅链接失效 |
+| 节点源 fetch 失败 | Web UI 仪表板会显示错误信息;常见原因: VPS 出口 IP 被机场封禁、订阅链接失效。直连 403 而本地能拉到,多半是按来源 IP 拦截,见下方「借其它机器的出口拉订阅」 |
 | Surge import 失败 | 上传 .conf 时确认编码是 UTF-8 |
 
 ---
+
+## 借其它机器的出口拉订阅
+
+机场拦截服务器 IP 时,节点源可以配 `fetch_proxy`(用法见 `docs/cookbook.md` 1.4)。代理由能拉到订阅的那台机器(下称「出口机」)主动用 SSH 反向隧道连到服务器提供,出口机不需要公网 IP,也不用开端口。
+
+**1. 服务器:查容器网关、放开 sshd 绑定地址**
+
+```bash
+docker inspect nodedeck --format '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}'   # 例 172.18.0.1
+```
+
+sshd 默认只允许反向隧道绑在 127.0.0.1,容器访问不到。在 `/etc/ssh/sshd_config` 设 `GatewayPorts clientspecified`,然后 `sudo sshd -t && sudo systemctl reload ssh`。改前先备份,`sshd -t` 不通过别 reload。
+
+**2. 服务器:给出口机一把只能开这一个端口的 key**
+
+```text
+# ~/.ssh/authorized_keys(OpenSSH 7.8+)
+restrict,port-forwarding,permitlisten="172.18.0.1:18888" ssh-ed25519 AAAA... egress-host
+```
+
+**3. 出口机:常驻隧道**
+
+```bash
+# 动态转发(OpenSSH 7.6+):服务器上出现一个 SOCKS5 代理,出站走出口机的网络
+ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
+  -R 172.18.0.1:18888 user@your-server
+# 节点源填 fetch_proxy: socks5://172.18.0.1:18888
+
+# 出口机上已有 HTTP 代理(如 Surge 的 8888)也可以直接转发它
+ssh -N ... -R 172.18.0.1:18888:127.0.0.1:8888 user@your-server
+# 节点源填 fetch_proxy: http://172.18.0.1:18888
+```
+
+用 launchd(macOS)/ systemd(Linux)/ autossh 托管,断线自动重连。隧道断开期间拉取失败会回退旧 cache,订阅照常下发。
+
+- 出口机自己跑着 Surge / Clash 增强模式时,它发出的请求仍受本机规则约束:要给机场订阅域名加一条 DIRECT 规则,否则可能又绕到一个境外节点上被拦
+- 18888 只绑在 docker 网桥上,公网访问不到;但服务器上的其它进程能用它借出口机上网,介意的话转发到带认证的代理
+
 
 ## 安全建议
 
