@@ -275,7 +275,7 @@ export function NotificationsPage() {
           <EventRow
             icon={Gauge}
             title="流量 / 到期预警"
-            description="节点源刷新时检查 Subscription-UserInfo,跌破阈值后每 24 小时最多提醒一次"
+            description="节点源刷新时检查 Subscription-UserInfo,每个阶段只提醒一次,续费或流量重置后重新计"
             checked={draft.events.userinfo_alert.enabled}
             onCheckedChange={(v) =>
               updateEvents({ userinfo_alert: { ...draft.events.userinfo_alert, enabled: v } })

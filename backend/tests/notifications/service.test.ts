@@ -137,12 +137,27 @@ describe("onProviderRefreshSucceeded - userinfo 阈值告警", () => {
     };
   }
 
-  it("到期剩余天数跌破阈值时推送,24h 内不重复", async () => {
+  it("到期剩余天数跌破阈值时推送,隔天仍未续费也不重复", async () => {
     const p = httpProvider();
     await onProviderRefreshSucceeded(p, expiringUserinfo());
-    await onProviderRefreshSucceeded(p, expiringUserinfo());
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now() + 25 * 3_600_000);
+      await onProviderRefreshSucceeded(p, expiringUserinfo());
+    } finally {
+      vi.useRealTimers();
+    }
     expect(mockedSendBark).toHaveBeenCalledTimes(1);
     expect(mockedSendBark.mock.calls[0][1].title).toBe("订阅即将到期");
+  });
+
+  it("即将到期 → 已到期 各推一次", async () => {
+    const p = httpProvider();
+    await onProviderRefreshSucceeded(p, expiringUserinfo());
+    const expired = { upload: 0, download: 0, total: 0, expire: Math.floor(Date.now() / 1000) - DAY };
+    await onProviderRefreshSucceeded(p, expired);
+    await onProviderRefreshSucceeded(p, expired);
+    expect(mockedSendBark.mock.calls.map((c) => c[1].title)).toEqual(["订阅即将到期", "订阅已到期"]);
   });
 
   it("恢复阈值之上(续费)后再次跌破立即重推", async () => {
@@ -168,6 +183,34 @@ describe("onProviderRefreshSucceeded - userinfo 阈值告警", () => {
     mockedSendBark.mockClear();
     await onProviderRefreshSucceeded(p, { upload: 100 * GB, download: GB, total: 100 * GB, expire: 0 });
     expect(mockedSendBark.mock.calls[0][1].title).toBe("订阅流量已用尽");
+  });
+
+  it("流量用尽后直到重置都只推一次,重置后再用尽重新推", async () => {
+    const p = httpProvider();
+    const usedUp = { upload: 100 * GB, download: 0, total: 100 * GB, expire: 0 };
+    await onProviderRefreshSucceeded(p, { upload: 96 * GB, download: 0, total: 100 * GB, expire: 0 });
+    await onProviderRefreshSucceeded(p, usedUp);
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now() + 7 * DAY * 1000);
+      await onProviderRefreshSucceeded(p, usedUp);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(mockedSendBark.mock.calls.map((c) => c[1].title)).toEqual(["订阅流量告急", "订阅流量已用尽"]);
+
+    // 每月重置
+    await onProviderRefreshSucceeded(p, { upload: 0, download: 0, total: 100 * GB, expire: 0 });
+    await onProviderRefreshSucceeded(p, usedUp);
+    expect(mockedSendBark).toHaveBeenCalledTimes(3);
+  });
+
+  it("清状态时连带清掉旧版不分阶段的 key", async () => {
+    __resetStateForTest({ "userinfo:p1:traffic": Date.now() });
+    const p = httpProvider();
+    await onProviderRefreshSucceeded(p, { upload: 0, download: 0, total: 100 * GB, expire: 0 });
+    await onProviderRefreshSucceeded(p, { upload: 100 * GB, download: 0, total: 100 * GB, expire: 0 });
+    expect(mockedSendBark).toHaveBeenCalledTimes(1);
   });
 
   it("provider_ids 白名单外的 provider 不检查", async () => {

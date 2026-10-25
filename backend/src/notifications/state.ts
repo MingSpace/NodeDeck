@@ -54,14 +54,6 @@ export async function clearStateByPrefix(prefix: string): Promise<void> {
   if (changed) persist();
 }
 
-export async function clearStateKey(key: string): Promise<void> {
-  const state = await loadState();
-  if (key in state) {
-    delete state[key];
-    persist();
-  }
-}
-
 /** 仅测试用:重置内存副本。 */
 export function __resetStateForTest(initial?: Record<string, number>): void {
   stateCache = initial ?? null;

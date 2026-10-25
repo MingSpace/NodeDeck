@@ -5,12 +5,15 @@ import type { NotificationConfig } from "../schemas/notification.js";
 import { loadNotificationConfig } from "../storage/notification-store.js";
 import { sendBark, type BarkSendResult } from "./bark.js";
 import { checkUserinfo, formatBytes } from "./checks.js";
-import { shouldSend, clearStateByPrefix, clearStateKey } from "./state.js";
+import { shouldSend, clearStateByPrefix } from "./state.js";
 import { logger } from "../logger.js";
 
 const HOUR_MS = 3_600_000;
-/** userinfo 告警在阈值之下时每 24h 最多重复一次 */
-const USERINFO_COOLDOWN_MS = 24 * HOUR_MS;
+/**
+ * userinfo 告警每个阶段(即将到期 / 已到期、流量告急 / 已用尽)只推一次:
+ * 流量要等下个重置日才恢复,按天重推只是噪音。回到阈值之上(续费 / 流量重置)清状态,下次跌破再推。
+ */
+const ONCE_PER_STAGE = Number.POSITIVE_INFINITY;
 /** /sub 错误与 warnings 按内容 hash 冷却 1h,避免客户端轮询刷屏 */
 const SUB_COOLDOWN_MS = 1 * HOUR_MS;
 
@@ -95,8 +98,8 @@ export async function onProviderRefreshSucceeded(provider: Provider, userinfo?: 
     const expireKey = `userinfo:${provider.id}:expire`;
     if (result.expire) {
       if (result.expire.triggered) {
-        if (await shouldSend(expireKey, USERINFO_COOLDOWN_MS)) {
-          const expired = result.expire.daysLeft <= 0;
+        const expired = result.expire.daysLeft <= 0;
+        if (await shouldSend(`${expireKey}:${expired ? "expired" : "soon"}`, ONCE_PER_STAGE)) {
           const dateStr = new Date(result.expire.expireAt).toLocaleDateString("zh-CN");
           await sendBark(cfg.bark, {
             title: expired ? "订阅已到期" : "订阅即将到期",
@@ -106,16 +109,16 @@ export async function onProviderRefreshSucceeded(provider: Provider, userinfo?: 
           });
         }
       } else {
-        // 恢复阈值之上(续费成功)→ 清状态,下次再跌破立即推
-        await clearStateKey(expireKey);
+        // 恢复阈值之上(续费成功)→ 清状态,下次再跌破立即推。前缀匹配顺带清掉旧版不分阶段的 key
+        await clearStateByPrefix(expireKey);
       }
     }
 
     const trafficKey = `userinfo:${provider.id}:traffic`;
     if (result.traffic) {
       if (result.traffic.triggered) {
-        if (await shouldSend(trafficKey, USERINFO_COOLDOWN_MS)) {
-          const usedUp = result.traffic.remainingBytes <= 0;
+        const usedUp = result.traffic.remainingBytes <= 0;
+        if (await shouldSend(`${trafficKey}:${usedUp ? "used_up" : "low"}`, ONCE_PER_STAGE)) {
           await sendBark(cfg.bark, {
             title: usedUp ? "订阅流量已用尽" : "订阅流量告急",
             body: usedUp
@@ -124,7 +127,7 @@ export async function onProviderRefreshSucceeded(provider: Provider, userinfo?: 
           });
         }
       } else {
-        await clearStateKey(trafficKey);
+        await clearStateByPrefix(trafficKey);
       }
     }
   } catch (err) {
