@@ -161,13 +161,13 @@ Caddy 会自动申请 Let's Encrypt 证书。
 
 ```bash
 cd data
-# 注意 config.yaml 中的 password_hash 是敏感信息
+# config.yaml 的 password_hash、secret.key、egress_ed25519(SSH 出口私钥)都是敏感信息
 git init
-git add . ':!cache' ':!logs' ':!config.yaml'
+git add . ':!cache' ':!logs' ':!config.yaml' ':!secret.key' ':!egress_ed25519'
 git commit -m "config snapshot"
 ```
 
-> `data/cache/` 是订阅源缓存、`data/logs/` 是进程日志,都不需要备份。
+> `data/cache/` 是订阅源缓存、`data/logs/` 是进程日志,都不需要备份。`data/egresses/` 里用密码登录的出口带明文密码,别推到公开仓库。
 
 ---
 
@@ -193,14 +193,29 @@ git commit -m "config snapshot"
 | 容器启动后无法访问 | 看 `docker logs nodedeck`,确认监听端口与 docker-compose ports 映射一致 |
 | 首次登录密码不对 | 删除 `data/config.yaml`,重启容器,会用新的 `INITIAL_PASSWORD` 重建 |
 | 改了 Web UI 配置后客户端订阅没更新 | 确认你修改的是正确的 Profile;客户端可能有自己的缓存 |
-| 节点源 fetch 失败 | Web UI 仪表板会显示错误信息;常见原因: VPS 出口 IP 被机场封禁、订阅链接失效。直连 403 而本地能拉到,多半是按来源 IP 拦截,见下方「借其它机器的出口拉订阅」 |
+| 节点源 fetch 失败 | Web UI 仪表板会显示错误信息;常见原因: VPS 出口 IP 被机场封禁、订阅链接失效。直连 403 而本地能拉到,多半是按来源 IP 拦截,见下方「借其它机器的出口拉订阅」;配了出口仍失败,报错会逐条列出每条线路的原因 |
 | Surge import 失败 | 上传 .conf 时确认编码是 UTF-8 |
 
 ---
 
 ## 借其它机器的出口拉订阅
 
-机场拦截服务器 IP 时,节点源可以配 `fetch_proxy`(用法见 `docs/cookbook.md` 1.4)。代理由能拉到订阅的那台机器(下称「出口机」)主动用 SSH 反向隧道连到服务器提供,出口机不需要公网 IP,也不用开端口。
+机场拦截服务器 IP 时,在 Web UI「出口」页登记能拉到订阅的机器,再在节点源的「拉取线路」里选上(用法见 `docs/cookbook.md` 1.4)。按出口机能不能从服务器连进去,分两种做法。
+
+### 能连进去的机器(有公网 SSH):SSH 出口,推荐
+
+服务器拉订阅时临时 SSH 过去,拉完即断,**出口机上不装任何东西、没有常驻进程**。出口机要做的:
+
+1. 出口页新建 SSH 出口,复制「NodeDeck 密钥」那一行,追加到出口机的 `authorized_keys`(OpenSSH 在 `~/.ssh/`,OpenWrt / dropbear 在 `/etc/dropbear/`)
+2. sshd 允许 TCP 转发(OpenSSH 默认 `AllowTcpForwarding yes`;dropbear 默认允许,启动参数里没有 `-j` / `-k` 即可)
+3. 防火墙 / 云安全组放行服务器 IP 访问 SSH 端口
+4. 出口页「测试连接」确认出口 IP 正确,顺手固定主机指纹
+
+SSH 私钥在 `data/egress_ed25519`,随 `data/` 一起备份;删掉会重新生成,但所有出口机都要换新公钥。
+
+### 连不进去的机器(家里内网、无公网 IP):反向隧道 + 代理出口
+
+只能由出口机主动连到服务器,在服务器上开一个代理端口,再登记为「现成代理」出口。代价是出口机要常驻一条隧道。
 
 **1. 服务器:查容器网关、放开 sshd 绑定地址**
 
@@ -223,14 +238,14 @@ restrict,port-forwarding,permitlisten="172.18.0.1:18888" ssh-ed25519 AAAA... egr
 # 动态转发(OpenSSH 7.6+):服务器上出现一个 SOCKS5 代理,出站走出口机的网络
 ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 \
   -R 172.18.0.1:18888 user@your-server
-# 节点源填 fetch_proxy: socks5://172.18.0.1:18888
+# 出口填 url: socks5://172.18.0.1:18888
 
 # 出口机上已有 HTTP 代理(如 Surge 的 8888)也可以直接转发它
 ssh -N ... -R 172.18.0.1:18888:127.0.0.1:8888 user@your-server
-# 节点源填 fetch_proxy: http://172.18.0.1:18888
+# 出口填 url: http://172.18.0.1:18888
 ```
 
-用 launchd(macOS)/ systemd(Linux)/ autossh 托管,断线自动重连。隧道断开期间拉取失败会回退旧 cache,订阅照常下发。
+用 launchd(macOS)/ systemd(Linux)/ autossh 托管,断线自动重连。隧道断开期间会换下一条线路,全部失败回退旧 cache,订阅照常下发。
 
 - 出口机自己跑着 Surge / Clash 增强模式时,它发出的请求仍受本机规则约束:要给机场订阅域名加一条 DIRECT 规则,否则可能又绕到一个境外节点上被拦
 - 18888 只绑在 docker 网桥上,公网访问不到;但服务器上的其它进程能用它借出口机上网,介意的话转发到带认证的代理

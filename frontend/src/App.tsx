@@ -12,6 +12,9 @@ import { RequireAuth } from "@/components/require-auth";
 const ProvidersPage = lazy(() =>
   import("@/pages/providers").then((m) => ({ default: m.ProvidersPage })),
 );
+const EgressesPage = lazy(() =>
+  import("@/pages/egresses").then((m) => ({ default: m.EgressesPage })),
+);
 const NodesPage = lazy(() => import("@/pages/nodes").then((m) => ({ default: m.NodesPage })));
 const RulesPage = lazy(() => import("@/pages/rules").then((m) => ({ default: m.RulesPage })));
 const GroupsPage = lazy(() => import("@/pages/groups").then((m) => ({ default: m.GroupsPage })));
@@ -59,6 +62,14 @@ export default function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <ProvidersPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="egresses"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <EgressesPage />
             </Suspense>
           }
         />

@@ -4,8 +4,10 @@ import {
   proxyGroupRepo,
   generalPresetRepo,
   profileRepo,
+  providerRepo,
 } from "../storage/repos.js";
 import type { Profile } from "../schemas/profile.js";
+import type { Provider } from "../schemas/provider.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
 import type { RuleSet } from "../schemas/ruleset.js";
@@ -15,7 +17,7 @@ import type { NotificationConfig } from "../schemas/notification.js";
  * 可被其它实体引用的实体类型。`profiles` 不在列表里 —— 它是引用链的终点,
  * 没有任何实体引用 profile(订阅 URL 直接按 token 找 profile,不构成实体间引用)。
  */
-export const REFERENCEABLE_KINDS = ["providers", "rules", "groups", "generals", "modules"] as const;
+export const REFERENCEABLE_KINDS = ["providers", "rules", "groups", "generals", "modules", "egresses"] as const;
 export type ReferenceableKind = (typeof REFERENCEABLE_KINDS)[number];
 
 export function isReferenceableKind(kind: string): kind is ReferenceableKind {
@@ -24,7 +26,7 @@ export function isReferenceableKind(kind: string): kind is ReferenceableKind {
 
 export interface EntityReference {
   /** 引用方实体类型;`notification` 是全局配置文件而不是列表实体 */
-  from_kind: "profiles" | "groups" | "generals" | "rules" | "notification";
+  from_kind: "profiles" | "providers" | "groups" | "generals" | "rules" | "notification";
   /** 引用方 id(notification 固定为 `notification`) */
   from_id: string;
   /** 引用方展示名 */
@@ -45,6 +47,7 @@ export interface EntityReference {
 
 interface Sources {
   profiles: Profile[];
+  providers: Provider[];
   groups: ProxyGroup[];
   generals: GeneralPreset[];
   rules: RuleSet[];
@@ -52,8 +55,9 @@ interface Sources {
 }
 
 async function loadSources(): Promise<Sources> {
-  const [profiles, groups, generals, rules, notification] = await Promise.all([
+  const [profiles, providers, groups, generals, rules, notification] = await Promise.all([
     profileRepo.list(),
+    providerRepo.list(),
     proxyGroupRepo.list(),
     generalPresetRepo.list(),
     rulesetRepo.list(),
@@ -61,6 +65,7 @@ async function loadSources(): Promise<Sources> {
   ]);
   return {
     profiles: profiles.map((e) => e.data),
+    providers: providers.map((e) => e.data),
     groups: groups.map((e) => e.data),
     generals: generals.map((e) => e.data),
     rules: rules.map((e) => e.data),
@@ -90,6 +95,8 @@ export async function findEntityReferences(
       return findGeneralPresetReferences(id, sources);
     case "modules":
       return findSurgeModuleReferences(id, sources);
+    case "egresses":
+      return findEgressReferences(id, sources);
   }
 }
 
@@ -206,6 +213,25 @@ function findSurgeModuleReferences(id: string, s: Sources): EntityReference[] {
 }
 
 // ---------------------------------------------------------------------------
+// egresses —— 只被 provider.fetch_via 按 id 引用。删了会让该节点源少一条拉取线路,
+// 若它是唯一一条就拉不到订阅,所以也拦。
+// ---------------------------------------------------------------------------
+
+function findEgressReferences(id: string, s: Sources): EntityReference[] {
+  return s.providers
+    .filter((p) => p.fetch_via.includes(id))
+    .map((p) => ({
+      from_kind: "providers" as const,
+      from_id: p.id,
+      from_name: p.name,
+      field: "fetch_via",
+      via: "id" as const,
+      value: id,
+      blocking: true,
+    }));
+}
+
+// ---------------------------------------------------------------------------
 // groups —— profile.proxy_groups 按 id;策略位置(policy / via / 嵌套组)按 name
 // ---------------------------------------------------------------------------
 
@@ -292,6 +318,7 @@ function findGroupReferences(id: string, s: Sources): EntityReference[] {
 
 const KIND_LABELS: Record<EntityReference["from_kind"], string> = {
   profiles: "Profile",
+  providers: "节点源",
   groups: "策略组",
   generals: "全局配置",
   rules: "规则集",

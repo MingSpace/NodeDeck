@@ -2,6 +2,7 @@ import type { Hono } from "hono";
 import { authRouter } from "./auth.js";
 import { entitiesRouter } from "./entities.js";
 import { providerActionsRouter } from "./provider-actions.js";
+import { egressActionsRouter } from "./egress-actions.js";
 import { dashboardRouter } from "./dashboard.js";
 import { importRouter } from "./import.js";
 import { profilePreviewRouter } from "./profile-preview.js";
@@ -20,6 +21,7 @@ export function mountApiRoutes(app: Hono): void {
   // Everything below requires session + ip allowlist
   app.use("/api/entities/*", ipAllowlist, requireSession);
   app.use("/api/providers/*", ipAllowlist, requireSession);
+  app.use("/api/egresses/*", ipAllowlist, requireSession);
   app.use("/api/dashboard/*", ipAllowlist, requireSession);
   app.use("/api/import/*", ipAllowlist, requireSession);
   app.use("/api/profiles/*", ipAllowlist, requireSession);
@@ -31,6 +33,7 @@ export function mountApiRoutes(app: Hono): void {
 
   app.route("/api/entities", entitiesRouter);
   app.route("/api/providers", providerActionsRouter);
+  app.route("/api/egresses", egressActionsRouter);
   app.route("/api/dashboard", dashboardRouter);
   app.route("/api/import", importRouter);
   app.route("/api/profiles", profilePreviewRouter);

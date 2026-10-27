@@ -1,7 +1,10 @@
 import { readFile } from "node:fs/promises";
 import type { Provider } from "../schemas/provider.js";
+import { DIRECT_ROUTE, type Egress } from "../schemas/egress.js";
+import { egressRepo } from "../storage/repos.js";
 import { logger } from "../logger.js";
-import { createProxiedFetch, describeFetchError, redactProxyUrl } from "./fetch-proxy.js";
+import { describeFetchError } from "./fetch-proxy.js";
+import { openEgressFetch } from "./egress.js";
 
 export interface FetchResult {
   text: string;
@@ -16,11 +19,13 @@ export type ProviderFetchInput = Pick<
   Provider,
   "id" | "type" | "url" | "path" | "content" | "user_agent"
 > &
-  Partial<Pick<Provider, "fetch_proxy">>;
+  Partial<Pick<Provider, "fetch_via">>;
 
 export interface FetchOptions {
   /** 单次请求超时;Web UI「测试拉取」用更短的值,免得页面干等。 */
   timeoutMs?: number;
+  /** 按 id 取出口;默认读 data/egresses,测试里注入。 */
+  loadEgress?: (id: string) => Promise<Egress | null>;
 }
 
 const FETCH_TIMEOUT_MS = 30_000;
@@ -121,25 +126,65 @@ export async function fetchProviderContent(
     };
   }
   // type === "http"
-  const proxy = provider.fetch_proxy;
-  if (!proxy) return fetchHttp(provider, globalThis.fetch, opts);
-  const proxied = createProxiedFetch(proxy);
-  try {
-    return await fetchHttp(provider, proxied.fetch, opts);
-  } finally {
-    // close 等在途请求结束;这里请求都已完成或已 abort,不会卡住
-    await proxied.close().catch(() => undefined);
+  return fetchHttpViaRoutes(provider, opts);
+}
+
+const defaultLoadEgress = async (id: string) => (await egressRepo.get(id))?.data ?? null;
+
+/**
+ * 按 fetch_via 的顺序逐条线路拉取,拿到非空内容即返回;一条线路失败(连不上 / 全部 UA 非 2xx /
+ * 全部空 body)才换下一条。全失败时把每条线路的原因拼在一起报,便于一眼看出卡在哪。
+ */
+async function fetchHttpViaRoutes(provider: ProviderFetchInput, opts: FetchOptions): Promise<FetchResult> {
+  const routes = provider.fetch_via?.length ? provider.fetch_via : [DIRECT_ROUTE];
+  const loadEgress = opts.loadEgress ?? defaultLoadEgress;
+  const failures: string[] = [];
+  let emptyResult: FetchResult | null = null;
+
+  for (const route of routes) {
+    let label = route === DIRECT_ROUTE ? "直连" : `出口 ${route}`;
+    try {
+      let result: FetchResult;
+      if (route === DIRECT_ROUTE) {
+        result = await fetchHttp(provider, globalThis.fetch, opts);
+      } else {
+        const egress = await loadEgress(route);
+        if (!egress) throw new Error("不存在(可能已删除)");
+        label = `经 ${egress.name}`;
+        const routed = openEgressFetch(egress);
+        try {
+          result = await fetchHttp(provider, routed.fetch, opts, egress.name);
+        } finally {
+          // close 等在途请求结束;这里请求都已完成或已 abort,不会卡住
+          await routed.close().catch(() => undefined);
+        }
+      }
+      if (result.text.trim().length > 0) return result;
+      emptyResult ??= result;
+      failures.push(`${label}: 上游返回空内容`);
+    } catch (err) {
+      failures.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    if (routes.length > 1) {
+      logger.warn({ providerId: provider.id, route, reason: failures.at(-1) }, "Provider fetch route failed, trying next");
+    }
   }
+
+  // 有线路拿到 200 空 body:回传空文本,由 load.ts 给出「已尝试多 UA 仍空」的提示
+  if (emptyResult) return emptyResult;
+  // 只有一条线路时原样报错,不加「直连:」前缀,与之前的报错一致
+  if (routes.length === 1) throw new Error(failures[0].replace(/^直连: /, ""));
+  throw new Error(failures.join(";"));
 }
 
 async function fetchHttp(
   provider: ProviderFetchInput,
   fetchImpl: typeof globalThis.fetch,
   opts: FetchOptions,
+  egressName?: string,
 ): Promise<FetchResult> {
   const url = provider.url!;
   const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
-  const proxyLabel = provider.fetch_proxy ? redactProxyUrl(provider.fetch_proxy) : undefined;
   // 订阅 token 多在 query / path 里,日志会落盘并推到 Web UI,只记 host
   const logUrl = redactSubscriptionUrl(url);
 
@@ -166,14 +211,14 @@ async function fetchHttp(
       // 连不上 / 超时 / 代理拒绝 / 超出大小上限都与 UA 无关,换 UA 只会把同一个错误再等 N 遍
       // (代理挂掉时最坏 6 × 30s)。直接抛,让 load.ts 回退旧 cache。
       const reason = describeFetchError(err);
-      logger.warn({ providerId: provider.id, url: logUrl, userAgent: ua, proxy: proxyLabel, reason }, "Provider fetch errored");
-      throw new Error(proxyLabel ? `经代理 ${proxyLabel} 拉取失败: ${reason}` : reason, { cause: err });
+      logger.warn({ providerId: provider.id, url: logUrl, userAgent: ua, egress: egressName, reason }, "Provider fetch errored");
+      throw new Error(reason, { cause: err });
     }
     if (!attempt.ok) {
       statuses.push(attempt.status);
-      lastError = new Error(describeHttpStatus(attempt.status, statuses, proxyLabel));
+      lastError = new Error(describeHttpStatus(attempt.status, statuses, egressName));
       logger.warn(
-        { providerId: provider.id, url: logUrl, userAgent: ua, status: attempt.status, proxy: proxyLabel },
+        { providerId: provider.id, url: logUrl, userAgent: ua, status: attempt.status, egress: egressName },
         "Provider fetch non-2xx, trying next UA",
       );
       continue;
@@ -193,7 +238,7 @@ async function fetchHttp(
         bytes: attempt.text.length,
         userAgent: ua,
         hasUserinfo: !!attempt.userinfo_header,
-        proxy: proxyLabel,
+        egress: egressName,
       },
       "Provider HTTP fetch ok",
     );
@@ -226,14 +271,13 @@ async function fetchHttp(
 
 /**
  * 换遍 UA 全是 403:绝大多数是机场 / Cloudflare 按来源 IP 拦截(境外服务器、机房 IP),
- * 而不是 UA 问题。直连时把这个判断写进报错,指给用户「拉取代理」这个出口。
+ * 而不是 UA 问题。把这个判断写进报错,指给用户「出口」。
  */
-function describeHttpStatus(status: number, statuses: number[], proxyLabel: string | undefined): string {
-  if (proxyLabel) return `HTTP ${status}(经代理 ${proxyLabel})`;
-  if (statuses.every((s) => s === 403)) {
-    return `HTTP ${status}(上游拒绝了服务器的请求,常见于按来源 IP 拦截境外服务器;可在节点源配置「拉取代理」借其它机器的出口)`;
-  }
-  return `HTTP ${status}`;
+function describeHttpStatus(status: number, statuses: number[], egressName: string | undefined): string {
+  if (!statuses.every((s) => s === 403)) return `HTTP ${status}`;
+  return egressName
+    ? `HTTP ${status}(上游也拦了这台出口机的 IP,常见于机房 IP)`
+    : `HTTP ${status}(上游拒绝了服务器的请求,常见于按来源 IP 拦截境外服务器;可添加「出口」借其它机器的网络,再在节点源的拉取线路里选上)`;
 }
 
 function redactSubscriptionUrl(url: string): string {

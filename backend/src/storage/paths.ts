@@ -9,6 +9,7 @@ export const SUBDIRS = [
   "modules",
   "general",
   "profiles",
+  "egresses",
   "cache",
 ] as const;
 

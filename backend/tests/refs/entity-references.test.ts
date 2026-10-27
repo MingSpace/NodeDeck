@@ -7,12 +7,14 @@ vi.mock("../../src/storage/repos.js", () => ({
   generalPresetRepo: { list: vi.fn() },
   surgeModuleRepo: { list: vi.fn() },
   profileRepo: { list: vi.fn() },
+  egressRepo: { list: vi.fn() },
 }));
 vi.mock("../../src/storage/notification-store.js", () => ({
   loadNotificationConfig: vi.fn(),
 }));
 
 import {
+  providerRepo,
   rulesetRepo,
   proxyGroupRepo,
   generalPresetRepo,
@@ -25,6 +27,7 @@ import {
   isReferenceableKind,
 } from "../../src/refs/entity-references.js";
 import { profileSchema } from "../../src/schemas/profile.js";
+import { providerSchema } from "../../src/schemas/provider.js";
 import { proxyGroupSchema } from "../../src/schemas/proxy-group.js";
 import { rulesetSchema } from "../../src/schemas/ruleset.js";
 import { generalPresetSchema } from "../../src/schemas/general-preset.js";
@@ -70,9 +73,11 @@ function setSources(s: {
   groups?: ReturnType<typeof group>[];
   rules?: ReturnType<typeof ruleset>[];
   generals?: ReturnType<typeof general>[];
+  providers?: ReturnType<typeof providerSchema.parse>[];
   providerIds?: string[] | null;
 }): void {
   (profileRepo.list as unknown as Mock).mockResolvedValue(entries(s.profiles ?? []));
+  (providerRepo.list as unknown as Mock).mockResolvedValue(entries(s.providers ?? []));
   (proxyGroupRepo.list as unknown as Mock).mockResolvedValue(entries(s.groups ?? []));
   (rulesetRepo.list as unknown as Mock).mockResolvedValue(entries(s.rules ?? []));
   (generalPresetRepo.list as unknown as Mock).mockResolvedValue(entries(s.generals ?? []));
@@ -280,6 +285,25 @@ describe("findEntityReferences: generals / modules", () => {
     setSources({ profiles: [profile({ surge_modules: ["mod-1"] })] });
     const refs = await findEntityReferences("modules", "mod-1");
     expect(refs.map((r) => r.field)).toEqual(["surge_modules"]);
+  });
+});
+
+describe("findEntityReferences: egresses", () => {
+  const provider = (id: string, fetch_via: string[]) =>
+    providerSchema.parse({ id, name: `源 ${id}`, type: "http", url: "https://airport.example/sub", fetch_via });
+
+  it("被节点源 fetch_via 引用时阻止删除", async () => {
+    setSources({ providers: [provider("a", ["eg-1", "direct"]), provider("b", ["eg-2"])] });
+    const refs = await findEntityReferences("egresses", "eg-1");
+    expect(refs).toEqual([
+      expect.objectContaining({ from_kind: "providers", from_id: "a", field: "fetch_via", blocking: true }),
+    ]);
+    expect(describeReferences(refs)).toBe("节点源「源 a」的 fetch_via");
+  });
+
+  it("没有节点源用到 → 空数组", async () => {
+    setSources({ providers: [provider("a", [])] });
+    expect(await findEntityReferences("egresses", "eg-1")).toEqual([]);
   });
 });
 

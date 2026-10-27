@@ -1,6 +1,7 @@
 export * from "./common.js";
 export * from "./userinfo.js";
 export * from "./node.js";
+export * from "./egress.js";
 export * from "./provider.js";
 export * from "./ruleset.js";
 export * from "./proxy-group.js";

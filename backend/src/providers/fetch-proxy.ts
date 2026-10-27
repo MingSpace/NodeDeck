@@ -1,13 +1,11 @@
 import { fetch as undiciFetch, ProxyAgent, type Dispatcher } from "undici";
 
 /**
- * 节点源「拉取代理」:机场按来源 IP 拦截(典型是境外服务器拿到 Cloudflare 403)时,
- * 借另一台机器的网络出口去拉订阅。代理一般经 SSH 反向隧道暴露在本机/容器网桥上,部署见
- * docs/deployment.md「借其它机器的出口拉订阅」。
+ * 代理型出口(egress type=proxy):经现成的 http / socks5 代理拉订阅。SSH 型出口见 egress.ts。
  *
  * 为什么不用全局 fetch:容器是 Node 20,内置 fetch 不认 HTTP_PROXY,也不接受 npm 版 undici 的
- * dispatcher(两份 undici 内部版本不同)。所以走代理时整条请求都用 npm 版 undici 的 fetch;
- * 直连仍用全局 fetch,行为与之前完全一致。
+ * dispatcher(两份 undici 内部版本不同)。所以走出口时整条请求都用 npm 版 undici 的 fetch;
+ * 直连仍用全局 fetch。
  */
 export interface ProxiedFetch {
   fetch: typeof globalThis.fetch;

@@ -7,6 +7,7 @@ import {
   generalPresetRepo,
   surgeModuleRepo,
   profileRepo,
+  egressRepo,
 } from "../storage/repos.js";
 import { Repo } from "../storage/repo.js";
 import { providerSchema, type Provider } from "../schemas/provider.js";
@@ -15,6 +16,7 @@ import { proxyGroupSchema } from "../schemas/proxy-group.js";
 import { generalPresetSchema } from "../schemas/general-preset.js";
 import { surgeModuleSchema } from "../schemas/surge-module.js";
 import { profileSchema } from "../schemas/profile.js";
+import { egressSchema } from "../schemas/egress.js";
 import { refreshProvider } from "../providers/load.js";
 import {
   findEntityReferences,
@@ -36,6 +38,7 @@ const KINDS: Record<string, EntityKindDef> = {
   generals: { repo: generalPresetRepo as Repo<ZodTypeAny, { id: string } & Record<string, unknown>>, schema: generalPresetSchema },
   modules: { repo: surgeModuleRepo as Repo<ZodTypeAny, { id: string } & Record<string, unknown>>, schema: surgeModuleSchema },
   profiles: { repo: profileRepo as Repo<ZodTypeAny, { id: string } & Record<string, unknown>>, schema: profileSchema },
+  egresses: { repo: egressRepo as Repo<ZodTypeAny, { id: string } & Record<string, unknown>>, schema: egressSchema },
 };
 
 export const entitiesRouter = new Hono();

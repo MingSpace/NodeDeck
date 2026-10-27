@@ -9,6 +9,7 @@ vi.mock("../../src/storage/repos.js", () => ({
   generalPresetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
   surgeModuleRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
   profileRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  egressRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
 }));
 vi.mock("../../src/providers/load.js", () => ({
   refreshProvider: vi.fn(),

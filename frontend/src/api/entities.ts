@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 
-export type EntityKind = "providers" | "rules" | "groups" | "generals" | "modules" | "profiles";
+export type EntityKind = "providers" | "rules" | "groups" | "generals" | "modules" | "profiles" | "egresses";
 
 /** 与 backend/src/routes/entities.ts 的列表响应 meta 保持同步 */
 export interface EntityMeta {
@@ -59,7 +59,7 @@ export function useSaveEntity<T extends { id: string }>(kind: EntityKind) {
 
 // 与 backend/src/refs/entity-references.ts 的 EntityReference 保持同步
 export interface EntityReference {
-  from_kind: "profiles" | "groups" | "generals" | "rules" | "notification";
+  from_kind: "profiles" | "providers" | "groups" | "generals" | "rules" | "notification";
   from_id: string;
   from_name: string;
   field: string;

@@ -207,28 +207,52 @@ Web UI 节点源编辑页的「流量 / 到期」模块可以一键「排除到�
 
 ### 1.4 机场拦截服务器 IP:借其它机器的出口拉订阅
 
-有些机场(多见于套 Cloudflare 的)只放行国内 IP 和自家节点出口,境外服务器拉订阅直接 403,换 UA 也没用。这时给节点源配一个「拉取代理」,借另一台机器(家里的 Mac mini、国内 VPS……)的网络出口去拉:
+有些机场(多见于套 Cloudflare 的)只放行国内家宽 IP 和自家节点出口,境外服务器拉订阅直接 403,换 UA 也没用。这时先在「出口」页登记能拉到的机器,再在节点源的「拉取线路」里按顺序选上。
+
+**出口**(`data/egresses/*.yaml`)有两种:
+
+```yaml
+# SSH:拉订阅时 NodeDeck 主动登录过去,借它的网络发请求,拉完即断。对方只需开 SSH、允许 TCP 转发
+id: egress-office
+name: 公司路由器
+type: ssh
+host: 203.0.113.10
+port: 22222
+username: root
+auth: key                 # 默认用 NodeDeck 自己的密钥;也可 auth: password + password: …
+host_key: SHA256:…        # 可选,填了就校验对方主机指纹
+
+# 现成代理:已有 http / https / socks5 代理时用(如出口机主动建的反向隧道)
+id: egress-tunnel
+name: 家里 mini
+type: proxy
+url: socks5://172.18.0.1:18888
+```
+
+**节点源**按顺序列出要用的出口,`direct` 代表服务器直连;前一条失败才换下一条,不写就是只直连:
 
 ```yaml
 # data/providers/flower.yaml(节选)
 type: http
 url: https://airport.example/sub?token=your-token-here
-fetch_proxy: socks5://172.18.0.1:18888   # 也支持 http:// / https://,可带 user:pass@
+fetch_via: [egress-office, egress-tunnel, direct]
 ```
 
-- **按节点源配置**,不是全局的:K 家直连、F 家走家里出口、G 家走另一台 VPS,各填各的。编辑页输入框会把其它源用过的代理列成候选
+- **NodeDeck 的公钥**在出口编辑页(选「NodeDeck 密钥」时显示),复制那一行加到出口机的 `authorized_keys`(Linux 一般 `~/.ssh/authorized_keys`,OpenWrt 是 `/etc/dropbear/authorized_keys`)。行首的 `command="/bin/false",no-pty,…` 限制这把钥匙只能转发端口、开不了 shell。私钥首次用到时生成在 `data/egress_ed25519`
+- 出口页「测试连接」经该出口访问外网,显示对方看到的出口 IP / 国家,以及 SSH 主机指纹(可一键固定)
+- 节点源编辑页「测试拉取」用表单里还没保存的值,逐条线路各试一次(没列直连时顺带测直连),不写 cache:
+
+  ```
+  按当前顺序会经「公司路由器」拉到。
+  ✓ 公司路由器   128 个节点  24 KB  带流量信息   1.2s
+  ✗ 服务器直连   HTTP 403(上游拒绝了服务器的请求…)  0.4s
+  ```
+
 - 只影响 NodeDeck 拉订阅这一步,客户端连节点不受影响
-- 编辑页「测试拉取」用表单里还没保存的值试拉一次,配了代理时会把「服务器直连」和「经代理」并排测,不写 cache:
-
-  ```
-  直连被挡,经代理正常。保存后会经代理拉取。
-  ✓ 经代理 socks5://172.18.0.1:18888   128 个节点  24 KB  带流量信息   1.2s
-  ✗ 服务器直连                          HTTP 403(上游拒绝了服务器的请求…)  0.4s
-  ```
-
-- 代理连不上时**立即失败**(不再换 6 个 UA 各等一遍),回退旧 cache,报错写明是哪个代理、什么原因(如 `ECONNREFUSED`)
-- 直连全部 403 时,报错会提示「可能是按来源 IP 拦截,可配拉取代理」
-- 代理怎么暴露给服务器:最省事是出口机器用 SSH 反向隧道连到服务器,见 `docs/deployment.md`「借其它机器的出口拉订阅」
+- 线路连不上时**立即换下一条**(不会换 6 个 UA 各等一遍);全部失败回退旧 cache,报错逐条列出每条线路卡在哪(SSH 登录被拒、端口不通、HTTP 403……)
+- 机房 IP 常被一并拦截:国内云服务器能 SSH 上去不代表机场放行它,以「测试拉取」为准
+- 还被节点源用着的出口不能删,先在节点源里移除
+- 连不进去的机器(家里内网、没公网 IP)只能由它主动建反向隧道再登记为代理出口,见 `docs/deployment.md`「借其它机器的出口拉订阅」
 
 
 ## 2. 四种规则形态

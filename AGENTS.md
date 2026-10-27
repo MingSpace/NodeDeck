@@ -37,7 +37,8 @@ NodeDeck = 个人自用的 Clash + Surge 订阅转换器 + Web 配置中心。�
 | chokidar         | 4.x       | 文件热加载                    |
 | pino             | 9.x       | 日志                       |
 | bcryptjs         | 2.x       | 密码哈希(纯 JS,无 native 依赖)   |
-| undici           | 7.x       | 节点源「拉取代理」(ProxyAgent:http / https / socks5),直连不经过它 |
+| undici           | 7.x       | 经出口拉订阅时的 fetch(代理出口用 ProxyAgent,SSH 出口用自定义 connect),直连不经过它 |
+| ssh2             | 1.x       | SSH 出口:按需登录出口机,direct-tcpip 通道转发请求(纯 JS,不跑 install 脚本) |
 | vitest           | 2.x       | 后端单测 + snapshot(只装在 backend) |
 | ESLint           | 9.x       | 扁平配置 + typescript-eslint 8.x   |
 | React            | 18.3      | 前端                       |
@@ -127,6 +128,7 @@ NodeDeck/
 │   │   │   ├── entities.ts         # 各实体 CRUD
 │   │   │   ├── profile-preview.ts  # Web UI 实时预览 + 链式诊断
 │   │   │   ├── provider-actions.ts # status / :id/nodes / :id/refresh / :id/extracted-hosts / refresh-all / test-fetch
+│   │   │   ├── egress-actions.ts   # /api/egresses:public-key(NodeDeck 的 SSH 公钥)/ test(经出口探测出口 IP)
 │   │   │   └── dashboard.ts / logs.ts / notification.ts / config.ts / import.ts / auth.ts
 │   │   ├── parsers/                # clash / surge / v2ray / uri / dedup / normalize / info-node-filter
 │   │   ├── import/                 # 整包 clash / surge 导入 + extract-hosts + dedup-pool
@@ -141,7 +143,7 @@ NodeDeck/
 │   │   │   ├── group-refs.ts       # group.proxies 悬空引用清理
 │   │   │   ├── hosts.ts            # hosts 合并 + splitClashHosts
 │   │   │   └── protocol-mapping.ts # 字段映射表(权威源)
-│   │   ├── providers/              # fetcher / fetch-proxy / scheduler(cron) / cache-store / pool / load
+│   │   ├── providers/              # fetcher / egress(SSH 出口)/ egress-key / fetch-proxy / scheduler(cron) / cache-store / pool / load
 │   │   ├── chain/apply.ts          # applyChainRules + validateChain + 诊断
 │   │   ├── notifications/          # bark / checks / service / state(订阅到期与刷新失败告警)
 │   │   ├── schemas/                # zod schema(全部实体)
@@ -392,7 +394,7 @@ profile 已经装进 Surge 之后,这些只读命令不产生流量也不改状�
 | host 的 `server:` 在 Clash 不生效 | generals DNS 的 `proxy-server-nameserver` 为空,而 `proxy-server-nameserver-policy` 需它非空才生效 | 在 generals DNS 填 `proxy-server-nameserver`(通用 DoH);`server:` 由 `splitClashHosts` 投到 `dns.proxy-server-nameserver-policy`(`*.`→`+.`),`DOMAIN-SET:`/`RULE-SET:` 仍跳过 + warning(`backend/src/generators/hosts.ts`) |
 | provider / 机场 `[Host]`、`hosts:` 段没带进订阅 | ① provider `emit_hosts` 关了或该源被禁用;② 上游 host 的 key 与本源节点 server 域名无关,被有意过滤(本项目只带**节点域名相关**的 host) | 输出 hosts = `general.hosts` + 各启用源手动 `provider.hosts` + 各源自动解析的 `cache.extracted_hosts`,由 `mergeHostMaps` 去重合并;自动解析由 `deriveProviderHostOverrides`(`import/extract-hosts.ts`)在每次刷新时只挑两类:① Clash 顶层 `hosts:` / Surge `[Host]` 中命中本源节点 server 域名(精确 + 通配父域)的条目;② Surge `encrypted-dns-server`(机场自建 DoH)为每个域名型节点推导 `节点域名 = server:<DoH>`。无关条目丢弃、节点 server 为 IP 跳过;`profile-resolver` 按 `emit_hosts` 并入(编辑页「节点源 Host」区有只读预览,`GET /api/providers/:id/extracted-hosts`)。base64/uri 列表无 hosts 段、节点全 IP 解析为空都属正常 |
 | `surge-cli -c` 报 OK,但导入客户端后某字段不生效 | Surge 对节点行的**未知参数是静默忽略**的,`-c` 只校验语法/规则/策略引用,不校验协议键名 | 别把 `-c` 当字段名的证据;按 `Protocol Documentation Lookup` 查上游文档确认键名,再用 `$S rule match` / `$S log memory` 看实际行为 |
-| 节点源报 `HTTP 403(上游拒绝了服务器的请求…)`,本地却能拉到 | 机场按来源 IP 拦截(境外服务器 / 机房 IP),换 UA 无效 | 给节点源配 `fetch_proxy` 借其它机器的出口拉(`providers/fetch-proxy.ts`;用法 cookbook 1.4,隧道部署 deployment.md「借其它机器的出口拉订阅」)。走代理时整条请求用 npm 版 undici 的 `fetch`,直连仍用全局 `fetch` —— Node 20 内置 fetch 不认 npm undici 的 dispatcher |
+| 节点源报 `HTTP 403(上游拒绝了服务器的请求…)`,本地却能拉到 | 机场按来源 IP 拦截(境外服务器 / 机房 IP),换 UA 无效 | 在 `data/egresses/` 登记出口(SSH / 代理),节点源 `fetch_via` 按顺序选用(`providers/fetcher.ts` 逐条尝试;SSH 出口 `providers/egress.ts`;用法 cookbook 1.4,部署 deployment.md「借其它机器的出口拉订阅」)。走出口时整条请求用 npm 版 undici 的 `fetch`,直连仍用全局 `fetch` —— Node 20 内置 fetch 不认 npm undici 的 dispatcher |
 | 节点源报「content 为空(…上游仍返回空 body)」 | 机场按 User-Agent 网关,Surge 系 UA 返回 200 + 空 body(实测部分机场即此) | 默认 `user_agent` 已改空字符串,fetcher 拿到空 body 会自动回退 `clash-verge`/`ClashMeta`/`mihomo` 等 UA 重试(`providers/fetcher.ts` 的 `FALLBACK_USER_AGENTS`);仍全空则订阅多半失效或需特定 UA,可在节点源手动指定 User-Agent |
 
 

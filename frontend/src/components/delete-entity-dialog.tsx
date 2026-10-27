@@ -13,6 +13,7 @@ import { useEntityReferences, type EntityKind, type EntityReference } from "@/ap
 
 const KIND_LABELS: Record<EntityReference["from_kind"], string> = {
   profiles: "Profile",
+  providers: "节点源",
   groups: "策略组",
   generals: "全局配置",
   rules: "规则集",

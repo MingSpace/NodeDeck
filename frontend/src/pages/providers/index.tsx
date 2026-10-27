@@ -38,7 +38,7 @@ import {
   type RefreshInterval,
 } from "./visual-form";
 import { QuotaBadge, QuotaSummary, type ProviderQuotaStatus } from "./quota";
-import { proxyHost } from "./fetch-proxy";
+import { useRouteNames } from "./fetch-via";
 
 interface ProviderNodesResp {
   provider_id: string;
@@ -81,6 +81,7 @@ interface ProviderStatusItem {
 
 export function ProvidersPage() {
   const list = useEntityList<ProviderData>("providers");
+  const routeName = useRouteNames();
   const del = useDeleteEntity("providers");
   const bulkDel = useDeleteEntitiesBulk("providers");
   const status = useQuery<{ items: ProviderStatusItem[] }>({
@@ -445,17 +446,18 @@ export function ProvidersPage() {
                       )}
                     </div>
                   )}
-                  {p.type === "http" && p.fetch_proxy && (
-                    <div
-                      className="text-xs text-muted-foreground mt-1 flex items-center gap-1 min-w-0"
-                      title={`经代理 ${proxyHost(p.fetch_proxy)} 拉取订阅`}
-                    >
-                      <Route className="h-3 w-3 shrink-0" />
-                      <span className="truncate">
-                        经代理 <span className="font-mono">{proxyHost(p.fetch_proxy)}</span> 拉取
-                      </span>
-                    </div>
-                  )}
+                  {p.type === "http" && !!p.fetch_via?.length && (() => {
+                    const path = p.fetch_via.map((r) => routeName(r) ?? `${r}(已删除)`).join(" → ");
+                    return (
+                      <div
+                        className="text-xs text-muted-foreground mt-1 flex items-center gap-1 min-w-0"
+                        title={`拉取线路(依次尝试):${path}`}
+                      >
+                        <Route className="h-3 w-3 shrink-0" />
+                        <span className="truncate">拉取线路 {path}</span>
+                      </div>
+                    );
+                  })()}
                   {s?.fetched_at && !isInline && (
                     <div className="text-xs text-muted-foreground mt-1">
                       上次刷新： <RefreshedAt ts={s.fetched_at} /> · 刷新周期{" "}

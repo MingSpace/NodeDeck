@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { providerRepo } from "../storage/repos.js";
+import { egressRepo, providerRepo } from "../storage/repos.js";
 import { refreshProvider, refreshAllProviders } from "../providers/load.js";
 import { readProviderCache } from "../providers/cache-store.js";
 import { listProvidersWithCache } from "../providers/pool.js";
 import { fetchProviderContent } from "../providers/fetcher.js";
-import { redactProxyUrl } from "../providers/fetch-proxy.js";
 import { parseSubscriptionWithInfo } from "../parsers/index.js";
-import { fetchProxySchema, parserHintSchema } from "../schemas/provider.js";
+import { fetchViaSchema, parserHintSchema } from "../schemas/provider.js";
+import { DIRECT_ROUTE } from "../schemas/egress.js";
 import { logger } from "../logger.js";
 
 export const providerActionsRouter = new Hono();
@@ -71,18 +71,22 @@ providerActionsRouter.post("/refresh-all", async (c) => {
   });
 });
 
-// 编辑页「测试拉取」:用表单里还没保存的 url / UA / 代理试拉一次,只解析不写 cache。
-// 配了代理时同时测直连,一眼看出「直连 403、经代理 200」这类按来源 IP 拦截。
+// 编辑页「测试拉取」:用表单里还没保存的 url / UA / 拉取线路试拉,只解析不写 cache。
+// 每条线路单独测一次(不做失败换下一条),没列直连时也顺带测直连,
+// 一眼看出「直连 403、经出口 200」这类按来源 IP 拦截。
 const testFetchSchema = z.object({
   url: z.string().trim().url("订阅 URL 格式不对"),
   user_agent: z.string().default(""),
-  fetch_proxy: fetchProxySchema,
+  fetch_via: fetchViaSchema,
   parser_hint: parserHintSchema.default("auto"),
 });
 
-// 与 frontend/src/pages/providers/fetch-proxy.tsx TestFetchAttempt 保持同步
+// 与 frontend/src/pages/providers/fetch-via.tsx TestFetchAttempt 保持同步
 interface TestFetchAttempt {
-  route: "direct" | "proxy";
+  /** 出口 id 或 `direct` */
+  route: string;
+  /** 出口名;直连为「服务器直连」 */
+  label: string;
   ok: boolean;
   error?: string;
   node_count: number;
@@ -96,7 +100,8 @@ const TEST_FETCH_TIMEOUT_MS = 15_000;
 
 async function testFetchRoute(
   input: z.infer<typeof testFetchSchema>,
-  route: TestFetchAttempt["route"],
+  route: string,
+  label: string,
 ): Promise<TestFetchAttempt> {
   const started = Date.now();
   try {
@@ -106,13 +111,14 @@ async function testFetchRoute(
         type: "http",
         url: input.url,
         user_agent: input.user_agent,
-        fetch_proxy: route === "proxy" ? input.fetch_proxy : undefined,
+        fetch_via: [route],
       },
       { timeoutMs: TEST_FETCH_TIMEOUT_MS },
     );
     const { nodes } = parseSubscriptionWithInfo(result.text, input.parser_hint);
     return {
       route,
+      label,
       ok: nodes.length > 0,
       error:
         nodes.length > 0
@@ -127,10 +133,16 @@ async function testFetchRoute(
       duration_ms: Date.now() - started,
     };
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     return {
       route,
+      label,
       ok: false,
-      error: err instanceof Error ? err.message : String(err),
+      // 结果行已单独显示线路名,去掉 fetcher 拼的「经 X: / 出口 X: 」前缀
+      error: [`经 ${label}: `, `出口 ${route}: `].reduce(
+        (m, prefix) => (m.startsWith(prefix) ? m.slice(prefix.length) : m),
+        message,
+      ),
       node_count: 0,
       bytes: 0,
       has_userinfo: false,
@@ -145,11 +157,13 @@ providerActionsRouter.post("/test-fetch", async (c) => {
     return c.json({ error: parsed.error.issues[0]?.message ?? "validation failed" }, 400);
   }
   const input = parsed.data;
-  logger.info(
-    { proxy: input.fetch_proxy ? redactProxyUrl(input.fetch_proxy) : undefined },
-    "Provider test fetch requested",
+  const routes = input.fetch_via.includes(DIRECT_ROUTE) ? input.fetch_via : [...input.fetch_via, DIRECT_ROUTE];
+  const egresses = new Map((await egressRepo.list()).map((e) => [e.id, e.data.name]));
+  logger.info({ routes }, "Provider test fetch requested");
+  const attempts = await Promise.all(
+    routes.map((route) =>
+      testFetchRoute(input, route, route === DIRECT_ROUTE ? "服务器直连" : (egresses.get(route) ?? route)),
+    ),
   );
-  const routes: TestFetchAttempt["route"][] = input.fetch_proxy ? ["proxy", "direct"] : ["direct"];
-  const attempts = await Promise.all(routes.map((route) => testFetchRoute(input, route)));
   return c.json({ attempts });
 });
