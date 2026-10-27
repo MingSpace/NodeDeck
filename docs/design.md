@@ -29,6 +29,9 @@ data/
   modules/*.yaml           # Surge 模块([MITM]/[URL Rewrite]/...)
   general/*.yaml           # General + Host + SSID + DNS + MITM 预设
   profiles/*.yaml          # Profile 拼装单元
+  egresses/*.yaml          # 拉订阅用的出口(SSH 登录 / 现成代理),节点源 fetch_via 按顺序引用
+  egress_ed25519           # SSH 出口登录用的私钥(首次用到时生成,0600)
+  secret.key               # Session 签名密钥(首启生成,0600)
   cache/<provider>.json    # 订阅源 fetch 缓存(节点 + Subscription-UserInfo)
   logs/YYYY-MM-DD.log      # 进程日志(NDJSON,按本地日期切分,保留天数见 config.yaml 的 logs.retention_days)
 ```
