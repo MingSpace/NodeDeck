@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Layers } from "lucide-react";
 import { EntityListPage } from "@/components/entity-list-page";
 import { EntityVisualDialog } from "@/components/entity-visual-dialog";
 import { api } from "@/lib/api";
@@ -8,7 +8,7 @@ import { summarizeGroupComposition, type PoolNodeLike } from "@/lib/group-compos
 import { ProxyGroupVisualForm, type ProxyGroupData } from "./visual-form";
 
 const TEMPLATE: Partial<ProxyGroupData> = {
-  name: "Proxys",
+  name: "新策略组",
   type: "url-test",
   proxies: [],
   nested_groups: [],
@@ -22,7 +22,9 @@ const TEMPLATE: Partial<ProxyGroupData> = {
 export function GroupsPage() {
   return (
     <EntityListPage<ProxyGroupData>
-      title="策略组模板 (Proxy Groups)"
+      title="策略组"
+      icon={Layers}
+      emptyDescription="策略组把节点归成一组,让客户端手动选择或自动测速选择。建好后在 Profile 里引入,多个 Profile 可以共用同一个策略组。"
       description="select / url-test / fallback / load-balance,可被多个 Profile 复用"
       kind="groups"
       renderRow={(g) => <GroupSummary group={g} />}

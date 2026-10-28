@@ -13,6 +13,7 @@ import { AlertTriangle, GripVertical, Info, Layers, Pin, PinOff, RefreshCw, Sear
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
 export interface NodeCandidate {
   name: string;
@@ -102,6 +103,7 @@ export function ProxyListEditor({
   // 避免后续重构万一漏了归一化也导致 .map() / new Set() 抛错白屏。
   const proxies = proxiesProp ?? [];
   const nestedGroups = nestedGroupsProp ?? [];
+  const [confirmClear, setConfirmClear] = useState<"proxies" | "nested" | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   // @business_rule: sortable id 必须与数组顺序无关 — 掺了下标的 id 在 arrayMove 之后会整片变化,
@@ -191,15 +193,11 @@ export function ProxyListEditor({
           {/* @user_flow: 候选区底部的「全部解锁」按钮只对当前搜索可见的节点生效;
               当大量节点跨多个机场、被搜索框收窄时,那个按钮帮不上忙。
               这里提供一个无视过滤的「清空」入口,一键删空 g.proxies。
-              window.confirm 防误触 — 80+ 个节点的锁定不应一键归零无确认。 */}
+              弹确认防误触 — 80+ 个节点的锁定不应一键归零无确认。 */}
           {proxies.length > 0 && (
             <button
               type="button"
-              onClick={() => {
-                if (window.confirm(`确定清空所有 ${proxies.length} 个已锁定节点?\n\n清空后,符合 selector 的节点仍会自动包含在订阅里。`)) {
-                  onChange([]);
-                }
-              }}
+              onClick={() => setConfirmClear("proxies")}
               className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
               title="清空 g.proxies 数组(仅清空显式锁定,不影响 selector 与 nested_groups)"
             >
@@ -244,11 +242,7 @@ export function ProxyListEditor({
                 </span>
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm(`确定清空所有 ${nestedGroups.length} 个嵌套组引用?`)) {
-                      onNestedGroupsChange([]);
-                    }
-                  }}
+                  onClick={() => setConfirmClear("nested")}
                   className="text-[10px] text-muted-foreground hover:text-destructive transition-colors not-italic shrink-0"
                   title="清空 g.nested_groups 数组(不影响 g.proxies 锁定的节点)"
                 >
@@ -282,6 +276,25 @@ export function ProxyListEditor({
           )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmClear !== null}
+        onOpenChange={(v) => {
+          if (!v) setConfirmClear(null);
+        }}
+        title={
+          confirmClear === "nested"
+            ? `清空 ${nestedGroups.length} 个嵌套组引用?`
+            : `清空 ${proxies.length} 个已锁定节点?`
+        }
+        description={
+          confirmClear === "nested"
+            ? "只移除嵌套引用,已锁定的节点不受影响。在编辑窗口点「保存」之前,这次修改都不会生效。"
+            : "清空后,符合 selector 的节点仍会自动包含在订阅里。在编辑窗口点「保存」之前,这次修改都不会生效。"
+        }
+        confirmLabel={confirmClear === "nested" ? "清空嵌套组" : "清空节点"}
+        onConfirm={() => (confirmClear === "nested" ? onNestedGroupsChange([]) : onChange([]))}
+      />
     </div>
   );
 }

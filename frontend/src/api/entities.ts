@@ -3,6 +3,29 @@ import { api } from "@/lib/api";
 
 export type EntityKind = "providers" | "rules" | "groups" | "generals" | "modules" | "profiles" | "egresses";
 
+/** 面向用户的实体名,与侧边栏导航文案一致;弹窗标题、toast、引用列表都用它,不要直接显示 kind */
+export const ENTITY_KIND_LABELS: Record<EntityKind, string> = {
+  providers: "节点源",
+  rules: "规则模块",
+  groups: "策略组",
+  generals: "通用预设",
+  modules: "Surge 模块",
+  profiles: "Profile",
+  egresses: "出口",
+};
+
+/** 「新建」+「节点源」→「新建节点源」;英文开头的(Surge 模块 / Profile)中间留空格 */
+export function withKindLabel(verb: string, kind: EntityKind): string {
+  const label = ENTITY_KIND_LABELS[kind];
+  return /^[A-Za-z]/.test(label) ? `${verb} ${label}` : `${verb}${label}`;
+}
+
+/** 有 name 用 name,否则回退 id(id 是文件主键,用户不一定认得) */
+export function entityDisplayName(entity: { id: string }): string {
+  const name = (entity as { name?: unknown }).name;
+  return typeof name === "string" && name.trim() ? name : entity.id;
+}
+
 /** 与 backend/src/routes/entities.ts 的列表响应 meta 保持同步 */
 export interface EntityMeta {
   /** 配置文件最后修改时间(epoch ms),来源是 yaml 文件 mtime */

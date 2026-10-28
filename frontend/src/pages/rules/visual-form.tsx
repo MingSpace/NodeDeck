@@ -214,7 +214,7 @@ export function RuleSetVisualForm({ data, update }: Props) {
           <Input
             value={data.policy ?? ""}
             onChange={(e) => update({ policy: e.target.value || undefined })}
-            placeholder="DIRECT / Proxys / ..."
+            placeholder="DIRECT / Proxy / ..."
           />
         </Field>
         <Field label="刷新间隔 (秒)">

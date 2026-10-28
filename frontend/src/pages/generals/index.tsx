@@ -1,3 +1,4 @@
+import { Settings } from "lucide-react";
 import { EntityListPage } from "@/components/entity-list-page";
 import { EntityVisualDialog } from "@/components/entity-visual-dialog";
 import { GeneralPresetVisualForm } from "./visual-form";
@@ -25,7 +26,9 @@ const TEMPLATE: Partial<GeneralPresetData> = {
 export function GeneralsPage() {
   return (
     <EntityListPage<GeneralPresetData>
-      title="通用预设 (General Presets)"
+      title="通用预设"
+      icon={Settings}
+      emptyDescription="通用预设存放 DNS、Host、TUN、MITM 等全局设置。每个 Profile 引用其中一份,写进生成配置的开头。"
       description="General / Host / SSID / DNS / TUN / MITM 配置预设,Profile 引用"
       kind="generals"
       renderRow={(g) => <span className="text-xs">mode={g.mode}</span>}

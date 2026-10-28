@@ -9,14 +9,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { useEntityReferences, type EntityKind, type EntityReference } from "@/api/entities";
+import {
+  ENTITY_KIND_LABELS,
+  useEntityReferences,
+  type EntityKind,
+  type EntityReference,
+} from "@/api/entities";
 
 const KIND_LABELS: Record<EntityReference["from_kind"], string> = {
-  profiles: "Profile",
-  providers: "节点源",
-  groups: "策略组",
-  generals: "全局配置",
-  rules: "规则集",
+  ...ENTITY_KIND_LABELS,
   notification: "通知设置",
 };
 
@@ -76,7 +77,7 @@ export function DeleteEntityDialog({
             {blocked.length > 0 && deletable.length === 0
               ? "无法删除"
               : targets.length === 1
-                ? `删除 ${label(targets[0])}`
+                ? `删除「${label(targets[0])}」`
                 : `删除 ${targets.length} 项`}
           </DialogTitle>
           <DialogDescription>

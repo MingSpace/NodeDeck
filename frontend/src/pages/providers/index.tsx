@@ -16,8 +16,10 @@ import {
   X,
   Route,
   CloudOff,
+  Cloud,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/empty-state";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -294,9 +296,7 @@ export function ProvidersPage() {
     <div className="p-8 max-w-[1800px] mx-auto">
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            节点源 (Providers)
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight">节点源</h1>
           <p className="text-muted-foreground mt-1">
             订阅 URL / 静态节点; 多源去重合并
           </p>
@@ -327,9 +327,24 @@ export function ProvidersPage() {
       </div>
 
       {list.data && items.length === 0 && (
-        <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-          暂无节点源,点击右上角「新建」添加
-        </div>
+        <EmptyState
+          icon={Cloud}
+          title="还没有节点源"
+          description="节点源是节点的来源:机场的订阅 URL,或者手动粘贴的静态节点。多个节点源的节点会去重后合并进节点池。"
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditing(null);
+                setOpen(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              新建节点源
+            </Button>
+          }
+        />
       )}
 
       {items.length > 0 && (

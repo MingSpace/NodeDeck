@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Edit, Trash2, X, Loader2, Copy } from "lucide-react";
+import { Plus, Edit, Trash2, X, Loader2, Copy, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,17 +8,25 @@ import {
   useDeleteEntity,
   useDeleteEntitiesBulk,
   useSaveEntity,
+  ENTITY_KIND_LABELS,
+  entityDisplayName,
+  withKindLabel,
   type EntityKind,
 } from "@/api/entities";
 import { UpdatedAt } from "./refreshed-at";
 import { EntityYamlDialog } from "./entity-yaml-dialog";
 import { DeleteEntityDialog, type DeleteTarget } from "./delete-entity-dialog";
+import { EmptyState } from "./empty-state";
 import { toast } from "@/components/ui/toast";
 
 interface EntityListPageProps<T extends { id: string }> {
   title: string;
   description?: string;
   kind: EntityKind;
+  /** 与侧边栏导航同一个图标,用在空状态里 */
+  icon: LucideIcon;
+  /** 列表为空时说明这类实体是干什么用的 */
+  emptyDescription: React.ReactNode;
   /** Render extra columns per row */
   renderRow?: (item: T) => React.ReactNode;
   template?: Partial<T>;
@@ -37,6 +45,8 @@ export function EntityListPage<T extends { id: string; name?: string }>({
   title,
   description,
   kind,
+  icon,
+  emptyDescription,
   renderRow,
   template,
   CustomCreateButton,
@@ -83,7 +93,7 @@ export function EntityListPage<T extends { id: string; name?: string }>({
       await save.mutateAsync(cloned as T);
       toast({
         title: "已复制为新条目",
-        description: `${kind}/${newId}`,
+        description: `${ENTITY_KIND_LABELS[kind]}「${entityDisplayName(cloned)}」`,
         variant: "success",
       });
     } catch (err) {
@@ -173,6 +183,11 @@ export function EntityListPage<T extends { id: string; name?: string }>({
     setDeleteTargets([]);
   };
 
+  const openCreate = () => {
+    setEditing(null);
+    setDialogOpen(true);
+  };
+
   return (
     <div className="p-8 max-w-[1800px] mx-auto">
       <div className="flex items-start justify-between mb-6">
@@ -183,12 +198,7 @@ export function EntityListPage<T extends { id: string; name?: string }>({
         {CustomCreateButton ? (
           <CustomCreateButton />
         ) : (
-          <Button
-            onClick={() => {
-              setEditing(null);
-              setDialogOpen(true);
-            }}
-          >
+          <Button onClick={openCreate}>
             <Plus className="h-4 w-4" />
             新建
           </Button>
@@ -198,7 +208,19 @@ export function EntityListPage<T extends { id: string; name?: string }>({
       {list.isLoading && <div className="text-muted-foreground text-sm">加载中...</div>}
       {list.error && <div className="text-destructive text-sm">加载失败: {String(list.error)}</div>}
       {list.data && items.length === 0 && (
-        <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">暂无数据</div>
+        <EmptyState
+          icon={icon}
+          title={`还没有${ENTITY_KIND_LABELS[kind]}`}
+          description={emptyDescription}
+          action={
+            !CustomCreateButton && (
+              <Button size="sm" variant="outline" onClick={openCreate}>
+                <Plus className="h-3.5 w-3.5" />
+                {withKindLabel("新建", kind)}
+              </Button>
+            )
+          }
+        />
       )}
       {list.data && items.length > 0 && (
         <Card className="overflow-hidden">

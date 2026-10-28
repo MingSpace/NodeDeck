@@ -12,6 +12,7 @@ import {
   Trash2,
   Copy,
   Ban,
+  Rss,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,8 @@ import { api } from "@/lib/api";
 import { cn, formatBytes } from "@/lib/utils";
 import { useEntityList, useDeleteEntity, useSaveEntity } from "@/api/entities";
 import { toast } from "@/components/ui/toast";
+import { EmptyState } from "@/components/empty-state";
+import { DeleteEntityDialog, type DeleteTarget } from "@/components/delete-entity-dialog";
 
 type ProviderType = "http" | "file" | "inline";
 
@@ -66,6 +69,7 @@ export function DashboardPage() {
   const delProfile = useDeleteEntity("profiles");
   const saveProfile = useSaveEntity<Profile>("profiles");
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
   const airports = useQuery<{ items: AirportItem[] }>({
     queryKey: ["dashboard", "airports"],
@@ -102,6 +106,20 @@ export function DashboardPage() {
     }
   };
 
+  const onConfirmDelete = async (id: string) => {
+    try {
+      await delProfile.mutateAsync(id);
+      toast({ title: "已删除", variant: "success" });
+    } catch (err) {
+      toast({
+        title: "删除失败",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "error",
+      });
+    }
+    setDeleteTarget(null);
+  };
+
   return (
     <div className="p-8 max-w-[1800px] mx-auto">
       <div className="mb-6">
@@ -119,9 +137,17 @@ export function DashboardPage() {
         </div>
 
         {profileList.data && profileList.data.items.length === 0 && (
-          <div className="rounded-lg border border-dashed p-12 text-center text-muted-foreground">
-            暂无 Profile,点击右上角新建
-          </div>
+          <EmptyState
+            icon={Rss}
+            title="还没有 Profile"
+            description="Profile 把节点源、策略组和规则模块组合成一份订阅,生成 Clash 和 Surge 两种订阅链接,导入客户端即可使用。"
+            action={
+              <Button size="sm" variant="outline" onClick={onCreateProfile} disabled={creating}>
+                <Plus className="h-3.5 w-3.5" />
+                新建 Profile
+              </Button>
+            }
+          />
         )}
 
         <div className="grid gap-3">
@@ -130,11 +156,7 @@ export function DashboardPage() {
               key={p.id}
               profile={p}
               updatedAt={profileList.data?.meta?.[p.id]?.updated_at}
-              onDelete={async () => {
-                if (!window.confirm(`删除 Profile "${p.name}"?`)) return;
-                await delProfile.mutateAsync(p.id);
-                toast({ title: "已删除", variant: "success" });
-              }}
+              onDelete={() => setDeleteTarget({ id: p.id, name: p.name })}
             />
           ))}
         </div>
@@ -146,16 +168,20 @@ export function DashboardPage() {
         </div>
 
         {airports.data && airports.data.items.length === 0 && (
-          <div className="rounded-lg border border-dashed p-12 flex flex-col items-center gap-3 text-muted-foreground">
-            <span>暂无节点源，前往节点源页面添加</span>
-            {/* @user_flow: 直接给跳转按钮,?new=http 让落地页自动弹出「新建订阅」对话框 */}
-            <Button asChild size="sm" variant="outline">
-              <Link to="/providers?new=http">
-                <Plus className="h-4 w-4" />
-                新建订阅
-              </Link>
-            </Button>
-          </div>
+          <EmptyState
+            icon={Cloud}
+            title="还没有节点源"
+            description="添加机场的订阅 URL 后,这里会显示每个节点源的节点数、流量和到期时间。"
+            action={
+              // @user_flow: 直接给跳转按钮,?new=http 让落地页自动弹出「新建订阅」对话框
+              <Button asChild size="sm" variant="outline">
+                <Link to="/providers?new=http">
+                  <Plus className="h-3.5 w-3.5" />
+                  新建订阅
+                </Link>
+              </Button>
+            }
+          />
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-3">
           {airports.data?.items.map((a) => (
@@ -163,6 +189,17 @@ export function DashboardPage() {
           ))}
         </div>
       </section>
+
+      <DeleteEntityDialog
+        kind="profiles"
+        targets={deleteTarget ? [deleteTarget] : []}
+        open={deleteTarget !== null}
+        onOpenChange={(v) => {
+          if (!v) setDeleteTarget(null);
+        }}
+        onConfirm={(ids) => void onConfirmDelete(ids[0])}
+        busy={delProfile.isPending}
+      />
     </div>
   );
 }
@@ -174,7 +211,7 @@ function ProfileCard({
 }: {
   profile: Profile;
   updatedAt?: number;
-  onDelete: () => void | Promise<void>;
+  onDelete: () => void;
 }) {
   return (
     <Card className="p-4">
@@ -189,7 +226,7 @@ function ProfileCard({
           </div>
           {profile.description && <p className="text-sm text-muted-foreground mt-1">{profile.description}</p>}
           <div className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground mt-2">
-            <span>{profile.providers.length} 个 Provider</span>
+            <span>{profile.providers.length} 个节点源</span>
             <span>{profile.proxy_groups.length} 个策略组</span>
             <span>{profile.rule_modules.length} 个规则模块</span>
             <span>{profile.chain_rules.length} 条链式规则</span>
@@ -207,7 +244,7 @@ function ProfileCard({
               编辑
             </Link>
           </Button>
-          <Button variant="ghost" size="icon" onClick={() => void onDelete()}>
+          <Button variant="ghost" size="icon" onClick={onDelete} title="删除">
             <Trash2 className="h-4 w-4 text-destructive" />
           </Button>
         </div>

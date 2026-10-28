@@ -94,9 +94,9 @@ export function NodesPage() {
   return (
     <div className="p-8 max-w-[1800px] mx-auto">
       <div className="mb-4">
-        <h1 className="text-2xl font-bold tracking-tight">节点池 (Node Pool)</h1>
+        <h1 className="text-2xl font-bold tracking-tight">节点池</h1>
         <p className="text-muted-foreground mt-1">
-          来自所有启用 Provider 的统一池(已去重)。需要手动添加节点请到「节点源」新建一个「静态节点」类型的源。
+          来自所有启用节点源的统一池(已去重)。需要手动添加节点请到「节点源」新建一个「静态节点」类型的源。
         </p>
       </div>
 
@@ -112,7 +112,7 @@ export function NodesPage() {
             <div className="hidden min-w-0 shrink md:block md:flex-1" aria-hidden />
             <Search className="h-4 w-4 text-muted-foreground shrink-0" />
             <Input
-              placeholder={`搜索 ${counts.total} 个节点 (按 name 或 server)`}
+              placeholder={`在 ${counts.total} 个节点中搜索名称或地址`}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="max-w-md min-w-0 flex-1 md:w-72 md:max-w-none md:flex-none"
@@ -223,19 +223,19 @@ function AllNodesView({
   return (
     <div className="space-y-3">
       <FacetRow
-        label="source"
+        label="来源"
         facets={facets.sources}
         active={filterSource}
         onChange={setFilterSource}
         labelMap={providerName}
       />
-      <FacetRow label="region" facets={facets.regions} active={filterRegion} onChange={setFilterRegion} />
-      <FacetRow label="type" facets={facets.types} active={filterType} onChange={setFilterType} />
+      <FacetRow label="地区" facets={facets.regions} active={filterRegion} onChange={setFilterRegion} />
+      <FacetRow label="协议" facets={facets.types} active={filterType} onChange={setFilterType} />
       {facets.levels.size > 0 && (
-        <FacetRow label="level" facets={facets.levels} active={filterLevel} onChange={setFilterLevel} />
+        <FacetRow label="等级" facets={facets.levels} active={filterLevel} onChange={setFilterLevel} />
       )}
       {facets.lines.size > 0 && (
-        <FacetRow label="line" facets={facets.lines} active={filterLine} onChange={setFilterLine} />
+        <FacetRow label="线路" facets={facets.lines} active={filterLine} onChange={setFilterLine} />
       )}
 
       <Card className="overflow-hidden">
@@ -270,7 +270,7 @@ function FacetRow({
   if (items.length === 0) return null;
   return (
     <div className="flex items-start gap-2 text-xs">
-      <span className="text-muted-foreground shrink-0 w-12 text-right mt-1">{label}:</span>
+      <span className="text-muted-foreground shrink-0 w-12 text-right mt-1">{label}</span>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
         <button
           type="button"

@@ -11,7 +11,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { YamlEditor } from "./yaml-editor";
-import { useSaveEntity, type EntityKind } from "@/api/entities";
+import {
+  useSaveEntity,
+  ENTITY_KIND_LABELS,
+  entityDisplayName,
+  withKindLabel,
+  type EntityKind,
+} from "@/api/entities";
 import { toast } from "@/components/ui/toast";
 
 function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -162,7 +168,11 @@ export function EntityVisualDialog<T extends { id: string }>({
     }
     try {
       await save.mutateAsync(target);
-      toast({ title: "已保存", description: `${kind}/${target.id}`, variant: "success" });
+      toast({
+        title: "已保存",
+        description: `${ENTITY_KIND_LABELS[kind]}「${entityDisplayName(target)}」`,
+        variant: "success",
+      });
       onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -173,7 +183,12 @@ export function EntityVisualDialog<T extends { id: string }>({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={`${maxWidth} h-[85vh] flex flex-col gap-4`}>
         <DialogHeader>
-          <DialogTitle>{title ?? (entity ? `编辑 ${entity.id}` : `新建 ${kind}`)}</DialogTitle>
+          <DialogTitle>
+            {title ??
+              (entity
+                ? `${withKindLabel("编辑", kind)}「${entityDisplayName(entity)}」`
+                : withKindLabel("新建", kind))}
+          </DialogTitle>
           {description && <DialogDescription>{description}</DialogDescription>}
         </DialogHeader>
 

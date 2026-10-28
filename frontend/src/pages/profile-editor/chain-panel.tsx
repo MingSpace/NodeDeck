@@ -24,6 +24,7 @@ import {
   Route,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
 import { useEntityList } from "@/api/entities";
 import { useChainPreview } from "./use-profile-form";
@@ -251,7 +252,23 @@ export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: 
         </div>
 
         {rules.length === 0 ? (
-          <EmptyState onAdd={addRule} />
+          <EmptyState
+            icon={LinkIcon}
+            title="还没有链式规则"
+            description={
+              <>
+                链式代理让节点先连一个前置出口再落地(Clash <code>dialer-proxy</code> / Surge{" "}
+                <code>underlying-proxy</code>)。常见用法:某个策略组的节点统一走 WARP 落地、
+                指定几个节点经国内跳板中转。
+              </>
+            }
+            action={
+              <Button size="sm" variant="outline" onClick={addRule}>
+                <Plus className="h-3.5 w-3.5" />
+                添加第一条规则
+              </Button>
+            }
+          />
         ) : (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
             <SortableContext items={items.map((i) => i.id)} strategy={verticalListSortingStrategy}>
@@ -341,24 +358,6 @@ export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: 
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function EmptyState({ onAdd }: { onAdd: () => void }) {
-  return (
-    <div className="rounded-lg border border-dashed px-6 py-10 text-center">
-      <LinkIcon className="mx-auto h-6 w-6 text-muted-foreground/50" />
-      <div className="mt-2 text-sm font-medium">还没有链式规则</div>
-      <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-        链式代理让节点先连一个前置出口再落地(Clash <code>dialer-proxy</code> / Surge{" "}
-        <code>underlying-proxy</code>)。常见用法:某个策略组的节点统一走 WARP 落地、
-        指定几个节点经国内跳板中转。
-      </p>
-      <Button size="sm" variant="outline" className="mt-3" onClick={onAdd}>
-        <Plus className="h-3.5 w-3.5" />
-        添加第一条规则
-      </Button>
     </div>
   );
 }

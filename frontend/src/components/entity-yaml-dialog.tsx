@@ -10,7 +10,13 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { YamlEditor } from "./yaml-editor";
-import { useSaveEntity, type EntityKind } from "@/api/entities";
+import {
+  useSaveEntity,
+  ENTITY_KIND_LABELS,
+  entityDisplayName,
+  withKindLabel,
+  type EntityKind,
+} from "@/api/entities";
 import { toast } from "@/components/ui/toast";
 
 interface EntityYamlDialogProps<T extends { id: string }> {
@@ -75,7 +81,11 @@ export function EntityYamlDialog<T extends { id: string }>({
     }
     try {
       await save.mutateAsync(parsed);
-      toast({ title: "已保存", description: `${kind}/${parsed.id}`, variant: "success" });
+      toast({
+        title: "已保存",
+        description: `${ENTITY_KIND_LABELS[kind]}「${entityDisplayName(parsed)}」`,
+        variant: "success",
+      });
       onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -86,7 +96,12 @@ export function EntityYamlDialog<T extends { id: string }>({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>{title ?? (entity ? `编辑 ${entity.id}` : `新建 ${kind}`)}</DialogTitle>
+          <DialogTitle>
+            {title ??
+              (entity
+                ? `${withKindLabel("编辑", kind)}「${entityDisplayName(entity)}」`
+                : withKindLabel("新建", kind))}
+          </DialogTitle>
           <DialogDescription>使用 YAML 编辑实体定义,保存时按 schema 校验</DialogDescription>
         </DialogHeader>
         <YamlEditor value={text} onChange={setText} height={460} />

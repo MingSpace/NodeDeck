@@ -79,7 +79,7 @@ export interface ProviderData {
 }
 
 export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
-  name: "new provider",
+  name: "新节点源",
   type: "http",
   url: "https://example.com/subscribe?token=xxx",
   user_agents: [],
@@ -98,7 +98,7 @@ export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
 // 静态节点(inline)默认模板:供 ?new=inline 等深度链接预填表单。
 // 与 DEFAULT_PROVIDER_TEMPLATE 区别仅在 type / 没有 url / 给一个空 content。
 export const INLINE_PROVIDER_TEMPLATE: Partial<ProviderData> = {
-  name: "static nodes",
+  name: "静态节点",
   type: "inline",
   content: "",
   user_agents: [],

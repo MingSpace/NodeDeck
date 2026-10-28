@@ -1,3 +1,4 @@
+import { Waypoints } from "lucide-react";
 import { useEntityList } from "@/api/entities";
 import { EntityListPage } from "@/components/entity-list-page";
 import { EntityVisualDialog } from "@/components/entity-visual-dialog";
@@ -22,7 +23,9 @@ export function EgressesPage() {
 
   return (
     <EntityListPage<EgressData>
-      title="出口 (Egresses)"
+      title="出口"
+      icon={Waypoints}
+      emptyDescription="机场拦截服务器 IP 时,可以借另一台机器的网络拉订阅。在这里登记 SSH 或代理出口,再到节点源的「拉取线路」里选用。"
       description="机场按来源 IP 拦截服务器时,借这些机器的网络拉订阅;在节点源的「拉取线路」里按顺序选用"
       kind="egresses"
       template={TEMPLATE}
