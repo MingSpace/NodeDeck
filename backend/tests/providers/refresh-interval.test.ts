@@ -24,6 +24,8 @@ import {
   refreshProvider,
   loadProviderNodes,
   refreshAllProviders,
+  retryDelayMinutes,
+  OFFLINE_AFTER_FAILURES,
 } from "../../src/providers/load.js";
 import { DEFAULT_USER_AGENTS, providerSchema } from "../../src/schemas/provider.js";
 import { providerRepo } from "../../src/storage/repos.js";
@@ -500,5 +502,134 @@ describe("refreshProvider - 记住上次可用的 UA", () => {
 
     expect(cache.status).toBe("stale");
     expect(cache.ua_memory).toEqual(memory);
+  });
+});
+
+describe("refreshProvider - 远程源拿到内容却解析不出节点", () => {
+  const httpProvider = () =>
+    providerSchema.parse({
+      id: "p1",
+      name: "P1",
+      type: "http",
+      url: "https://airport.example/sub",
+      refresh: { interval: "24h" },
+    }) as Provider;
+
+  it("有上次的节点:回退成 stale,节点、流量信息都保留,附上原因", async () => {
+    const previous = { ...okCache(30), userinfo: { upload: 1, download: 2, total: 100 } };
+    mockedReadCache.mockResolvedValue(previous);
+    mockedFetch.mockResolvedValue({ text: "subscription link expired", userinfo_header: null, fetched_at: Date.now() });
+
+    const cache = await refreshProvider(httpProvider(), { force: true });
+
+    expect(cache.status).toBe("stale");
+    expect(cache.nodes).toEqual(previous.nodes);
+    expect(cache.userinfo).toEqual(previous.userinfo);
+    expect(cache.fetched_at).toBe(previous.fetched_at);
+    expect(cache.error).toMatch(/未识别/);
+    expect(cache.retry?.failures).toBe(1);
+    expect(mockedWriteCache).toHaveBeenCalledWith(cache);
+  });
+
+  it("从没拉到过节点:照旧写 error", async () => {
+    mockedReadCache.mockResolvedValue(null);
+    mockedFetch.mockResolvedValue({ text: "subscription link expired", userinfo_header: null, fetched_at: Date.now() });
+
+    const cache = await refreshProvider(httpProvider(), { force: true });
+
+    expect(cache.status).toBe("error");
+    expect(cache.nodes).toHaveLength(0);
+  });
+
+  it("离线源(inline)内容解析为 0 节点:是内容本身的问题,不回退旧节点", async () => {
+    mockedReadCache.mockResolvedValue(okCache(30));
+    mockedFetch.mockResolvedValue({ text: "garbage", userinfo_header: null, fetched_at: Date.now() });
+
+    const cache = await refreshProvider(fakeProvider({ interval: "never" }), { force: true });
+
+    expect(cache.status).toBe("error");
+    expect(cache.nodes).toHaveLength(0);
+  });
+
+  it("拉取报错且旧 cache 本来就是 0 节点:写 error 而不是「使用旧缓存」", async () => {
+    mockedReadCache.mockResolvedValue({ ...okCache(30, []), status: "error", retry: { failures: 1, last_attempt_at: 0 } });
+    mockedFetch.mockRejectedValue(new Error("HTTP 403"));
+
+    const cache = await refreshProvider(httpProvider(), { force: true });
+
+    expect(cache.status).toBe("error");
+    expect(cache.retry?.failures).toBe(2);
+  });
+});
+
+describe("refreshProvider - 失败后退避重试,连续失败转离线", () => {
+  const provider = () => fakeProvider({ interval: "24h" });
+  const failedCache = (failures: number, minutesAgo: number): ProviderCache => ({
+    ...okCache(3000),
+    status: "stale",
+    error: "HTTP 403",
+    retry: { failures, last_attempt_at: Date.now() - minutesAgo * 60_000 },
+  });
+
+  it("重试间隔:5 → 10 → 20 分钟,之后回到节点源自己的周期", () => {
+    expect([1, 2, 3, 4, 9].map((n) => retryDelayMinutes(n, 1440))).toEqual([5, 10, 20, 1440, 1440]);
+    expect(OFFLINE_AFTER_FAILURES).toBe(4);
+  });
+
+  it("没到重试时间:scheduler 不重拉,直接沿用旧节点", async () => {
+    mockedReadCache.mockResolvedValue(failedCache(1, 3));
+
+    const cache = await refreshProvider(provider());
+
+    expect(mockedFetch).not.toHaveBeenCalled();
+    expect(cache.nodes).toHaveLength(1);
+  });
+
+  it("到了重试时间:重拉,失败次数累加", async () => {
+    mockedReadCache.mockResolvedValue(failedCache(2, 11));
+    mockedFetch.mockRejectedValue(new Error("HTTP 403"));
+
+    const cache = await refreshProvider(provider());
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    expect(cache.status).toBe("stale");
+    expect(cache.retry?.failures).toBe(3);
+  });
+
+  it("已转离线:按刷新周期才再试,不再几分钟一次", async () => {
+    mockedReadCache.mockResolvedValue(failedCache(OFFLINE_AFTER_FAILURES, 120));
+    await refreshProvider(provider());
+    expect(mockedFetch).not.toHaveBeenCalled();
+
+    mockedReadCache.mockResolvedValue(failedCache(OFFLINE_AFTER_FAILURES, 1441));
+    await refreshProvider(provider());
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("用户手动刷新(force)不受退避限制", async () => {
+    mockedReadCache.mockResolvedValue(failedCache(1, 0));
+
+    await refreshProvider(provider(), { force: true });
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("刷新成功后清掉失败计数", async () => {
+    mockedReadCache.mockResolvedValue(failedCache(OFFLINE_AFTER_FAILURES, 0));
+
+    const cache = await refreshProvider(provider(), { force: true });
+
+    expect(cache.status).toBe("ok");
+    expect(cache.retry).toBeUndefined();
+  });
+
+  it("老版本写下的 stale / error cache 没有 retry 字段:照常重拉一次,补上计数", async () => {
+    mockedReadCache.mockResolvedValue({ ...okCache(3000), status: "stale" });
+    mockedFetch.mockRejectedValue(new Error("HTTP 403"));
+
+    const cache = await refreshProvider(provider());
+
+    expect(mockedFetch).toHaveBeenCalledTimes(1);
+    expect(cache.retry?.failures).toBe(1);
   });
 });

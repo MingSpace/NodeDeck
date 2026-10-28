@@ -15,6 +15,7 @@ import {
   Loader2,
   X,
   Route,
+  CloudOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -77,6 +78,10 @@ interface ProviderStatusItem {
   fetched_at?: number;
   error?: string;
   quota?: ProviderQuotaStatus;
+  // 与 backend/src/providers/pool.ts ProviderSummary 保持同步
+  retry_failures?: number;
+  offline?: boolean;
+  next_retry_at?: number;
 }
 
 export function ProvidersPage() {
@@ -482,6 +487,19 @@ export function ProvidersPage() {
                       错误: {s.error}
                     </div>
                   )}
+                  {s?.retry_failures !== undefined && s.status !== "ok" && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      已连续失败 {s.retry_failures} 次
+                      {s.next_retry_at !== undefined &&
+                        (s.next_retry_at > Date.now() ? (
+                          <>
+                            {" "}· 下次自动重试 <RefreshedAt ts={s.next_retry_at} />
+                          </>
+                        ) : (
+                          " · 即将自动重试"
+                        ))}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -522,8 +540,14 @@ export function ProvidersPage() {
                       <Badge
                         variant="warning"
                         className="text-xs flex items-center gap-1"
+                        title={
+                          s.offline
+                            ? `连续 ${s.retry_failures} 次没拉到,沿用上次拉到的 ${s.node_count} 个节点;之后只按刷新周期偶尔再试。换了订阅链接保存后会立刻重拉`
+                            : `这次没拉到,沿用上次的 ${s.node_count} 个节点`
+                        }
                       >
-                        <Clock className="h-3 w-3" /> 使用旧缓存
+                        {s.offline ? <CloudOff className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                        {s.offline ? "离线 · 沿用上次节点" : "使用旧缓存"}
                       </Badge>
                     )}
                     {s?.status === "error" && (

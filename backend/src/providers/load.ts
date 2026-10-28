@@ -1,7 +1,13 @@
 import { resolveUserAgents, type Provider } from "../schemas/provider.js";
 import type { Node } from "../schemas/node.js";
 import { fetchProviderContent } from "./fetcher.js";
-import { readProviderCache, rememberedUserAgent, writeProviderCache, type ProviderCache } from "./cache-store.js";
+import {
+  readProviderCache,
+  rememberedUserAgent,
+  writeProviderCache,
+  type ProviderCache,
+  type RetryState,
+} from "./cache-store.js";
 import { parseSubscriptionWithInfo } from "../parsers/index.js";
 import { extractInfoNodeQuota } from "../parsers/info-node-extract.js";
 import { annotateNodes } from "../parsers/normalize.js";
@@ -36,15 +42,23 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
     if (minutes === null) {
       return cached;
     }
-    // 周期 / on_request 只在 ok cache 未过期时复用;stale/error 仍按周期重试。
-    if (cached.status === "ok" && minutes > 0) {
-      const ageMin = (Date.now() - cached.fetched_at) / 1000 / 60;
-      if (ageMin < effectiveRefreshMinutes(provider, cached, minutes)) {
-        return cached;
+    // 周期模式:ok cache 未过期时复用;stale/error 按 retryDelayMinutes 退避,不跟着 scheduler 每分钟重拉。
+    if (minutes > 0) {
+      if (cached.status === "ok") {
+        const ageMin = (Date.now() - cached.fetched_at) / 1000 / 60;
+        if (ageMin < effectiveRefreshMinutes(provider, cached, minutes)) {
+          return cached;
+        }
+      } else if (cached.retry) {
+        const sinceMin = (Date.now() - cached.retry.last_attempt_at) / 1000 / 60;
+        if (sinceMin < retryDelayMinutes(cached.retry.failures, minutes)) {
+          return cached;
+        }
       }
     }
-    // minutes === 0 (on_request) 或已过期 / 非 ok 穿透到下面 fetch。
+    // minutes === 0 (on_request) 或已过期 / 到了重试时间穿透到下面 fetch。
   }
+  const retry = nextRetryState(cached);
   try {
     const result = await fetchProviderContent(provider, {
       preferUserAgent: rememberedUserAgent(cached?.ua_memory, provider.user_agents),
@@ -84,12 +98,18 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
         nodes: [],
         extracted_hosts,
         info_quota,
+        retry,
       };
-      await writeProviderCache(cache);
-      logger.warn({ providerId: provider.id, reason }, "Provider parsed 0 nodes");
+      // 远程订阅拿到 200 却解析不出节点(限流提示页、「请使用客户端」页等),多半是上游临时状况:
+      // 和拉取报错一样回退上次的节点,别让一次坏响应把订阅里这个机场整个清空。
+      // 离线源(inline / file)0 节点是内容本身的问题,照旧报 error。
+      const fallback = provider.type === "http" && withNodes(cached);
+      const written: ProviderCache = fallback ? { ...fallback, status: "stale", error: reason, retry } : cache;
+      await writeProviderCache(written);
+      logger.warn({ providerId: provider.id, reason, keptPreviousNodes: Boolean(fallback) }, "Provider parsed 0 nodes");
       // 通知是旁路:fire-and-forget,service 内部自行处理开关/冷却/异常
       void notifyProviderZeroNodes(provider, reason);
-      return cache;
+      return written;
     }
     const cache: ProviderCache = {
       provider_id: provider.id,
@@ -116,21 +136,49 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     void notifyProviderRefreshFailed(provider, errorMsg);
-    if (cached) {
-      const stale: ProviderCache = { ...cached, status: "stale", error: errorMsg };
+    const fallback = withNodes(cached);
+    if (fallback) {
+      const stale: ProviderCache = { ...fallback, status: "stale", error: errorMsg, retry };
       await writeProviderCache(stale);
       return stale;
     }
     const fail: ProviderCache = {
+      ...(cached ?? {}),
       provider_id: provider.id,
       fetched_at: Date.now(),
       status: "error",
       error: errorMsg,
       nodes: [],
+      retry,
     };
     await writeProviderCache(fail);
     return fail;
   }
+}
+
+/** 有节点可回退的旧 cache;0 节点的 error cache 不算,回退过去只会显示「使用旧缓存」却一个节点都没有 */
+function withNodes(cached: ProviderCache | null): ProviderCache | null {
+  return cached && cached.nodes.length > 0 ? cached : null;
+}
+
+// 刷新失败后的自动重试:先快速重试几次(5 → 10 → 20 分钟),仍失败就「转离线」——沿用上次拉到的节点,
+// 之后只按节点源自己的刷新周期偶尔再试。
+// - 一次刷新会按「线路 × UA」发出十几个请求,机场正在限流 / 拦截时每分钟重拉只会越拉越久
+// - 有些机场的订阅链接只有几十分钟有效期,过期后再怎么重拉也拿不到,沿用最后一份节点才是对的
+// 用户手动刷新(force)不受限;刷新成功写 ok cache 即清零。
+const RETRY_BASE_MINUTES = 5;
+export const OFFLINE_AFTER_FAILURES = 4;
+
+/** 连续失败 failures 次后,距上次尝试多久再自动试;转离线后回到节点源自己的周期 */
+export function retryDelayMinutes(failures: number, intervalMinutes: number): number {
+  if (failures >= OFFLINE_AFTER_FAILURES) return intervalMinutes;
+  return Math.min(RETRY_BASE_MINUTES * 2 ** Math.max(0, failures - 1), intervalMinutes);
+}
+
+/** 这一次若失败要写进 cache 的重试状态:接着上次的连续失败次数加一,上次成功则从 1 开始 */
+function nextRetryState(cached: ProviderCache | null): RetryState {
+  const previous = cached && cached.status !== "ok" ? (cached.retry?.failures ?? 0) : 0;
+  return { failures: previous + 1, last_attempt_at: Date.now() };
 }
 
 // 按上游数据(userinfo 或信息节点)判定用完 / 到期而被排除的在线源,周期缩到 1 小时:

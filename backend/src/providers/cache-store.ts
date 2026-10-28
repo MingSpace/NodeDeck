@@ -23,6 +23,14 @@ export interface ProviderCache {
   // 上次拿到节点用的 UA,下次刷新先试它(见 rememberedUserAgent)。连同当时的 UA 列表一起存:
   // 用户改了列表(换顺序 / 增删)就作废,按新顺序重新摸。
   ua_memory?: UserAgentMemory;
+  // 连续失败(stale / error)的次数和最近一次尝试时间,scheduler 按它退避重试(见 load.ts retryDelayMinutes);
+  // 刷新成功写 ok cache 时不带它,即清零。
+  retry?: RetryState;
+}
+
+export interface RetryState {
+  failures: number;
+  last_attempt_at: number;
 }
 
 export interface UserAgentMemory {
@@ -47,6 +55,7 @@ const cacheSchema = z.object({
     })
     .optional(),
   ua_memory: z.object({ user_agent: z.string(), list: z.array(z.string()) }).optional(),
+  retry: z.object({ failures: z.number().int().positive(), last_attempt_at: z.number() }).optional(),
 });
 
 /**

@@ -78,14 +78,17 @@ entitiesRouter.get("/:kind/:id/references", async (c) => {
 // - 新建任意类型 + enabled=true → 拉一次种子,用户填完几秒内能看到节点
 // - 编辑 inline + enabled=true → 重新解析 content(inline 无"上游"概念,UI 不暴露刷新按钮,
 //   保存即生效;refresh 成本=fs.read+parseSubscription,极低)
-// - 编辑 http/file → 不动 cache,由用户手动点刷新或等 cron(避免每次保存都打机场)
+// - 编辑 http 且换了订阅链接 → 拉一次(短时效链接的机场过期后要换新链接,换完就该立刻拉,
+//   拉到即从「离线」恢复)
+// - 其余编辑 http/file → 不动 cache,由用户手动点刷新或等 cron(避免每次保存都打机场)
 // - enabled=false(草稿)一律跳过
 // 失败仅记日志;refreshProvider 自身会写 error cache,前端 status 轮询会反映出来。
-function maybeAutoRefreshProvider(kind: string, isNew: boolean, data: unknown): void {
+function maybeAutoRefreshProvider(kind: string, isNew: boolean, data: unknown, previous?: unknown): void {
   if (kind !== "providers") return;
   const provider = data as Provider;
   if (!provider.enabled) return;
-  if (!isNew && provider.type !== "inline") return;
+  const urlChanged = provider.type === "http" && (previous as Provider | undefined)?.url !== provider.url;
+  if (!isNew && provider.type !== "inline" && !urlChanged) return;
   void refreshProvider(provider, { force: true }).catch((err) => {
     logger.warn(
       { err, providerId: provider.id, isNew, type: provider.type },
@@ -126,12 +129,13 @@ entitiesRouter.put("/:kind/:id", async (c) => {
   }
   // PUT 是 upsert,前端"新建/编辑"都走这条路径;先看文件是否存在以区分两种语义。
   const existed = await def.repo.exists(id);
+  const previous = existed ? await def.repo.get(id) : null;
   const saved = await def.repo.save(result.data);
   logger.info(
     { kind, id: saved.data.id, op: existed ? "update" : "create" },
     "Entity saved",
   );
-  maybeAutoRefreshProvider(kind, !existed, saved.data);
+  maybeAutoRefreshProvider(kind, !existed, saved.data, previous?.data);
   return c.json(saved.data);
 });
 

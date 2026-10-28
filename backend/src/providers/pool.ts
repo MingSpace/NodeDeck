@@ -1,9 +1,10 @@
 import type { Node } from "../schemas/node.js";
 import type { Provider } from "../schemas/provider.js";
 import { providerRepo } from "../storage/repos.js";
-import { loadProviderNodes } from "./load.js";
+import { loadProviderNodes, OFFLINE_AFTER_FAILURES, retryDelayMinutes } from "./load.js";
+import { REFRESH_INTERVAL_MINUTES } from "../schemas/common.js";
 import { dedupeNodes } from "../parsers/dedup.js";
-import { readProviderCache, type UserAgentMemory } from "./cache-store.js";
+import { readProviderCache, type ProviderCache, type UserAgentMemory } from "./cache-store.js";
 import { evaluateProviderQuota, type ProviderQuotaStatus } from "./quota.js";
 
 export interface NodePoolItem {
@@ -62,6 +63,12 @@ export interface ProviderSummary {
   quota: ProviderQuotaStatus;
   /** 上次拿到节点的 UA 及当时的 UA 列表;编辑页据此标「下次优先」,表单里改了列表就不标 */
   ua_memory?: UserAgentMemory;
+  /** 刷新连续失败的次数(stale / error 时才有) */
+  retry_failures?: number;
+  /** 连续失败到了转离线的次数:沿用上次的节点,只按刷新周期偶尔再试 */
+  offline?: boolean;
+  /** scheduler 下次自动重试的时间;手动刷新 / 每次调用时这两种周期不自动重试,没有这项 */
+  next_retry_at?: number;
 }
 
 export async function listProvidersWithCache(): Promise<ProviderSummary[]> {
@@ -80,6 +87,23 @@ export async function listProvidersWithCache(): Promise<ProviderSummary[]> {
       error: cache?.error,
       quota: evaluateProviderQuota(entry.data, cache, now),
       ua_memory: cache?.ua_memory,
+      ...retrySummary(entry.data, cache),
     };
   });
+}
+
+function retrySummary(
+  provider: Provider,
+  cache: ProviderCache | null,
+): Pick<ProviderSummary, "retry_failures" | "offline" | "next_retry_at"> {
+  if (!cache?.retry || cache.status === "ok") return {};
+  const minutes = REFRESH_INTERVAL_MINUTES[provider.refresh.interval];
+  return {
+    retry_failures: cache.retry.failures,
+    offline: cache.retry.failures >= OFFLINE_AFTER_FAILURES,
+    next_retry_at:
+      minutes !== null && minutes > 0
+        ? cache.retry.last_attempt_at + retryDelayMinutes(cache.retry.failures, minutes) * 60_000
+        : undefined,
+  };
 }

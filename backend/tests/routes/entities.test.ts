@@ -3,13 +3,13 @@ import { Hono } from "hono";
 import type { Provider } from "../../src/schemas/provider.js";
 
 vi.mock("../../src/storage/repos.js", () => ({
-  providerRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
-  rulesetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
-  proxyGroupRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
-  generalPresetRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
-  surgeModuleRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
-  profileRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
-  egressRepo: { save: vi.fn(), exists: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  providerRepo: { save: vi.fn(), exists: vi.fn(), get: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  rulesetRepo: { save: vi.fn(), exists: vi.fn(), get: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  proxyGroupRepo: { save: vi.fn(), exists: vi.fn(), get: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  generalPresetRepo: { save: vi.fn(), exists: vi.fn(), get: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  surgeModuleRepo: { save: vi.fn(), exists: vi.fn(), get: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  profileRepo: { save: vi.fn(), exists: vi.fn(), get: vi.fn(), delete: vi.fn(), list: vi.fn() },
+  egressRepo: { save: vi.fn(), exists: vi.fn(), get: vi.fn(), delete: vi.fn(), list: vi.fn() },
 }));
 vi.mock("../../src/providers/load.js", () => ({
   refreshProvider: vi.fn(),
@@ -28,6 +28,7 @@ import type { RuleSet } from "../../src/schemas/ruleset.js";
 
 const mockedProviderSave = providerRepo.save as unknown as ReturnType<typeof vi.fn>;
 const mockedProviderExists = providerRepo.exists as unknown as ReturnType<typeof vi.fn>;
+const mockedProviderGet = providerRepo.get as unknown as ReturnType<typeof vi.fn>;
 const mockedRulesetList = rulesetRepo.list as unknown as ReturnType<typeof vi.fn>;
 const mockedRulesetSave = rulesetRepo.save as unknown as ReturnType<typeof vi.fn>;
 const mockedRulesetExists = rulesetRepo.exists as unknown as ReturnType<typeof vi.fn>;
@@ -233,6 +234,7 @@ describe("PUT /api/entities/:kind/:id", () => {
   it("providers + http + existing file (exists=true) → does NOT trigger refresh (edit semantics, avoid hammering airport)", async () => {
     const body = fakeProviderBody({ type: "http" });
     mockedProviderExists.mockResolvedValue(true);
+    mockedProviderGet.mockResolvedValue(savedProvider(fakeProviderBody({ type: "http" })));
     mockedProviderSave.mockResolvedValue(savedProvider(body));
 
     const res = await buildApp().request("/api/entities/providers/airport-a", {
@@ -243,6 +245,25 @@ describe("PUT /api/entities/:kind/:id", () => {
 
     expect(res.status).toBe(200);
     expect(mockedRefresh).not.toHaveBeenCalled();
+  });
+
+  it("providers + http + 换了订阅链接 → 立刻拉一次(短时效链接过期后换新链接,拉到即从离线恢复)", async () => {
+    const body = fakeProviderBody({ type: "http", url: "https://example.com/sub?token=new" });
+    mockedProviderExists.mockResolvedValue(true);
+    mockedProviderGet.mockResolvedValue(savedProvider(fakeProviderBody({ type: "http", url: "https://example.com/sub?token=old" })));
+    mockedProviderSave.mockResolvedValue(savedProvider(body));
+
+    const res = await buildApp().request("/api/entities/providers/airport-a", {
+      method: "PUT",
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockedRefresh).toHaveBeenCalledTimes(1);
+    expect(mockedRefresh).toHaveBeenCalledWith(expect.objectContaining({ url: "https://example.com/sub?token=new" }), {
+      force: true,
+    });
   });
 
   it("providers + inline + existing file + enabled=true → triggers refresh (save-as-resync semantics)", async () => {
