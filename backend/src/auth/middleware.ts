@@ -1,5 +1,6 @@
 import type { Context, MiddlewareHandler } from "hono";
 import { verifySessionCookie } from "./session.js";
+import { isDevAuthBypassed } from "./dev-bypass.js";
 import { loadConfig } from "../storage/config-store.js";
 import { logger } from "../logger.js";
 
@@ -19,6 +20,11 @@ export function getClientIp(c: Context): string {
 }
 
 export const requireSession: MiddlewareHandler = async (c, next) => {
+  if (isDevAuthBypassed(c)) {
+    const cfg = await loadConfig();
+    c.set("user", { username: cfg.admin.username, must_change_password: cfg.admin.must_change_password });
+    return next();
+  }
   const cookie = c.req.header("cookie");
   const session = verifySessionCookie(cookie);
   if (!session) {

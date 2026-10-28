@@ -49,6 +49,7 @@ async function seed(): Promise<void> {
     },
     ip_allowlist: ["10.0.0.0/8"],
     public_base_url: "https://example.com",
+    // 已下线的旧字段:读入时被丢弃,写回后不再出现
     default_user_agent: "CustomUA/1.0",
   };
   await writeFile(configPath(), yaml.dump(cfg));
@@ -99,16 +100,15 @@ describe("resetData", () => {
     const cfg = yaml.load(text) as {
       admin: { username: string; password_hash: string; must_change_password: boolean };
       ip_allowlist: string[];
-      default_user_agent: string;
       public_base_url?: string;
     };
     expect(cfg.admin.username).toBe("admin");
     expect(cfg.admin.password_hash).toBe("$2a$10$fakehash");
     expect(cfg.admin.must_change_password).toBe(false);
 
-    // service_settings 重置:白名单清空、UA 回默认、public_base_url 清空
+    // service_settings 重置:白名单清空、public_base_url 清空
     expect(cfg.ip_allowlist).toEqual([]);
-    expect(cfg.default_user_agent).toBe("Surge/2400");
+    expect(cfg).not.toHaveProperty("default_user_agent");
     expect(cfg.public_base_url ?? "").toBe("");
   });
 
@@ -184,10 +184,9 @@ describe("resetData", () => {
     const cfg = yaml.load(await readFile(configPath(), "utf8")) as {
       admin: { password_hash: string };
       ip_allowlist: string[];
-      default_user_agent: string;
     };
     expect(cfg.admin.password_hash).toBe("$2a$10$fakehash");
     expect(cfg.ip_allowlist).toEqual([]);
-    expect(cfg.default_user_agent).toBe("Surge/2400");
+    expect(cfg).not.toHaveProperty("default_user_agent");
   });
 });

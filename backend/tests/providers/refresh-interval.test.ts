@@ -3,7 +3,8 @@ import type { Provider } from "../../src/schemas/provider.js";
 import type { ProviderCache } from "../../src/providers/cache-store.js";
 
 // 全部 storage / fetcher 都 mock,避免触碰真实文件系统与网络。
-vi.mock("../../src/providers/cache-store.js", () => ({
+vi.mock("../../src/providers/cache-store.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/providers/cache-store.js")>()),
   readProviderCache: vi.fn(),
   writeProviderCache: vi.fn(),
 }));
@@ -24,7 +25,7 @@ import {
   loadProviderNodes,
   refreshAllProviders,
 } from "../../src/providers/load.js";
-import { providerSchema } from "../../src/schemas/provider.js";
+import { DEFAULT_USER_AGENTS, providerSchema } from "../../src/schemas/provider.js";
 import { providerRepo } from "../../src/storage/repos.js";
 
 const mockedReadCache = readProviderCache as unknown as ReturnType<typeof vi.fn>;
@@ -447,5 +448,57 @@ describe("refreshAllProviders - never(手动刷新)与 force 交互", () => {
     expect(result.skippedLocked).toEqual(["manual"]);
     expect(result.refreshed).toHaveLength(1);
     expect(mockedFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("refreshProvider - 记住上次可用的 UA", () => {
+  const httpProvider = (user_agents?: string[]) =>
+    providerSchema.parse({
+      id: "p1",
+      name: "P1",
+      type: "http",
+      url: "https://airport.example/sub",
+      user_agents,
+    }) as Provider;
+
+  it("拿到节点后把所用 UA 连同当时的 UA 列表写进 cache", async () => {
+    mockedReadCache.mockResolvedValue(null);
+    mockedFetch.mockResolvedValue({
+      text: "ss://YWVzLTEyOC1nY206cGFzc0AyLjIuMi4yOjIwODA=#t2",
+      userinfo_header: null,
+      fetched_at: Date.now(),
+      used_user_agent: "",
+    });
+
+    const cache = await refreshProvider(httpProvider(), { force: true });
+
+    expect(cache.ua_memory).toEqual({ user_agent: "", list: DEFAULT_USER_AGENTS });
+  });
+
+  it("列表没改过:下次刷新把记住的 UA 交给 fetcher 先试", async () => {
+    mockedReadCache.mockResolvedValue({ ...okCache(9999), ua_memory: { user_agent: "", list: DEFAULT_USER_AGENTS } });
+
+    await refreshProvider(httpProvider(), { force: true });
+
+    expect(mockedFetch.mock.calls[0][1]).toEqual({ preferUserAgent: "" });
+  });
+
+  it("列表改过(换顺序 / 增删):记忆作废,按新顺序试", async () => {
+    mockedReadCache.mockResolvedValue({ ...okCache(9999), ua_memory: { user_agent: "B/1", list: ["A/1", "B/1"] } });
+
+    await refreshProvider(httpProvider(["B/1", "A/1"]), { force: true });
+
+    expect(mockedFetch.mock.calls[0][1]).toEqual({ preferUserAgent: undefined });
+  });
+
+  it("拉取失败回退旧 cache 时保留记忆", async () => {
+    const memory = { user_agent: "B/1", list: ["A/1", "B/1"] };
+    mockedReadCache.mockResolvedValue({ ...okCache(9999), ua_memory: memory });
+    mockedFetch.mockRejectedValue(new Error("HTTP 403"));
+
+    const cache = await refreshProvider(httpProvider(["A/1", "B/1"]), { force: true });
+
+    expect(cache.status).toBe("stale");
+    expect(cache.ua_memory).toEqual(memory);
   });
 });

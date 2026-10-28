@@ -19,6 +19,7 @@ import { toast } from "@/components/ui/toast";
 import { HostRowsEditor } from "@/components/host-rows-editor";
 import { QuotaEditor, type ProviderQuota } from "./quota";
 import { FetchViaField } from "./fetch-via";
+import { UserAgentsField } from "./user-agents";
 
 export type ProviderType = "http" | "file" | "inline";
 
@@ -57,8 +58,9 @@ export interface ProviderData {
   url?: string;
   path?: string;
   content?: string;
-  user_agent: string;
-  // 拉取线路:出口 id 与 `direct` 按顺序排,空 = 服务器直连;仅 URL 订阅生效
+  // 按顺序试的 UA,空 = 默认列表;与 backend/src/schemas/provider.ts user_agents 保持同步
+  user_agents?: string[];
+  // 拉取线路:出口 id 与 `direct` 按顺序排,直连固定兜底(没写就排最后);仅 URL 订阅生效
   // 与 backend/src/schemas/provider.ts fetch_via 保持同步
   fetch_via?: string[];
   refresh: ProviderRefresh;
@@ -80,7 +82,7 @@ export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
   name: "new provider",
   type: "http",
   url: "https://example.com/subscribe?token=xxx",
-  user_agent: "",
+  user_agents: [],
   refresh: { interval: "12h" },
   parser_hint: "auto",
   enabled: true,
@@ -99,7 +101,7 @@ export const INLINE_PROVIDER_TEMPLATE: Partial<ProviderData> = {
   name: "static nodes",
   type: "inline",
   content: "",
-  user_agent: "",
+  user_agents: [],
   refresh: { interval: "12h" },
   parser_hint: "auto",
   enabled: true,
@@ -170,7 +172,6 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
       update({
         type: "http",
         url: data.url ?? "",
-        user_agent: data.user_agent ?? "",
         path: undefined,
       });
     } else {
@@ -283,17 +284,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
               placeholder="https://example.com/subscribe?token=xxx"
             />
           </Field>
-          <Field label="User-Agent (部分机场按 UA 返回不同格式)">
-            <Input
-              value={data.user_agent ?? ""}
-              onChange={(e) => update({ user_agent: e.target.value })}
-              placeholder="留空 = 自动尝试多种 UA"
-            />
-            <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
-              留空即可。机场常按 UA 网关:某些 UA(尤其 Surge 系)会返回 200 但空 body,
-              此时后端会自动换 clash-verge / mihomo 等 UA 重试,直到拿到内容。需要钉死某个 UA 再手动填。
-            </p>
-          </Field>
+          <UserAgentsField data={data} update={update} />
           <FetchViaField data={data} update={update} />
         </TabsContent>
         <TabsContent value="inline" className="space-y-2 pt-3">
@@ -364,45 +355,43 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
       </Field>
 
       {data.type !== "inline" && (
-        <CollapsibleSection title="刷新策略" autoOpen>
-          <Field label="刷新周期">
-            <Select
-              value={refresh.interval}
-              onValueChange={(v) =>
-                update({ refresh: { interval: v as RefreshInterval } })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="4h">每 4 小时</SelectItem>
-                <SelectItem value="12h">每 12 小时</SelectItem>
-                <SelectItem value="24h">每 24 小时</SelectItem>
-                <SelectItem value="1week">每 1 周</SelectItem>
-                <SelectItem value="on_request">
-                  每次调用时(实时拉取)
-                </SelectItem>
-                <SelectItem value="never">
-                  手动刷新(不自动调度,需要时点列表里的刷新按钮)
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            {refresh.interval === "never" && (
-              <p className="text-xs text-muted-foreground mt-1">
-                后台不再按周期拉取;首次会自动拉一次种子,之后仅在你点列表里的刷新按钮 / 「刷新全部」时才会更新。
-              </p>
-            )}
-            {refresh.interval === "on_request" && (
-              <p className="text-xs text-muted-foreground mt-1">
-                每次访问 /sub 都会同步去机场拉取,响应耗时取决于机场。
-              </p>
-            )}
-          </Field>
-        </CollapsibleSection>
+        <Field label="刷新周期">
+          <Select
+            value={refresh.interval}
+            onValueChange={(v) =>
+              update({ refresh: { interval: v as RefreshInterval } })
+            }
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="4h">每 4 小时</SelectItem>
+              <SelectItem value="12h">每 12 小时</SelectItem>
+              <SelectItem value="24h">每 24 小时</SelectItem>
+              <SelectItem value="1week">每 1 周</SelectItem>
+              <SelectItem value="on_request">
+                每次调用时(实时拉取)
+              </SelectItem>
+              <SelectItem value="never">
+                手动刷新(不自动调度,需要时点列表里的刷新按钮)
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          {refresh.interval === "never" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              后台不再按周期拉取;首次会自动拉一次种子,之后仅在你点列表里的刷新按钮 / 「刷新全部」时才会更新。
+            </p>
+          )}
+          {refresh.interval === "on_request" && (
+            <p className="text-xs text-muted-foreground mt-1">
+              每次访问 /sub 都会同步去机场拉取,响应耗时取决于机场。
+            </p>
+          )}
+        </Field>
       )}
 
-      <CollapsibleSection title="流量 / 到期 (用完自动排除)" autoOpen={!!data.quota}>
+      <Section title="流量 / 到期 (用完自动排除)">
         <QuotaEditor
           providerId={data.id}
           isNew={isNew}
@@ -410,7 +399,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
           quota={data.quota}
           onChange={(quota) => update({ quota })}
         />
-      </CollapsibleSection>
+      </Section>
 
       <CollapsibleSection title="Clash proxy-providers 暴露 (mihomo)" autoOpen={hasClashProvider}>
         <div className="space-y-3">
@@ -575,6 +564,16 @@ function Field({
       <Label className="text-xs">{label}</Label>
       <div className="mt-1">{children}</div>
     </div>
+  );
+}
+
+/** 常驻展开的分组:样式与 CollapsibleSection 一致,只是标题不可点 */
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="border rounded-md">
+      <h3 className="px-3 py-2 text-sm font-medium bg-muted/30 rounded-t-md">{title}</h3>
+      <div className="p-3 border-t">{children}</div>
+    </section>
   );
 }
 

@@ -3,7 +3,7 @@ import type { Provider } from "../schemas/provider.js";
 import { providerRepo } from "../storage/repos.js";
 import { loadProviderNodes } from "./load.js";
 import { dedupeNodes } from "../parsers/dedup.js";
-import { readProviderCache } from "./cache-store.js";
+import { readProviderCache, type UserAgentMemory } from "./cache-store.js";
 import { evaluateProviderQuota, type ProviderQuotaStatus } from "./quota.js";
 
 export interface NodePoolItem {
@@ -60,6 +60,8 @@ export interface ProviderSummary {
   node_count: number;
   error?: string;
   quota: ProviderQuotaStatus;
+  /** 上次拿到节点的 UA 及当时的 UA 列表;编辑页据此标「下次优先」,表单里改了列表就不标 */
+  ua_memory?: UserAgentMemory;
 }
 
 export async function listProvidersWithCache(): Promise<ProviderSummary[]> {
@@ -77,6 +79,7 @@ export async function listProvidersWithCache(): Promise<ProviderSummary[]> {
       node_count: cache?.nodes.length ?? 0,
       error: cache?.error,
       quota: evaluateProviderQuota(entry.data, cache, now),
+      ua_memory: cache?.ua_memory,
     };
   });
 }

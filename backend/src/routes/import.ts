@@ -173,7 +173,7 @@ importRouter.post("/commit", async (c) => {
         type: "inline",
         content,
         parser_hint: kind === "surge" ? "surge" : "clash",
-        user_agent: "Surge/2400",
+        user_agents: [],
         fetch_via: [],
         // inline 类型在 UI / 调度器都不会"上游刷新",标记 never 让 cron 跳过、UI 隐藏刷新按钮
         refresh: { interval: "never" },

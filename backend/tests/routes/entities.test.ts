@@ -61,7 +61,7 @@ function fakeProviderBody(overrides: Partial<Provider> = {}): Record<string, unk
     name: "Airport A",
     type: "http",
     url: "https://example.com/sub",
-    user_agent: "Surge/2400",
+    user_agents: [],
     refresh: { interval: "12h" },
     parser_hint: "auto",
     enabled: true,

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import "dotenv/config";
 
-const envSchema = z.object({
+export const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
   PORT: z.coerce.number().int().positive().default(8080),
   DATA_DIR: z.string().default("./data"),
@@ -14,6 +14,19 @@ const envSchema = z.object({
   PUBLIC_BASE_URL: z.string().url().optional(),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
   LOG_BUFFER_SIZE: z.coerce.number().int().positive().default(2000),
+  // 仅本地开发:本机回环请求免登录(auth/dev-bypass.ts),给 agent 验证 UI 用
+  DEV_AUTH_BYPASS: z
+    .enum(["0", "1", "true", "false"])
+    .optional()
+    .transform((v) => v === "1" || v === "true"),
+}).superRefine((e, ctx) => {
+  if (e.DEV_AUTH_BYPASS && e.NODE_ENV === "production") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["DEV_AUTH_BYPASS"],
+      message: "生产环境不允许开启 DEV_AUTH_BYPASS",
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

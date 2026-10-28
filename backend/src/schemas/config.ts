@@ -40,7 +40,6 @@ export const appConfigSchema = z.object({
     .default([])
     .transform((list) => list.map((entry) => entry.trim()).filter((entry) => entry.length > 0)),
   public_base_url: z.string().url().optional(),
-  default_user_agent: z.string().default("Surge/2400"),
   logs: logsConfigSchema,
   auth: z
     .object({

@@ -4,6 +4,14 @@ import { idSchema } from "./common.js";
 /** 节点源 fetch_via 里代表「服务器直连」的保留字,出口 id 不能占用。 */
 export const DIRECT_ROUTE = "direct";
 
+/**
+ * 节点源实际的尝试顺序。服务器直连是固定兜底线路,不能去掉:fetch_via 里写了 `direct`
+ * 就按写的位置试,没写就排在最后(空 = 只直连)。
+ */
+export function resolveFetchRoutes(fetchVia: readonly string[] = []): string[] {
+  return fetchVia.includes(DIRECT_ROUTE) ? [...fetchVia] : [...fetchVia, DIRECT_ROUTE];
+}
+
 export const FETCH_PROXY_PROTOCOLS = ["http:", "https:", "socks5:", "socks:"] as const;
 
 const emptyToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);

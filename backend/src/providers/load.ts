@@ -1,7 +1,7 @@
-import type { Provider } from "../schemas/provider.js";
+import { resolveUserAgents, type Provider } from "../schemas/provider.js";
 import type { Node } from "../schemas/node.js";
 import { fetchProviderContent } from "./fetcher.js";
-import { readProviderCache, writeProviderCache, type ProviderCache } from "./cache-store.js";
+import { readProviderCache, rememberedUserAgent, writeProviderCache, type ProviderCache } from "./cache-store.js";
 import { parseSubscriptionWithInfo } from "../parsers/index.js";
 import { extractInfoNodeQuota } from "../parsers/info-node-extract.js";
 import { annotateNodes } from "../parsers/normalize.js";
@@ -46,7 +46,9 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
     // minutes === 0 (on_request) 或已过期 / 非 ok 穿透到下面 fetch。
   }
   try {
-    const result = await fetchProviderContent(provider);
+    const result = await fetchProviderContent(provider, {
+      preferUserAgent: rememberedUserAgent(cached?.ua_memory, provider.user_agents),
+    });
     const { nodes: rawNodes, infoNodeNames } = parseSubscriptionWithInfo(result.text, provider.parser_hint);
     const info_quota = extractInfoNodeQuota(infoNodeNames, result.fetched_at);
     const nodes = annotateNodes(rawNodes).map((n) => ({ ...n, source_provider_id: provider.id }));
@@ -67,7 +69,7 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
           ? "请在编辑器中填写节点文本"
           : provider.type === "file"
             ? "文件为空"
-            : "已尝试多个 User-Agent 上游仍返回空 body;该订阅可能已失效,或需要特定 UA——可在节点源里手动指定 User-Agent";
+            : "User-Agent 列表里的每个 UA 上游都返回空 body;该订阅可能已失效,或需要特定 UA——可在节点源的 User-Agent 列表里添加";
       const reason =
         result.text.trim().length === 0
           ? `content 为空(${emptyReason})`
@@ -98,6 +100,10 @@ export async function refreshProvider(provider: Provider, opts: RefreshOptions =
       nodes,
       extracted_hosts,
       info_quota,
+      ua_memory:
+        result.used_user_agent === undefined
+          ? undefined
+          : { user_agent: result.used_user_agent, list: resolveUserAgents(provider.user_agents) },
     };
     await writeProviderCache(cache);
     logger.info(

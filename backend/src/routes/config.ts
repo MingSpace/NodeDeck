@@ -25,7 +25,6 @@ const ipAllowlistSchema = z
 const updateSchema = z.object({
   ip_allowlist: ipAllowlistSchema.optional(),
   public_base_url: z.string().url().optional().or(z.literal("")),
-  default_user_agent: z.string().min(1).optional(),
   log_retention_days: z.number().int().min(0).max(90).optional(),
 });
 
@@ -59,7 +58,6 @@ configRouter.get("/", async (c) => {
     must_change_password: cfg.admin.must_change_password,
     ip_allowlist: cfg.ip_allowlist,
     public_base_url: cfg.public_base_url ?? "",
-    default_user_agent: cfg.default_user_agent,
     log_retention_days: cfg.logs.retention_days,
     updated_at: mtime === null ? null : Math.round(mtime),
   });
@@ -79,7 +77,6 @@ configRouter.put("/", async (c) => {
       parsed.data.public_base_url === ""
         ? undefined
         : (parsed.data.public_base_url ?? current.public_base_url),
-    default_user_agent: parsed.data.default_user_agent ?? current.default_user_agent,
     logs: {
       ...current.logs,
       retention_days: parsed.data.log_retention_days ?? current.logs.retention_days,
@@ -91,7 +88,6 @@ configRouter.put("/", async (c) => {
     {
       ip_allowlist: updated.ip_allowlist,
       public_base_url: updated.public_base_url ?? null,
-      default_user_agent: updated.default_user_agent,
       log_retention_days: updated.logs.retention_days,
     },
     "Config updated",
@@ -99,7 +95,6 @@ configRouter.put("/", async (c) => {
   return c.json({
     ip_allowlist: updated.ip_allowlist,
     public_base_url: updated.public_base_url ?? "",
-    default_user_agent: updated.default_user_agent,
     log_retention_days: updated.logs.retention_days,
   });
 });
@@ -107,7 +102,7 @@ configRouter.put("/", async (c) => {
 /**
  * 还原数据配置:按 scope 批量删除 data/ 下的实体 yaml + cache。
  *
- * @business_rule 管理员账号永远不会被影响,服务设置(IP 白名单/PUBLIC_BASE_URL/UA)
+ * @business_rule 管理员账号永远不会被影响,服务设置(IP 白名单/PUBLIC_BASE_URL/日志保留)
  * 只有显式勾选 service_settings 才会被重置成默认值。
  * @business_rule 必须传 `confirmation: "RESET"` 才会执行,防止误调用。
  */

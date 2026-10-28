@@ -10,9 +10,15 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { egressAddress, type EgressData } from "@/pages/egresses/visual-form";
 import type { ProviderData } from "./visual-form";
+import { formatUserAgent } from "./user-agents";
 
-// 与 backend/src/schemas/egress.ts DIRECT_ROUTE 保持同步
+// 与 backend/src/schemas/egress.ts DIRECT_ROUTE / resolveFetchRoutes 保持同步
 export const DIRECT_ROUTE = "direct";
+
+/** 实际尝试顺序:直连是固定兜底线路,没写进 fetch_via 时排在最后。 */
+export function resolveFetchRoutes(fetchVia: readonly string[] = []): string[] {
+  return fetchVia.includes(DIRECT_ROUTE) ? [...fetchVia] : [...fetchVia, DIRECT_ROUTE];
+}
 
 // 与 backend/src/routes/provider-actions.ts TestFetchAttempt 保持同步
 interface TestFetchAttempt {
@@ -29,7 +35,7 @@ interface TestFetchAttempt {
 
 interface TestFetchInput {
   url: string;
-  user_agent: string;
+  user_agents: string[];
   fetch_via: string[];
   parser_hint: ProviderData["parser_hint"];
 }
@@ -44,25 +50,23 @@ export function useRouteNames(): (route: string) => string | undefined {
 function sameInput(a: TestFetchInput, b: TestFetchInput): boolean {
   return (
     a.url === b.url &&
-    a.user_agent === b.user_agent &&
+    a.user_agents.join("\n") === b.user_agents.join("\n") &&
     a.fetch_via.join(",") === b.fetch_via.join(",") &&
     a.parser_hint === b.parser_hint
   );
 }
 
 function verdict(attempts: TestFetchAttempt[], fetchVia: string[]): string {
-  const configured = fetchVia.length > 0 ? fetchVia : [DIRECT_ROUTE];
-  const first = configured.map((r) => attempts.find((a) => a.route === r)).find((a) => a?.ok);
-  const directExtra = !configured.includes(DIRECT_ROUTE) && attempts.find((a) => a.route === DIRECT_ROUTE)?.ok;
+  const routes = resolveFetchRoutes(fetchVia);
+  const onlyDirect = routes.length === 1;
+  const first = routes.map((r) => attempts.find((a) => a.route === r)).find((a) => a?.ok);
   if (first) {
-    if (fetchVia.length === 0) return "服务器直连就能拉到,不需要出口。";
-    const tail = directExtra ? " 直连其实也能拉到,出口可以不配。" : "";
-    return first.route === DIRECT_ROUTE
-      ? `按当前顺序会走服务器直连。${tail}`
-      : `按当前顺序会经「${first.label}」拉到。${tail}`;
+    if (onlyDirect) return "服务器直连就能拉到,不需要出口。";
+    if (first.route === DIRECT_ROUTE) return "按当前顺序会走服务器直连。";
+    const directOk = attempts.find((a) => a.route === DIRECT_ROUTE)?.ok;
+    return `按当前顺序会经「${first.label}」拉到。${directOk ? " 直连其实也能拉到,出口可以不配。" : ""}`;
   }
-  if (directExtra) return "列出的线路都不通,直连反而可以。把直连加进线路,或检查出口。";
-  if (fetchVia.length === 0) return "服务器直连拉不到。如果是机场按 IP 拦截,添加出口再选上测试。";
+  if (onlyDirect) return "服务器直连拉不到。如果是机场按 IP 拦截,添加出口再选上测试。";
   return "所有线路都失败,先看下面的原因。";
 }
 
@@ -75,14 +79,19 @@ export function FetchViaField({
 }) {
   const egresses = useEntityList<EgressData>("egresses");
   const nameOf = useRouteNames();
-  const routes = data.fetch_via ?? [];
-  const options = [
-    ...(egresses.data?.items ?? []).map((e) => ({ id: e.id, label: e.name, hint: egressAddress(e) })),
-    { id: DIRECT_ROUTE, label: "服务器直连", hint: "不经出口" },
-  ].filter((o) => !routes.includes(o.id));
+  const routes = resolveFetchRoutes(data.fetch_via);
+  const options = (egresses.data?.items ?? [])
+    .map((e) => ({ id: e.id, label: e.name, hint: egressAddress(e) }))
+    .filter((o) => !routes.includes(o.id));
   const noEgress = egresses.isSuccess && egresses.data.items.length === 0;
 
-  const setRoutes = (next: string[]) => update({ fetch_via: next });
+  // 直连总在列表里,存回去时只剩直连就存空,保持 yaml 干净
+  const setRoutes = (next: string[]) => update({ fetch_via: next.length === 1 ? [] : next });
+  // 新线路默认插在直连前面(直连在最后兜底时);直连被挪到中间就追加到末尾
+  const add = (id: string) =>
+    setRoutes(
+      routes.at(-1) === DIRECT_ROUTE ? [...routes.slice(0, -1), id, DIRECT_ROUTE] : [...routes, id],
+    );
   const move = (i: number, delta: number) => {
     const next = [...routes];
     [next[i], next[i + delta]] = [next[i + delta], next[i]];
@@ -91,8 +100,8 @@ export function FetchViaField({
 
   const current: TestFetchInput = {
     url: data.url ?? "",
-    user_agent: data.user_agent ?? "",
-    fetch_via: routes,
+    user_agents: data.user_agents ?? [],
+    fetch_via: data.fetch_via ?? [],
     parser_hint: data.parser_hint ?? "auto",
   };
   const [tested, setTested] = useState<TestFetchInput | null>(null);
@@ -121,21 +130,16 @@ export function FetchViaField({
       </div>
 
       <ol className="mt-1.5 rounded-md border divide-y text-xs">
-        {routes.length === 0 && (
-          <li className="flex items-center gap-2 px-2.5 py-2 text-muted-foreground">
-            <span className="w-4 text-center tabular-nums">1</span>
-            服务器直连
-            <span className="text-muted-foreground/70">(默认)</span>
-          </li>
-        )}
         {routes.map((route, i) => {
           const name = nameOf(route);
+          const direct = route === DIRECT_ROUTE;
           return (
             <li key={route} className="flex items-center gap-2 px-2.5 py-1.5">
               <span className="w-4 text-center tabular-nums text-muted-foreground">{i + 1}</span>
               <span className={cn("min-w-0 truncate", !name && "text-destructive")}>
                 {name ?? `${route}(出口已删除)`}
               </span>
+              {direct && <span className="shrink-0 text-muted-foreground/70">固定兜底</span>}
               <div className="ml-auto flex items-center shrink-0">
                 <Button type="button" variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => move(i, -1)} aria-label="上移">
                   <ArrowUp className="h-3.5 w-3.5" />
@@ -151,16 +155,21 @@ export function FetchViaField({
                 >
                   <ArrowDown className="h-3.5 w-3.5" />
                 </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => setRoutes(routes.filter((r) => r !== route))}
-                  aria-label="移除"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
+                {direct ? (
+                  // 直连不可移除,留同宽占位让上下移按钮对齐
+                  <span className="h-6 w-6" aria-hidden />
+                ) : (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => setRoutes(routes.filter((r) => r !== route))}
+                    aria-label="移除"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
               </div>
             </li>
           );
@@ -168,11 +177,11 @@ export function FetchViaField({
         {options.length > 0 && (
           <li className="px-1.5 py-1">
             {/* value 固定为空:选完立刻追加,下拉框回到占位状态 */}
-            <Select value="" onValueChange={(id) => setRoutes([...routes, id])}>
+            <Select value="" onValueChange={add}>
               <SelectTrigger className="h-7 border-0 shadow-none text-xs text-muted-foreground focus:ring-0">
                 <span className="flex items-center gap-1.5">
                   <Plus className="h-3.5 w-3.5" />
-                  <SelectValue placeholder={routes.length === 0 ? "添加线路(默认直连)" : "添加线路"} />
+                  <SelectValue placeholder="添加出口" />
                 </span>
               </SelectTrigger>
               <SelectContent>
@@ -189,7 +198,7 @@ export function FetchViaField({
       </ol>
       <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
         机场拦了服务器的 IP 时(常见是直连 403),借出口机的网络拉订阅。从上往下试,前一条失败才换下一条;
-        想兜底就把「服务器直连」放在最后。只影响拉订阅,不影响客户端连节点。
+        「服务器直连」固定在列表里不能移除,可以上下挪。只影响拉订阅,不影响客户端连节点。
         {noEgress && (
           <>
             {" "}
@@ -252,7 +261,7 @@ function AttemptRow({ attempt: a }: { attempt: TestFetchAttempt }) {
           <span className="text-foreground">{a.node_count} 个节点</span>
           <span>{formatBytes(a.bytes)}</span>
           <span>{a.has_userinfo ? "带流量信息" : "无流量信息"}</span>
-          {a.used_user_agent && <span className="font-mono">UA {a.used_user_agent}</span>}
+          {a.used_user_agent !== undefined && <span className="font-mono">UA {formatUserAgent(a.used_user_agent)}</span>}
         </span>
       ) : (
         <span className="text-destructive break-words">{a.error}</span>

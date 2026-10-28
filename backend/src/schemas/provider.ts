@@ -49,13 +49,46 @@ export const providerQuotaSchema = z.object({
 });
 
 // 拉取线路:出口 id(见 schemas/egress.ts)与保留字 `direct` 按顺序排,前一条失败换下一条。
-// 空 = 只用服务器直连。
+// 直连是固定兜底:没写 `direct` 时排在最后,空 = 只用服务器直连(见 resolveFetchRoutes)。
 export const fetchViaSchema = z
   .array(idSchema)
   .default([])
   .refine((ids) => new Set(ids).size === ids.length, "拉取线路里有重复项");
 
-export const providerSchema = z
+/**
+ * 拉订阅时依次尝试的 User-Agent(节点源 user_agents 留空时用)。机场面板按 UA 子串决定吐什么格式,
+ * 以 Xboard 为例(app/Protocols/*.php 的 $flags):含 `meta` / `verge` / `clashmetaforandroid`
+ * → Clash Meta YAML(vless / hy2 / tuic / anytls 全量,带顶层 hosts:);只含 `clash` → 老 Clash 格式,
+ * 不含 vless / hy2 / tuic / anytls;空 UA 或不认识的 UA → base64 URI 列表。版本号会被拿去和
+ * 面板的协议最低版本比,所以写当前正式版。
+ * - `clash.meta/…`:mihomo 内核自己拉 proxy-provider 的默认 UA(config.go GlobalUA),认 mihomo 的网关都放行
+ * - `clash-verge/…`:Clash Verge Rev;有些网关只放行已知 GUI 客户端
+ * - 空 UA / `v2rayN/…`:兜底拿通用 URI 列表
+ * 与 frontend/src/pages/providers/user-agents.tsx USER_AGENT_PRESETS 保持同步。
+ */
+export const DEFAULT_USER_AGENTS = ["clash.meta/v1.19.33", "clash-verge/v2.5.8", "", "v2rayN/7.25.6"];
+
+// 空数组 = 用 DEFAULT_USER_AGENTS;空字符串是合法候选(显式不带 UA)。
+export const userAgentsSchema = z
+  .array(z.string().trim().max(256, "User-Agent 太长"))
+  .max(12, "User-Agent 最多 12 个")
+  .default([])
+  .refine((list) => new Set(list).size === list.length, "User-Agent 列表里有重复项");
+
+export function resolveUserAgents(list: readonly string[] | undefined): string[] {
+  return list?.length ? [...list] : [...DEFAULT_USER_AGENTS];
+}
+
+// 旧版单值 `user_agent`:语义是「先试它,拿不到再走内置回退列表」,读入时折成等价的 user_agents。
+// 下次保存就只剩 user_agents,老 yaml 不用手改。
+function migrateLegacyUserAgent(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || !("user_agent" in raw)) return raw;
+  const { user_agent: legacy, ...rest } = raw as Record<string, unknown>;
+  if (rest.user_agents !== undefined || typeof legacy !== "string" || !legacy.trim()) return rest;
+  return { ...rest, user_agents: [...new Set([legacy.trim(), ...DEFAULT_USER_AGENTS])] };
+}
+
+const providerObjectSchema = z
   .object({
     id: idSchema,
     name: z.string().min(1),
@@ -63,9 +96,8 @@ export const providerSchema = z
     url: z.string().url().optional(),
     path: z.string().optional(),
     content: z.string().optional(),
-    // 默认留空:很多机场按 UA 网关,Surge 系会被吐空 body。空 UA 先试,拿到空响应时
-    // fetcher 会自动回退到 Clash 系等候选 UA(见 providers/fetcher.ts FALLBACK_USER_AGENTS)。
-    user_agent: z.string().default(""),
+    // 按顺序试,拿到能解析出节点的内容为止;留空用 DEFAULT_USER_AGENTS(见 providers/fetcher.ts)
+    user_agents: userAgentsSchema,
     // 仅 http 类型生效;见 providers/fetcher.ts
     fetch_via: fetchViaSchema,
     refresh: refreshSchema.default({ interval: "12h" }),
@@ -103,6 +135,8 @@ export const providerSchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "inline provider requires `content`", path: ["content"] });
     }
   });
+
+export const providerSchema = z.preprocess(migrateLegacyUserAgent, providerObjectSchema);
 
 export type Provider = z.infer<typeof providerSchema>;
 export type ProviderQuota = z.infer<typeof providerQuotaSchema>;

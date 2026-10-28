@@ -25,7 +25,7 @@ import { fetchProviderContent } from "../../src/providers/fetcher.js";
 import { describeFetchError, redactProxyUrl } from "../../src/providers/fetch-proxy.js";
 import { hostKeyFingerprint } from "../../src/providers/egress.js";
 import { getEgressKeyPair } from "../../src/providers/egress-key.js";
-import { egressSchema, type Egress } from "../../src/schemas/egress.js";
+import { egressSchema, resolveFetchRoutes, type Egress } from "../../src/schemas/egress.js";
 import { providerSchema } from "../../src/schemas/provider.js";
 import { egressRepo } from "../../src/storage/repos.js";
 import { providerActionsRouter } from "../../src/routes/provider-actions.js";
@@ -130,7 +130,7 @@ afterEach(() => {
   tunnelTargets.length = 0;
 });
 
-const httpInput = (fetch_via: string[]) => ({ id: "p1", type: "http" as const, url: upstreamUrl, user_agent: "", fetch_via });
+const httpInput = (fetch_via: string[]) => ({ id: "p1", type: "http" as const, url: upstreamUrl, fetch_via });
 
 describe("fetchProviderContent - 出口", () => {
   it("代理出口:经代理拉取,不走全局 fetch", async () => {
@@ -168,14 +168,20 @@ describe("fetchProviderContent - 出口", () => {
 
   it("SSH 密码错误:报登录被拒绝", async () => {
     await expect(
-      fetchProviderContent(httpInput(["eg-test"]), { loadEgress: loadOnly(sshEgress({ password: "wrong" })) }),
+      fetchProviderContent(httpInput(["eg-test"]), {
+        loadEgress: loadOnly(sshEgress({ password: "wrong" })),
+        route: "eg-test",
+      }),
     ).rejects.toThrow(/SSH 登录 u@127\.0\.0\.1:\d+ 被拒绝,检查用户名和密码/);
   });
 
   it("SSH 主机指纹不符:拒连并给出实际指纹", async () => {
     const pinned = `SHA256:${"A".repeat(43)}`;
     await expect(
-      fetchProviderContent(httpInput(["eg-test"]), { loadEgress: loadOnly(sshEgress({ host_key: pinned })) }),
+      fetchProviderContent(httpInput(["eg-test"]), {
+        loadEgress: loadOnly(sshEgress({ host_key: pinned })),
+        route: "eg-test",
+      }),
     ).rejects.toThrow(`实际 ${sshHostKeyFp}`);
     expect(tunnelTargets).toHaveLength(0);
   });
@@ -189,6 +195,33 @@ describe("fetchProviderContent - 出口", () => {
 
     const result = await fetchProviderContent(httpInput(["eg-dead", "direct"]), { loadEgress: loadOnly(dead) });
     expect(result.text).toContain("#direct");
+  });
+
+  it("fetch_via 没写 direct 时直连排在最后兜底", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("ss://YWVzLTI1Ni1nY206cHc=@1.2.3.4:443#direct\n", { status: 200 })),
+    );
+    const dead = egress({ id: "eg-dead", name: "坏出口", type: "ssh", host: "127.0.0.1", port: 1, auth: "password", password: "x" });
+
+    const result = await fetchProviderContent(httpInput(["eg-dead"]), { loadEgress: loadOnly(dead) });
+    expect(result.text).toContain("#direct");
+  });
+
+  it("direct 写在前面就先直连", async () => {
+    const globalFetch = vi.fn(async () => new Response("ss://YWVzLTI1Ni1nY206cHc=@1.2.3.4:443#direct\n", { status: 200 }));
+    vi.stubGlobal("fetch", globalFetch);
+    const eg = egress({ id: "eg-proxy", type: "proxy", url: proxyUrl });
+
+    const result = await fetchProviderContent(httpInput(["direct", "eg-proxy"]), { loadEgress: loadOnly(eg) });
+    expect(result.text).toContain("#direct");
+    expect(proxiedTargets).toHaveLength(0);
+  });
+
+  it("resolveFetchRoutes:空 = 只直连,没写 direct 补在最后,写了按原位置", () => {
+    expect(resolveFetchRoutes([])).toEqual(["direct"]);
+    expect(resolveFetchRoutes(["a", "b"])).toEqual(["a", "b", "direct"]);
+    expect(resolveFetchRoutes(["direct", "a"])).toEqual(["direct", "a"]);
   });
 
   it("全部线路失败时逐条列出原因;出口不存在单独说明", async () => {
@@ -213,7 +246,7 @@ describe("fetchProviderContent - 直连错误处理", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      fetchProviderContent({ id: "p1", type: "http", url: "https://airport.example/sub", user_agent: "" }),
+      fetchProviderContent({ id: "p1", type: "http", url: "https://airport.example/sub" }),
     ).rejects.toThrow("fetch failed: connect ETIMEDOUT 1.2.3.4:443");
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -225,7 +258,7 @@ describe("fetchProviderContent - 直连错误处理", () => {
     );
 
     await expect(
-      fetchProviderContent({ id: "p1", type: "http", url: "https://airport.example/sub", user_agent: "" }),
+      fetchProviderContent({ id: "p1", type: "http", url: "https://airport.example/sub" }),
     ).rejects.toThrow(/^HTTP 403.*「出口」/);
   });
 });
@@ -287,7 +320,17 @@ describe("POST /api/providers/test-fetch", () => {
     });
   }
 
-  it("逐条测拉取线路,没列直连时顺带测直连;只解析不落 cache", async () => {
+  it("每条线路单独测,出口失败不会借直连冒充成功", async () => {
+    const res = await post({ url: upstreamUrl, fetch_via: ["eg-gone"] });
+    const { attempts } = (await res.json()) as { attempts: Array<{ route: string; ok: boolean; error?: string }> };
+    expect(attempts.map((a) => [a.route, a.ok])).toEqual([
+      ["eg-gone", false],
+      ["direct", true],
+    ]);
+    expect(attempts[0].error).toContain("不存在");
+  });
+
+  it("逐条测拉取线路,直连固定兜底总会测到;只解析不落 cache", async () => {
     await egressRepo.save(egress({ id: "eg-proxy", name: "代理机", type: "proxy", url: proxyUrl }));
     const res = await post({ url: upstreamUrl, fetch_via: ["eg-proxy"] });
     expect(res.status).toBe(200);

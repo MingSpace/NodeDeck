@@ -1,0 +1,8 @@
+# Clash 系 UA 拿到「请使用客户端」页面,其它 UA 拿到 base64;没有流量头,到期日只在信息节点里。
+# 故意保留旧版单值 user_agent(验证迁移),并先走一个连不上的出口(验证退回直连)
+id: fake-b64
+name: 假机场 Base64
+type: http
+url: http://127.0.0.1:18090/b64
+user_agent: Surge/2400
+fetch_via: [dead-proxy]

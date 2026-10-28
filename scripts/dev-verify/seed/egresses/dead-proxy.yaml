@@ -1,0 +1,4 @@
+id: dead-proxy
+name: 坏出口
+type: proxy
+url: socks5://127.0.0.1:1

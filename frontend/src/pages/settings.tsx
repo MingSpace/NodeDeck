@@ -24,7 +24,6 @@ interface AppConfigDto {
   must_change_password: boolean;
   ip_allowlist: string[];
   public_base_url: string;
-  default_user_agent: string;
   log_retention_days: number;
   /** config.yaml 的 mtime(epoch ms);文件还没落盘时为 null */
   updated_at: number | null;
@@ -128,7 +127,6 @@ function ServiceConfigCard() {
     save.mutate({
       ip_allowlist: allowlist,
       public_base_url: draft.public_base_url,
-      default_user_agent: draft.default_user_agent,
       log_retention_days: draft.log_retention_days,
     });
   };
@@ -156,19 +154,6 @@ function ServiceConfigCard() {
           />
           <p className="text-xs text-muted-foreground mt-1">
             影响 Surge 的 #!MANAGED-CONFIG 头与 Web UI 显示的订阅 URL。留空则用请求 origin。
-          </p>
-        </div>
-
-        <div>
-          <Label className="text-xs">默认 User-Agent</Label>
-          <Input
-            value={draft.default_user_agent}
-            onChange={(e) => update({ default_user_agent: e.target.value })}
-            placeholder="Surge/2400"
-            className="mt-1"
-          />
-          <p className="text-xs text-muted-foreground mt-1">
-            Provider 未指定 user_agent 时使用。
           </p>
         </div>
 
@@ -284,7 +269,7 @@ const RESET_OPTIONS: ResetOption[] = [
   { key: "modules", label: "Surge 模块", description: "所有 Surge module 配置" },
   { key: "general", label: "通用预设", description: "所有 general preset 配置" },
   { key: "profiles", label: "订阅配置文件 (Profiles)", description: "所有 Profile 及对应的订阅 token" },
-  { key: "service_settings", label: "服务设置", description: "IP 白名单 / PUBLIC_BASE_URL / 默认 User-Agent / 日志保留天数" },
+  { key: "service_settings", label: "服务设置", description: "IP 白名单 / PUBLIC_BASE_URL / 日志保留天数" },
 ];
 
 function defaultScope(checked = true): ResetScope {

@@ -23,6 +23,7 @@ export interface ProviderQuotaStatus {
   expire_at?: number;
   expire_source?: "upstream" | "manual" | "info_node";
   next_reset_at?: number;
+  reset_source?: "manual" | "info_node";
 }
 
 /** "YYYY-MM-DD" → 进程本地时区当天零点(ms)。schema 已保证格式与日期合法。 */
@@ -83,8 +84,13 @@ export function evaluateProviderQuota(
     status.expire_at = parseLocalDate(info.expire);
     status.expire_source = "info_node";
   }
-  if (quota?.reset_day) status.next_reset_at = nextResetAt(quota.reset_day, now);
-  else if (live && info?.reset_at !== undefined && info.reset_at > now) status.next_reset_at = info.reset_at;
+  if (quota?.reset_day) {
+    status.next_reset_at = nextResetAt(quota.reset_day, now);
+    status.reset_source = "manual";
+  } else if (live && info?.reset_at !== undefined && info.reset_at > now) {
+    status.next_reset_at = info.reset_at;
+    status.reset_source = "info_node";
+  }
 
   const manualUntil = quota?.exhausted_until ? parseLocalDate(quota.exhausted_until) : undefined;
 

@@ -67,6 +67,7 @@ pnpm dev
 # 单独
 pnpm -F backend dev          # tsx watch backend/src/index.ts
 pnpm -F frontend dev         # vite dev (port 5173, /api 与 /sub 反代到 8080)
+pnpm dev:verify              # agent 验证 UI 用:临时数据 + 假订阅 + 免登录,5174 / 8081(见下文)
 
 # 校验
 pnpm typecheck               # 全 workspace 类型检查
@@ -97,6 +98,17 @@ pnpm build                   # 前端 + 后端
 3. **HTTP 探活**: `curl -sS -o /dev/null -w "%{http_code}\n" --max-time 5 http://localhost:5173/` 与 `http://localhost:8080/api/health`,200 即可用
 
 三步全失败才需要起新进程,起之前先问一句"本地没探测到 dev server,要我帮你起吗?"。
+
+### 免登录验证环境(`pnpm dev:verify`)
+
+**agent 要在浏览器里验证 UI 时用它,不要让用户手动登录**,也不要往常驻 dev 的 `backend/data` 里塞测试数据(那里的管理员密码 agent 不知道,还有真实订阅地址)。
+
+- 每次启动从 `scripts/dev-verify/seed/` 复制一份全新数据到系统临时目录(`$TMPDIR/nodedeck-dev-verify/data`),不碰 `backend/data`
+- 后端 **8081** + 前端 **5174**,和常驻 `pnpm dev`(8080 / 5173)并存,不需要先停用户的 dev
+- 顺带在 18090 起假订阅服务(`scripts/dev-verify/fake-sub.mjs`):按 UA 返回 Clash Meta YAML / base64 / 「请使用客户端」页面 / 空 body,带 Subscription-UserInfo 和信息节点;seed 里的节点源都指向它,不连真实机场
+- 后端开着 `DEV_AUTH_BYPASS=1`(`auth/dev-bypass.ts`):本机回环、且不带 `X-Forwarded-For` / `X-Real-IP` 的请求视为已登录。`NODE_ENV=production` 时 env 校验直接拒绝启动,局域网直连和本机反代转进来的请求都不放行
+- Claude 桌面端的浏览器面板:`preview_start` 选 `.claude/launch.json` 里的 `dev-verify`,打开即是已登录状态
+- 要验证新场景就改 seed / fake-sub(都是假数据,遵守 `Never` 里的敏感信息规则),别在临时目录里手改 —— 下次启动会被覆盖
 
 ### 前端 UI 验证(`cursor-ide-browser`)
 
@@ -395,7 +407,7 @@ profile 已经装进 Surge 之后,这些只读命令不产生流量也不改状�
 | provider / 机场 `[Host]`、`hosts:` 段没带进订阅 | ① provider `emit_hosts` 关了或该源被禁用;② 上游 host 的 key 与本源节点 server 域名无关,被有意过滤(本项目只带**节点域名相关**的 host) | 输出 hosts = `general.hosts` + 各启用源手动 `provider.hosts` + 各源自动解析的 `cache.extracted_hosts`,由 `mergeHostMaps` 去重合并;自动解析由 `deriveProviderHostOverrides`(`import/extract-hosts.ts`)在每次刷新时只挑两类:① Clash 顶层 `hosts:` / Surge `[Host]` 中命中本源节点 server 域名(精确 + 通配父域)的条目;② Surge `encrypted-dns-server`(机场自建 DoH)为每个域名型节点推导 `节点域名 = server:<DoH>`。无关条目丢弃、节点 server 为 IP 跳过;`profile-resolver` 按 `emit_hosts` 并入(编辑页「节点源 Host」区有只读预览,`GET /api/providers/:id/extracted-hosts`)。base64/uri 列表无 hosts 段、节点全 IP 解析为空都属正常 |
 | `surge-cli -c` 报 OK,但导入客户端后某字段不生效 | Surge 对节点行的**未知参数是静默忽略**的,`-c` 只校验语法/规则/策略引用,不校验协议键名 | 别把 `-c` 当字段名的证据;按 `Protocol Documentation Lookup` 查上游文档确认键名,再用 `$S rule match` / `$S log memory` 看实际行为 |
 | 节点源报 `HTTP 403(上游拒绝了服务器的请求…)`,本地却能拉到 | 机场按来源 IP 拦截(境外服务器 / 机房 IP),换 UA 无效 | 在 `data/egresses/` 登记出口(SSH / 代理),节点源 `fetch_via` 按顺序选用(`providers/fetcher.ts` 逐条尝试;SSH 出口 `providers/egress.ts`;用法 cookbook 1.4,部署 deployment.md「借其它机器的出口拉订阅」)。走出口时整条请求用 npm 版 undici 的 `fetch`,直连仍用全局 `fetch` —— Node 20 内置 fetch 不认 npm undici 的 dispatcher |
-| 节点源报「content 为空(…上游仍返回空 body)」 | 机场按 User-Agent 网关,Surge 系 UA 返回 200 + 空 body(实测部分机场即此) | 默认 `user_agent` 已改空字符串,fetcher 拿到空 body 会自动回退 `clash-verge`/`ClashMeta`/`mihomo` 等 UA 重试(`providers/fetcher.ts` 的 `FALLBACK_USER_AGENTS`);仍全空则订阅多半失效或需特定 UA,可在节点源手动指定 User-Agent |
+| 节点源报「content 为空(…上游仍返回空 body)」 | 机场按 User-Agent 网关,不认识的 UA 返回 200 + 空 body 或「请使用客户端」页面(实测部分机场即此) | 节点源 `user_agents` 是按顺序尝试的列表(留空 = `schemas/provider.ts` 的 `DEFAULT_USER_AGENTS`),fetcher 拿到空 body 或解析不出节点都换下一个 UA;上次可用的 UA 记在 cache 的 `ua_memory`(连同当时的列表,列表一改就作废),下次刷新先试;旧版单值 `user_agent` 读入时折成 `[它, ...默认列表]`。别往默认列表加只含 `clash` 的 UA:Xboard 系面板会回老 Clash 格式,丢 vless/hy2/tuic/anytls。仍全空则订阅多半失效或需特定 UA,在编辑页 User-Agent 列表里加 |
 
 
 ## When You're Stuck

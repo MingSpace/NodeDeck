@@ -4,6 +4,7 @@ import { readJson, writeJson } from "../storage/yaml-io.js";
 import { userinfoSchema, type UserInfo } from "../schemas/userinfo.js";
 import { nodeSchema, type Node } from "../schemas/node.js";
 import type { InfoNodeQuota } from "../parsers/info-node-extract.js";
+import { resolveUserAgents } from "../schemas/provider.js";
 
 export interface ProviderCache {
   provider_id: string;
@@ -19,6 +20,14 @@ export interface ProviderCache {
   // 从机场「信息节点」名字里提取的到期 / 流量 / 重置日(parsers/info-node-extract.ts),
   // 离线源唯一的配额信息来源;判定优先级见 providers/quota.ts。
   info_quota?: InfoNodeQuota;
+  // 上次拿到节点用的 UA,下次刷新先试它(见 rememberedUserAgent)。连同当时的 UA 列表一起存:
+  // 用户改了列表(换顺序 / 增删)就作废,按新顺序重新摸。
+  ua_memory?: UserAgentMemory;
+}
+
+export interface UserAgentMemory {
+  user_agent: string;
+  list: string[];
 }
 
 const cacheSchema = z.object({
@@ -37,7 +46,22 @@ const cacheSchema = z.object({
       reset_at: z.number().optional(),
     })
     .optional(),
+  ua_memory: z.object({ user_agent: z.string(), list: z.array(z.string()) }).optional(),
 });
+
+/**
+ * 记住的 UA 还作数时返回它:UA 列表没改过,且它还在列表里。
+ * 列表里排在它前面的 UA 上次都没拿到节点,先试它省掉这些请求,也让订阅格式不在两次刷新之间来回变。
+ */
+export function rememberedUserAgent(
+  memory: UserAgentMemory | undefined,
+  userAgents: readonly string[] | undefined,
+): string | undefined {
+  if (!memory) return undefined;
+  const list = resolveUserAgents(userAgents);
+  const sameList = list.length === memory.list.length && list.every((ua, i) => ua === memory.list[i]);
+  return sameList && list.includes(memory.user_agent) ? memory.user_agent : undefined;
+}
 
 export async function readProviderCache(providerId: string): Promise<ProviderCache | null> {
   const data = await readJson<unknown>(cachePath(providerId));

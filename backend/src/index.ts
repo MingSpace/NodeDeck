@@ -102,6 +102,9 @@ async function bootstrap() {
   serve({ fetch: app.fetch, port: env.PORT, hostname: "0.0.0.0" }, (info) => {
     logger.info({ port: info.port }, `NodeDeck listening on http://0.0.0.0:${info.port}`);
   });
+  if (env.DEV_AUTH_BYPASS) {
+    logger.warn("DEV_AUTH_BYPASS 已开启:本机回环请求免登录,仅限本地开发");
+  }
 
   installShutdownHooks();
 }

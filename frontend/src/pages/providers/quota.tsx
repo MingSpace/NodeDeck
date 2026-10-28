@@ -26,6 +26,7 @@ export interface ProviderQuotaStatus {
   expire_at?: number;
   expire_source?: "upstream" | "manual" | "info_node";
   next_reset_at?: number;
+  reset_source?: "manual" | "info_node";
 }
 
 const REASON_LABEL: Record<NonNullable<ProviderQuotaStatus["reason"]>, string> = {
@@ -136,6 +137,9 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
   const hasUpstreamTraffic = !!upstream?.traffic;
   const hasUpstreamExpire = upstream?.expire_source === "upstream";
   const infoExpire = upstream?.expire_source === "info_node" ? upstream.expire_at : undefined;
+  // 上游给的值只存在 cache 里、每次刷新会变,所以不写进 yaml,只在输入框里显示出来
+  const upstreamExpire = hasUpstreamExpire ? upstream?.expire_at : undefined;
+  const infoReset = upstream?.reset_source === "info_node" ? upstream.next_reset_at : undefined;
 
   const q = quota ?? {};
   // 全是默认值时整个字段写 undefined,yaml 里不留空壳
@@ -150,6 +154,17 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
 
   const today = toLocalDate(Date.now());
   const markedActive = !!q.exhausted_until && q.exhausted_until > today;
+  const nextReset = q.reset_day
+    ? nextResetDate(q.reset_day)
+    : infoReset !== undefined
+      ? toLocalDate(infoReset)
+      : undefined;
+  // 到期日输入框显示「当前生效」的值:上游 > 手填 > 信息节点。上游的只读;信息节点的灰显,改了就成手填
+  const expireShown =
+    upstreamExpire !== undefined
+      ? toLocalDate(upstreamExpire)
+      : (q.expire ?? (infoExpire !== undefined ? toLocalDate(infoExpire) : ""));
+  const expireFromInfo = upstreamExpire === undefined && !q.expire && infoExpire !== undefined;
 
   return (
     <div className="space-y-3">
@@ -164,8 +179,11 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
                   已用 {formatBytes(upstream.traffic.used)} / {formatBytes(upstream.traffic.total)}
                 </span>
               )}
-              {hasUpstreamExpire && upstream?.expire_at !== undefined && (
-                <span className="font-medium text-foreground"> · {toLocalDate(upstream.expire_at)} 到期</span>
+              {upstreamExpire !== undefined && (
+                <span className="font-medium text-foreground"> · {toLocalDate(upstreamExpire)} 到期</span>
+              )}
+              {infoReset !== undefined && (
+                <span className="font-medium text-foreground"> · {toLocalDate(infoReset)} 重置</span>
               )}
               。流量用完时自动排除,上游重置后下次刷新即恢复(排除期间每小时重拉一次)。
             </>
@@ -194,7 +212,10 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
 
       <div className="grid grid-cols-2 gap-3">
         <div>
-          <Label className="text-xs">每月流量重置日</Label>
+          <Label className="text-xs">
+            每月流量重置日
+            {!q.reset_day && infoReset !== undefined ? "(留空 = 用订阅信息的倒计时)" : ""}
+          </Label>
           <Input
             className="mt-1"
             type="number"
@@ -205,24 +226,42 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
               const n = parseInt(e.target.value, 10);
               set({ reset_day: Number.isNaN(n) ? undefined : Math.max(1, Math.min(31, n)) });
             }}
-            placeholder="如 2(当月没有这天按月末)"
+            placeholder={
+              infoReset !== undefined
+                ? `订阅信息:下次 ${toLocalDate(infoReset)} 重置`
+                : "如 2(当月没有这天按月末)"
+            }
           />
         </div>
         <div>
           <Label className="text-xs">
             到期日
-            {hasUpstreamExpire
-              ? "(上游已提供,以上游为准)"
-              : infoExpire !== undefined && !q.expire
-                ? `(留空 = 用信息节点的 ${toLocalDate(infoExpire)})`
+            {upstreamExpire !== undefined
+              ? "(上游提供,每次刷新自动更新)"
+              : expireFromInfo
+                ? "(来自订阅信息节点,改了以手填为准)"
                 : ""}
           </Label>
           <Input
-            className="mt-1"
+            className={cn("mt-1", expireFromInfo && "text-muted-foreground")}
             type="date"
-            value={q.expire ?? ""}
+            value={expireShown}
+            disabled={upstreamExpire !== undefined}
+            title={upstreamExpire !== undefined ? "上游 Subscription-UserInfo 带了到期时间,以上游为准" : undefined}
             onChange={(e) => set({ expire: e.target.value || undefined })}
           />
+          {upstreamExpire !== undefined && q.expire && (
+            <p className="text-[11px] text-muted-foreground mt-1">
+              手填的 {q.expire} 不生效。
+              <button
+                type="button"
+                className="underline underline-offset-2 hover:text-foreground"
+                onClick={() => set({ expire: undefined })}
+              >
+                清除
+              </button>
+            </p>
+          )}
         </div>
       </div>
 
@@ -248,12 +287,12 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
             type="button"
             variant="outline"
             size="sm"
-            disabled={!q.reset_day}
-            title={q.reset_day ? undefined : "先填每月重置日,或直接在右边选日期"}
-            onClick={() => q.reset_day && set({ exhausted_until: nextResetDate(q.reset_day) })}
+            disabled={!nextReset}
+            title={nextReset ? undefined : "先填每月重置日,或直接在右边选日期"}
+            onClick={() => nextReset && set({ exhausted_until: nextReset })}
           >
             <PauseCircle className="h-3.5 w-3.5" />
-            {q.reset_day ? `排除到下个重置日(${nextResetDate(q.reset_day)})` : "排除到下个重置日"}
+            {nextReset ? `排除到下个重置日(${nextReset})` : "排除到下个重置日"}
           </Button>
           <span className="text-[11px] text-muted-foreground">或排除到</span>
           <Input

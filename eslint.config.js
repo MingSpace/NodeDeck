@@ -37,6 +37,14 @@ export default tseslint.config(
     },
   },
 
+  // 仓库根的 node 脚本(scripts/dev-verify 等);没装 globals 包,用到哪个声明哪个
+  {
+    files: ["scripts/**/*.mjs"],
+    languageOptions: {
+      globals: { process: "readonly", console: "readonly", Buffer: "readonly" },
+    },
+  },
+
   // 类型感知规则代价高,只对进了 tsconfig 的源码开;backend/tsconfig.json 显式 exclude 了 tests,
   // 给 tests 和构建脚本开会直接解析报错。
   //

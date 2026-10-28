@@ -1,0 +1,6 @@
+# 免登录验证环境(DEV_AUTH_BYPASS)用不到密码;这里是默认初始密码 changeme 的 hash,只为让 schema 校验通过
+admin:
+  username: admin
+  password_hash: $2a$10$U3Bed8VwSQB6570nVmAAbOs7n4waX3d.9/Y4PZ64hmy.LpmMrXUkS
+  must_change_password: false
+ip_allowlist: []

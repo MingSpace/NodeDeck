@@ -1,0 +1,7 @@
+# 只认 Clash Meta 系 UA;带 Subscription-UserInfo(流量 + 到期)和「重置倒计时」信息节点
+id: fake-meta
+name: 假机场 Meta
+type: http
+url: http://127.0.0.1:18090/meta
+refresh:
+  interval: 24h

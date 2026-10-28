@@ -38,7 +38,7 @@ import {
   type RefreshInterval,
 } from "./visual-form";
 import { QuotaBadge, QuotaSummary, type ProviderQuotaStatus } from "./quota";
-import { useRouteNames } from "./fetch-via";
+import { resolveFetchRoutes, useRouteNames } from "./fetch-via";
 
 interface ProviderNodesResp {
   provider_id: string;
@@ -446,8 +446,8 @@ export function ProvidersPage() {
                       )}
                     </div>
                   )}
-                  {p.type === "http" && !!p.fetch_via?.length && (() => {
-                    const path = p.fetch_via.map((r) => routeName(r) ?? `${r}(已删除)`).join(" → ");
+                  {p.type === "http" && resolveFetchRoutes(p.fetch_via).length > 1 && (() => {
+                    const path = resolveFetchRoutes(p.fetch_via).map((r) => routeName(r) ?? `${r}(已删除)`).join(" → ");
                     return (
                       <div
                         className="text-xs text-muted-foreground mt-1 flex items-center gap-1 min-w-0"
@@ -760,10 +760,8 @@ function ProviderNodesPanel({
               <>
                 <li>确认 URL 返回的是节点文本,而非 HTML 页面或空响应</li>
                 <li>
-                  部分机场按 User-Agent 返回不同格式,可尝试修改 UA (如{" "}
-                  <code className="font-mono">clash</code> /{" "}
-                  <code className="font-mono">Surge/2400</code> /{" "}
-                  <code className="font-mono">v2rayN</code>)
+                  部分机场按 User-Agent 返回不同格式,可在编辑页的 User-Agent 列表里加别的 UA(如 Surge /
+                  自定义)再「测试拉取」
                 </li>
                 <li>
                   如 auto 识别有误,可手动指定 parser_hint

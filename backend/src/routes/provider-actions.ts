@@ -6,8 +6,8 @@ import { readProviderCache } from "../providers/cache-store.js";
 import { listProvidersWithCache } from "../providers/pool.js";
 import { fetchProviderContent } from "../providers/fetcher.js";
 import { parseSubscriptionWithInfo } from "../parsers/index.js";
-import { fetchViaSchema, parserHintSchema } from "../schemas/provider.js";
-import { DIRECT_ROUTE } from "../schemas/egress.js";
+import { fetchViaSchema, parserHintSchema, userAgentsSchema } from "../schemas/provider.js";
+import { DIRECT_ROUTE, resolveFetchRoutes } from "../schemas/egress.js";
 import { logger } from "../logger.js";
 
 export const providerActionsRouter = new Hono();
@@ -72,11 +72,11 @@ providerActionsRouter.post("/refresh-all", async (c) => {
 });
 
 // 编辑页「测试拉取」:用表单里还没保存的 url / UA / 拉取线路试拉,只解析不写 cache。
-// 每条线路单独测一次(不做失败换下一条),没列直连时也顺带测直连,
+// 每条线路单独测一次(不做失败换下一条),直连是固定兜底线路所以总会测到,
 // 一眼看出「直连 403、经出口 200」这类按来源 IP 拦截。
 const testFetchSchema = z.object({
   url: z.string().trim().url("订阅 URL 格式不对"),
-  user_agent: z.string().default(""),
+  user_agents: userAgentsSchema,
   fetch_via: fetchViaSchema,
   parser_hint: parserHintSchema.default("auto"),
 });
@@ -110,10 +110,10 @@ async function testFetchRoute(
         id: "test-fetch",
         type: "http",
         url: input.url,
-        user_agent: input.user_agent,
-        fetch_via: [route],
+        user_agents: input.user_agents,
+        parser_hint: input.parser_hint,
       },
-      { timeoutMs: TEST_FETCH_TIMEOUT_MS },
+      { timeoutMs: TEST_FETCH_TIMEOUT_MS, route },
     );
     const { nodes } = parseSubscriptionWithInfo(result.text, input.parser_hint);
     return {
@@ -157,7 +157,7 @@ providerActionsRouter.post("/test-fetch", async (c) => {
     return c.json({ error: parsed.error.issues[0]?.message ?? "validation failed" }, 400);
   }
   const input = parsed.data;
-  const routes = input.fetch_via.includes(DIRECT_ROUTE) ? input.fetch_via : [...input.fetch_via, DIRECT_ROUTE];
+  const routes = resolveFetchRoutes(input.fetch_via);
   const egresses = new Map((await egressRepo.list()).map((e) => [e.id, e.data.name]));
   logger.info({ routes }, "Provider test fetch requested");
   const attempts = await Promise.all(

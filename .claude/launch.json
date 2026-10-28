@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev-verify",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["dev:verify"],
+      "port": 5174
+    }
+  ]
+}

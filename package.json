@@ -10,6 +10,7 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "concurrently -k -n backend,frontend -c blue,magenta \"pnpm -F backend dev\" \"pnpm -F frontend dev\"",
+    "dev:verify": "node scripts/dev-verify/start.mjs",
     "build": "pnpm -r --filter ./frontend... build && pnpm -F backend build",
     "start": "pnpm -F backend start",
     "lint": "eslint . --max-warnings 0",

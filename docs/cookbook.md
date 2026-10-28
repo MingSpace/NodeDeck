@@ -28,7 +28,7 @@ id: airport-a
 name: 机场 A
 type: http
 url: https://airport-a.example.com/api/v1/client/subscribe?token=XXX
-user_agent: Surge/2400
+# user_agents: []     # 依次尝试的 UA,留空用默认列表(见下方「content 为空」)
 parser_hint: auto      # auto / clash / surge / v2ray_base64 / ss_links / mixed / ...
 refresh:
   interval: 12h        # never / 4h / 12h / 24h / 1week / on_request
@@ -132,7 +132,17 @@ content: |
 
 **0 节点怎么排查**:在 Web UI 的 providers 页,展开卡片会看到具体原因(content 为空 / 解析未识别)+ 一键跳转到编辑器修正;后端也会把 cache 状态写成 `error` 而不是装作 `ok`。
 
-**「content 为空(上游返回了空响应)」**:多半是机场按 User-Agent 网关——某些 UA(尤其 Surge 系)返回 HTTP 200 但空 body。节点源的 User-Agent **默认留空即可**,后端拿到空 body 会自动换 `clash-verge` / `mihomo` 等 UA 重试,直到拿到内容;只有全部 UA 都吐空才报错(此时订阅多半已失效,或需要某个特定 UA,可在编辑页手动钉死)。
+**「content 为空(上游返回了空响应)」**:多半是机场按 User-Agent 网关——不认识的 UA 拿到 HTTP 200 但空 body,或一张「请使用客户端」的页面。节点源的 `user_agents` 是一个**按顺序尝试**的列表,拿到能解析出节点的内容就停,空 body / 解析不出节点都换下一个。上次拿到节点的 UA 会记在 cache 里,下次刷新**先试它**,失败再按列表顺序往下;改动列表(换顺序 / 增删)后记忆作废,按新顺序重新试(编辑页会给它标「上次可用 · 先试」)。**留空即用默认列表**:
+
+```yaml
+user_agents:              # 默认列表,写出来只为说明;不写就是它
+  - clash.meta/v1.19.33   # mihomo 内核自己的 UA → Clash Meta 格式,协议最全,带 hosts:
+  - clash-verge/v2.5.8    # Clash Verge Rev,有些网关只放行已知客户端
+  - ""                    # 空 UA → 面板通用格式,多为 base64 链接
+  - v2rayN/7.25.6
+```
+
+面板按 UA **子串**选格式(以 Xboard 为例):含 `meta` / `verge` → Clash Meta;只含 `clash` → 老 Clash 格式,**没有 vless / hy2 / tuic / anytls**,所以默认列表里不放 `Clash/…` 这类 UA。想要机场的 Surge 配置(例如它把防污染 DoH 写在 `encrypted-dns-server` 里,见下一条)就在编辑页把 Surge 预设加到最前面——但 Surge 格式没有 vless 节点。全部 UA 都失败才报错,此时订阅多半已失效,或需要某个特定 UA,在编辑页「自定义…」里添加后点「测试拉取」验证。
 
 **机场自带的 host(DNS 防污染)会自动带出——但只带与节点域名相关的**:不少机场在订阅里放了 Clash 顶层 `hosts:` / Surge `[Host]` 段,把节点域名(如 `*.example.com`)指向自家 DoH 以规避污染。只要节点源「节点源 Host」区的 **emit_hosts 开关开着**(默认开),这些 host 会在**每次刷新时自动解析**并随生成的订阅一并带出,无需手动录入。为避免把机场塞的国内域名分流等无关条目也搬进来,只带出**命中本源节点 server 域名**的条目(精确,或通配父域如 `*.example.com` 覆盖 `a.example.com`)。另外有些机场把防污染压在全局 `encrypted-dns-server`(机场自建 DoH)上、`[Host]` 留空,这时会自动**为每个域名型节点推导 `节点域名 = server:<机场DoH>`**,等同于让客户端用机场自己的 DoH 解析节点域名。编辑页该区有只读预览能看到解析到了哪些。手动追加的 host **不受节点域名过滤**,会与自动解析的去重合并。关掉 emit_hosts 则该源的 host(自动 + 手动)都不带出。
 
@@ -229,18 +239,18 @@ type: proxy
 url: socks5://172.18.0.1:18888
 ```
 
-**节点源**按顺序列出要用的出口,`direct` 代表服务器直连;前一条失败才换下一条,不写就是只直连:
+**节点源**按顺序列出要用的出口,前一条失败才换下一条。`direct` 代表服务器直连,是固定兜底线路、去不掉:没写就自动排在最后,写了就按写的位置试(想先直连就写在最前);不写 `fetch_via` 就是只直连:
 
 ```yaml
 # data/providers/flower.yaml(节选)
 type: http
 url: https://airport.example/sub?token=your-token-here
-fetch_via: [egress-office, egress-tunnel, direct]
+fetch_via: [egress-office, egress-tunnel]   # 实际顺序:公司路由器 → 家里 mini → 服务器直连
 ```
 
 - **NodeDeck 的公钥**在出口编辑页(选「NodeDeck 密钥」时显示),复制那一行加到出口机的 `authorized_keys`(Linux 一般 `~/.ssh/authorized_keys`,OpenWrt 是 `/etc/dropbear/authorized_keys`)。行首的 `command="/bin/false",no-pty,…` 限制这把钥匙只能转发端口、开不了 shell。私钥首次用到时生成在 `data/egress_ed25519`
 - 出口页「测试连接」经该出口访问外网,显示对方看到的出口 IP / 国家,以及 SSH 主机指纹(可一键固定)
-- 节点源编辑页「测试拉取」用表单里还没保存的值,逐条线路各试一次(没列直连时顺带测直连),不写 cache:
+- 节点源编辑页「测试拉取」用表单里还没保存的值,逐条线路各试一次(含兜底的直连),不写 cache:
 
   ```
   按当前顺序会经「公司路由器」拉到。
@@ -249,7 +259,7 @@ fetch_via: [egress-office, egress-tunnel, direct]
   ```
 
 - 只影响 NodeDeck 拉订阅这一步,客户端连节点不受影响
-- 线路连不上时**立即换下一条**(不会换 6 个 UA 各等一遍);全部失败回退旧 cache,报错逐条列出每条线路卡在哪(SSH 登录被拒、端口不通、HTTP 403……)
+- 线路连不上时**立即换下一条**(不会把 User-Agent 列表里每个 UA 各等一遍);全部失败回退旧 cache,报错逐条列出每条线路卡在哪(SSH 登录被拒、端口不通、HTTP 403……)
 - 机房 IP 常被一并拦截:国内云服务器能 SSH 上去不代表机场放行它,以「测试拉取」为准
 - 还被节点源用着的出口不能删,先在节点源里移除
 - 连不进去的机器(家里内网、没公网 IP)只能由它主动建反向隧道再登记为代理出口,见 `docs/deployment.md`「借其它机器的出口拉订阅」

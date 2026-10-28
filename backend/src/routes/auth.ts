@@ -8,6 +8,7 @@ import {
   verifySessionCookie,
 } from "../auth/session.js";
 import { requireSession, getClientIp } from "../auth/middleware.js";
+import { isDevAuthBypassed } from "../auth/dev-bypass.js";
 import {
   loginRateLimit,
   checkAccountLock,
@@ -29,6 +30,14 @@ const changePasswordSchema = z.object({
 export const authRouter = new Hono();
 
 authRouter.get("/me", async (c) => {
+  if (isDevAuthBypassed(c)) {
+    const cfg = await loadConfig();
+    return c.json({
+      authenticated: true,
+      username: cfg.admin.username,
+      must_change_password: cfg.admin.must_change_password,
+    });
+  }
   const session = verifySessionCookie(c.req.header("cookie"));
   if (!session) {
     return c.json({ authenticated: false });

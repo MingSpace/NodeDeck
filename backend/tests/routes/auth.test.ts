@@ -43,7 +43,6 @@ async function makeConfig(opts: { enabled?: boolean; ip_max_fails?: number } = {
     },
     ip_allowlist: [],
     public_base_url: undefined,
-    default_user_agent: "Surge/2400",
     auth: {
       login_rate_limit: {
         enabled: opts.enabled ?? true,

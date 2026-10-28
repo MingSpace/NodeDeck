@@ -68,6 +68,7 @@ describe("evaluateProviderQuota", () => {
     expect(s.reason).toBe("traffic_exhausted");
     expect(s.restore_at).toBe(new Date(2026, 10, 2).getTime());
     expect(s.traffic).toEqual({ used: 153 * GB, total: 150 * GB });
+    expect(s.reset_source).toBe("manual");
   });
 
   it("上游流量没用完 → 不排除", () => {
@@ -133,6 +134,7 @@ describe("evaluateProviderQuota - 订阅信息节点", () => {
     expect(s.traffic_source).toBe("info_node");
     expect(s.reason).toBe("traffic_exhausted");
     expect(s.restore_at).toBe(new Date(2026, 9, 25).getTime());
+    expect(s.reset_source).toBe("info_node");
   });
 
   it("header 优先于信息节点,手填到期优先于信息节点", () => {
