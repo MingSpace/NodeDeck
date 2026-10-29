@@ -81,7 +81,8 @@ export interface ProviderData {
 export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
   name: "新节点源",
   type: "http",
-  url: "https://example.com/subscribe?token=xxx",
+  // 留空,示例地址只放在输入框 placeholder 里;预填成值的话切到「静态节点」保存后会一直挂着这个假地址
+  url: "",
   user_agents: [],
   refresh: { interval: "12h" },
   parser_hint: "auto",

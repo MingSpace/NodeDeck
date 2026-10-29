@@ -407,17 +407,18 @@ export function ProvidersPage() {
                   >
                     {p.name}
                   </div>
-                  {(p.url ?? p.path) && (
+                  {/* 只显示当前类型真正在用的地址;静态节点没有地址可显示 */}
+                  {((p.type === "http" && p.url) || (p.type === "file" && p.path)) && (
                     <div
                       className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
-                      title={p.url ? `订阅 URL: ${p.url}` : `服务器本地路径: ${p.path}`}
+                      title={p.type === "http" ? `订阅 URL: ${p.url}` : `服务器本地路径: ${p.path}`}
                     >
-                      {p.url ? (
+                      {p.type === "http" ? (
                         <Link2 className="h-3.5 w-3.5 shrink-0" />
                       ) : (
                         <HardDrive className="h-3.5 w-3.5 shrink-0" />
                       )}
-                      <span className="truncate">{p.url ? formatUrlDisplay(p.url) : p.path}</span>
+                      <span className="truncate">{p.type === "http" && p.url ? formatUrlDisplay(p.url) : p.path}</span>
                     </div>
                   )}
                   <ProviderFetchMeta

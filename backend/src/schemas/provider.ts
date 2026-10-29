@@ -93,7 +93,8 @@ const providerObjectSchema = z
     id: idSchema,
     name: z.string().min(1),
     type: z.enum(["http", "file", "inline"]),
-    url: z.string().url().optional(),
+    // 表单里清空 URL 会提交空字符串,按「没填」处理,否则 .url() 直接报格式错误
+    url: z.preprocess((v) => (typeof v === "string" && v.trim() === "" ? undefined : v), z.string().url().optional()),
     path: z.string().optional(),
     content: z.string().optional(),
     // 按顺序试,拿到能解析出节点的内容为止;留空用 DEFAULT_USER_AGENTS(见 providers/fetcher.ts)
@@ -134,7 +135,10 @@ const providerObjectSchema = z
     if (p.type === "inline" && !p.content) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "inline provider requires `content`", path: ["content"] });
     }
-  });
+  })
+  // 编辑弹窗在「URL 订阅 / 静态节点」之间切换时会保留另一边的 URL 草稿,落盘时丢掉:
+  // 静态节点 / 本地文件用不到 URL,留着只会在列表上显示一个不相干的地址
+  .transform((p) => (p.type === "http" ? p : { ...p, url: undefined }));
 
 export const providerSchema = z.preprocess(migrateLegacyUserAgent, providerObjectSchema);
 
