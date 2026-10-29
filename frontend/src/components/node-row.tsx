@@ -35,7 +35,7 @@ export function NodeRow({ n }: { n: NodeBrief }) {
         className="flex items-center gap-3 p-3 cursor-pointer hover:bg-muted/30"
         onClick={onClick}
       >
-        <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 shrink-0">
+        <Badge variant="outline" className="text-xs font-mono px-1.5 py-0 shrink-0">
           {n.type}
         </Badge>
         <div className="flex-1 min-w-0">

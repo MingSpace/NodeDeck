@@ -97,7 +97,7 @@ export function DnsSection({ data, update }: Props) {
             />
           </LabeledField>
           {!dns.proxy_server_nameserver?.length && (
-            <div className="text-[11px] text-rose-600 mt-1 leading-relaxed">
+            <div className="text-xs text-rose-600 dark:text-rose-400 mt-1 leading-relaxed">
               留空时,host 里 <span className="font-mono">server:</span> 条目(指定 DoH 解析节点域名)在 Clash 端不会生效
               ——mihomo 要求 <span className="font-mono">proxy-server-nameserver</span> 非空,
               <span className="font-mono">proxy-server-nameserver-policy</span> 才生效。

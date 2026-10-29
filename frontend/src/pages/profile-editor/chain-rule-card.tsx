@@ -114,7 +114,7 @@ export function ChainRuleCard({
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <span className="w-5 shrink-0 text-center text-[11px] font-medium tabular-nums text-muted-foreground">
+        <span className="w-5 shrink-0 text-center text-xs font-medium tabular-nums text-muted-foreground">
           {index + 1}
         </span>
         <button
@@ -128,7 +128,7 @@ export function ChainRuleCard({
 
         <div className="flex min-w-0 flex-1 flex-col gap-0.5">
           <div className="flex min-w-0 items-center gap-1.5">
-            <span className={cn("shrink-0 text-[11px]", enabled ? "text-muted-foreground" : "text-muted-foreground/60")}>
+            <span className={cn("shrink-0 text-xs", enabled ? "text-muted-foreground" : "text-muted-foreground/60")}>
               经由
             </span>
             <SearchSingleSelect
@@ -139,18 +139,18 @@ export function ChainRuleCard({
               tone={incomplete || stat?.via_status === "missing" ? "warning" : "default"}
             />
             {incomplete ? (
-              <span className="shrink-0 text-[10px] text-amber-700 dark:text-amber-400">
+              <span className="shrink-0 text-xs text-amber-700 dark:text-amber-400">
                 未选择出口,保存会被拒绝
               </span>
             ) : (
               stat && (
-                <span className="shrink-0 text-[10px] text-muted-foreground">
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {VIA_STATUS_LABEL[stat.via_status]}
                 </span>
               )
             )}
           </div>
-          <div className="min-w-0 truncate text-[11px] text-muted-foreground" title={describeScope(selector)}>
+          <div className="min-w-0 truncate text-xs text-muted-foreground" title={describeScope(selector)}>
             {rule.comment ? <span className="text-foreground">{rule.comment} — </span> : null}
             {describeScope(selector)}
           </div>
@@ -159,7 +159,7 @@ export function ChainRuleCard({
         <div className="flex shrink-0 items-center gap-1.5">
           {stat && stat.enabled && !incomplete && (
             <span
-              className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground"
+              className="rounded-md bg-muted px-1.5 py-0.5 text-xs tabular-nums text-muted-foreground"
               title={`命中 ${stat.matched_count} 个节点,其中 ${stat.effective_count} 个由本规则决定出口`}
             >
               {stat.effective_count}
@@ -170,7 +170,7 @@ export function ChainRuleCard({
           )}
           {shadowed && (
             <span
-              className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+              className="inline-flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
               title="命中的节点全部被更靠前的规则抢走了,这条规则当前不产生任何效果"
             >
               <AlertTriangle className="h-3 w-3" />
@@ -196,7 +196,7 @@ export function ChainRuleCard({
           <SelectorRow label="作用范围" hint="按策略组和指定节点是「或」的关系,与下面其它条件是「且」">
             <div className="space-y-1.5">
               <div className="flex items-start gap-2">
-                <span className="mt-0.5 inline-flex w-14 shrink-0 items-center gap-1 text-[11px] text-muted-foreground">
+                <span className="mt-0.5 inline-flex w-14 shrink-0 items-center gap-1 text-xs text-muted-foreground">
                   <Layers className="h-3 w-3" />
                   策略组
                 </span>
@@ -213,7 +213,7 @@ export function ChainRuleCard({
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <span className="mt-0.5 w-14 shrink-0 text-[11px] text-muted-foreground">指定节点</span>
+                <span className="mt-0.5 w-14 shrink-0 text-xs text-muted-foreground">指定节点</span>
                 <div className="min-w-0 flex-1">
                   <SearchMultiSelect
                     options={nodeOptions}
@@ -253,7 +253,7 @@ export function ChainRuleCard({
           <SelectorRow label="协议">
             <div className="space-y-1.5">
               <div className="flex items-start gap-2">
-                <span className="mt-0.5 w-8 shrink-0 text-[11px] text-muted-foreground">仅</span>
+                <span className="mt-0.5 w-8 shrink-0 text-xs text-muted-foreground">仅</span>
                 <div className="min-w-0 flex-1">
                   <ChipToggles
                     options={typeOptions}
@@ -264,7 +264,7 @@ export function ChainRuleCard({
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <span className="mt-0.5 w-8 shrink-0 text-[11px] text-muted-foreground">排除</span>
+                <span className="mt-0.5 w-8 shrink-0 text-xs text-muted-foreground">排除</span>
                 <div className="min-w-0 flex-1">
                   <ChipToggles
                     options={typeOptions}
@@ -310,7 +310,7 @@ export function ChainRuleCard({
                 onClick={() => onUpdate({ mode: "fill" })}
               />
               {stat && stat.kept_existing_count > 0 && (
-                <span className="ml-1 text-[11px] text-muted-foreground">
+                <span className="ml-1 text-xs text-muted-foreground">
                   {stat.kept_existing_count} 个节点保留了机场原设置
                 </span>
               )}
@@ -328,7 +328,7 @@ export function ChainRuleCard({
 
           {stat && stat.sample.length > 0 && (
             <div className="rounded-md bg-muted/40 px-2.5 py-2">
-              <div className="mb-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+              <div className="mb-1 flex items-center gap-1 text-xs text-muted-foreground">
                 <CornerDownRight className="h-3 w-3" />
                 命中节点样例
               </div>
@@ -336,14 +336,14 @@ export function ChainRuleCard({
                 {stat.sample.map((name) => (
                   <span
                     key={name}
-                    className="max-w-[200px] truncate rounded bg-background px-1.5 py-0.5 text-[11px] font-mono"
+                    className="max-w-[200px] truncate rounded bg-background px-1.5 py-0.5 text-xs font-mono"
                     title={name}
                   >
                     {name}
                   </span>
                 ))}
                 {stat.matched_count > stat.sample.length && (
-                  <span className="px-1 py-0.5 text-[11px] text-muted-foreground">
+                  <span className="px-1 py-0.5 text-xs text-muted-foreground">
                     …另外 {stat.matched_count - stat.sample.length} 个
                   </span>
                 )}
@@ -368,8 +368,8 @@ export function SelectorRow({
   return (
     <div className="grid grid-cols-1 gap-1 sm:grid-cols-[104px_1fr] sm:gap-3">
       <div className="pt-0.5">
-        <div className="text-[11px] font-medium">{label}</div>
-        {hint && <div className="text-[10px] leading-snug text-muted-foreground/80">{hint}</div>}
+        <div className="text-xs font-medium">{label}</div>
+        {hint && <div className="text-xs leading-snug text-muted-foreground/80">{hint}</div>}
       </div>
       <div className="min-w-0">{children}</div>
     </div>
@@ -393,7 +393,7 @@ function ModeButton({
       onClick={onClick}
       title={title}
       className={cn(
-        "rounded px-2 py-0.5 text-[11px] font-medium border transition-colors",
+        "rounded px-2 py-0.5 text-xs font-medium border transition-colors",
         active
           ? "border-primary bg-primary text-primary-foreground"
           : "border-input bg-background text-muted-foreground hover:bg-accent hover:text-foreground",

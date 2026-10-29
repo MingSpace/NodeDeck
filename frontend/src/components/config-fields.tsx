@@ -60,7 +60,7 @@ export function LabeledField({
     <div className={className}>
       <div className="flex items-center gap-1.5">
         <Label className="text-xs">{label}</Label>
-        {raw && <code className="font-mono text-[10px] text-muted-foreground/70">{raw}</code>}
+        {raw && <code className="font-mono text-xs text-muted-foreground/70">{raw}</code>}
         {hint && <InfoHint>{hint}</InfoHint>}
       </div>
       <div className="mt-1">{children}</div>
@@ -107,12 +107,12 @@ export function ToggleRow({
           >
             {label}
           </span>
-          {raw && <code className="font-mono text-[10px] text-muted-foreground/70">{raw}</code>}
+          {raw && <code className="font-mono text-xs text-muted-foreground/70">{raw}</code>}
           {badge}
           {hint && <InfoHint>{hint}</InfoHint>}
         </div>
         {description && (
-          <div className="mt-0.5 text-[11px] leading-snug text-muted-foreground">{description}</div>
+          <div className="mt-0.5 text-xs leading-snug text-muted-foreground">{description}</div>
         )}
       </div>
     </div>

@@ -46,7 +46,7 @@ export const YamlMode = forwardRef<YamlModeHandle, Props>(function YamlMode(
     <div className="flex flex-col h-full min-h-0">
       <div className="px-4 py-2 border-b bg-muted/30 flex items-center gap-3 shrink-0">
         <span className="text-xs font-medium text-muted-foreground">Profile YAML (高级模式)</span>
-        <span className="text-[11px] text-muted-foreground/70">直接编辑结构,保存时走 zod 校验</span>
+        <span className="text-xs text-muted-foreground/70">直接编辑结构,保存时走 zod 校验</span>
       </div>
       <div className="flex-1 min-h-0">
         <YamlEditor

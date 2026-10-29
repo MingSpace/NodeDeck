@@ -32,7 +32,7 @@ export function ProxyGroupsPicker({
       <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground shrink-0 h-7">
         <Layers className="h-3.5 w-3.5" />
         <span>策略组</span>
-        <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+        <Badge variant="secondary" className="text-xs px-1.5 py-0">
           {draft.proxy_groups.length}/{groups.data?.items.length ?? 0}
         </Badge>
       </div>
@@ -240,12 +240,12 @@ function Section({
           {hint && <InfoHint>{hint}</InfoHint>}
         </span>
         <span className="flex-1" />
-        {count && <Badge variant="secondary" className="text-[10px] px-1.5 py-0">{count}</Badge>}
+        {count && <Badge variant="secondary" className="text-xs px-1.5 py-0">{count}</Badge>}
         {trailing}
       </div>
       {collapsed ? (
         collapsedHint ? (
-          <div className="px-4 py-3 text-[11px] text-muted-foreground italic">{collapsedHint}</div>
+          <div className="px-4 py-3 text-xs text-muted-foreground italic">{collapsedHint}</div>
         ) : null
       ) : (
         <div className="px-4 py-3">{children}</div>

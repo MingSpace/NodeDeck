@@ -472,14 +472,14 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
             <div className="rounded-md border bg-muted/30 p-2.5 space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium">自动解析到的节点域名 host</span>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-xs text-muted-foreground">
                   {data.emit_hosts !== false ? "随订阅自动带出 · 每次刷新更新" : "emit_hosts 已关闭,不带出"}
                 </span>
               </div>
               {autoHostsQuery.isLoading ? (
-                <div className="text-[11px] text-muted-foreground">加载中…</div>
+                <div className="text-xs text-muted-foreground">加载中…</div>
               ) : autoHostRows.length === 0 ? (
-                <div className="text-[11px] text-muted-foreground">
+                <div className="text-xs text-muted-foreground">
                   未解析到与节点域名相关的 host(只带出命中本源节点 server 域名的{" "}
                   <span className="font-mono">hosts:</span> / <span className="font-mono">[Host]</span> 条目,
                   以及 Surge <span className="font-mono">encrypted-dns-server</span> 推导的节点 DoH;
@@ -488,7 +488,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
               ) : (
                 <div className="space-y-0.5">
                   {autoHostRows.map((r, i) => (
-                    <div key={i} className="flex gap-2 text-[11px] font-mono">
+                    <div key={i} className="flex gap-2 text-xs font-mono">
                       <span className="shrink-0 max-w-[40%] truncate" title={r.key}>
                         {r.key}
                       </span>
@@ -503,7 +503,7 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
             </div>
           )}
 
-          <div className="text-[11px] text-muted-foreground">
+          <div className="text-xs text-muted-foreground">
             下面是额外手动追加的 host(不受节点域名过滤,与上面自动解析到的一并去重带出),一般无需填写:
           </div>
           <HostRowsEditor

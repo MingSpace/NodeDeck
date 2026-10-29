@@ -147,7 +147,7 @@ function OptionList({
         {sections.map(([group, items]) => (
           <div key={group}>
             {group && (
-              <div className="px-2.5 pb-0.5 pt-1.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+              <div className="px-2.5 pb-0.5 pt-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground/70">
                 {group}
               </div>
             )}
@@ -168,10 +168,10 @@ function OptionList({
                   />
                   <span className="min-w-0 flex-1 truncate">{o.value}</span>
                   {o.hint && (
-                    <span className="shrink-0 text-[10px] text-muted-foreground">{o.hint}</span>
+                    <span className="shrink-0 text-xs text-muted-foreground">{o.hint}</span>
                   )}
                   {o.count !== undefined && (
-                    <span className="shrink-0 rounded-sm bg-muted px-1 text-[10px] tabular-nums text-muted-foreground">
+                    <span className="shrink-0 rounded-sm bg-muted px-1 text-xs tabular-nums text-muted-foreground">
                       {o.count}
                     </span>
                   )}
@@ -219,12 +219,12 @@ export function SearchMultiSelect({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {selected.length === 0 && (
-        <span className="text-[11px] italic text-muted-foreground">{emptyLabel}</span>
+        <span className="text-xs italic text-muted-foreground">{emptyLabel}</span>
       )}
       {selected.map((value) => (
         <span
           key={value}
-          className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-foreground"
+          className="inline-flex max-w-[220px] items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-foreground"
           title={value}
         >
           <span className="truncate">{value}</span>
@@ -246,7 +246,7 @@ export function SearchMultiSelect({
           setQuery("");
           setOpen((v) => !v);
         }}
-        className="inline-flex items-center gap-1 rounded-md border border-dashed border-input px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-solid hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        className="inline-flex items-center gap-1 rounded-md border border-dashed border-input px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:border-solid hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Plus className="h-3 w-3" />
         {addLabel}
@@ -364,7 +364,7 @@ export function ChipToggles({
   tone?: "primary" | "destructive";
 }) {
   if (options.length === 0) {
-    return <span className="text-[11px] italic text-muted-foreground">{emptyLabel}</span>;
+    return <span className="text-xs italic text-muted-foreground">{emptyLabel}</span>;
   }
   const toggle = (value: string) => {
     onChange(selected.includes(value) ? selected.filter((s) => s !== value) : [...selected, value]);
@@ -379,7 +379,7 @@ export function ChipToggles({
             type="button"
             onClick={() => toggle(o.value)}
             className={cn(
-              "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium border transition-colors",
+              "inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium border transition-colors",
               active
                 ? tone === "destructive"
                   ? "border-destructive/40 bg-destructive/10 text-destructive"

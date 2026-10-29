@@ -48,7 +48,7 @@ export function MtprotoSection({ data, update }: Props) {
           仅 Surge 生效(iOS 5.21+ / Mac 6.8+)· 把 Surge 当作 Telegram 专用 MTProto 入站代理
           <InfoHint>
             Telegram 客户端直连该端口,DC 选路与出站策略仍走 Surge 规则(可配合{" "}
-            <code className="text-[10px]">PROTOCOL,MTProto</code> 规则匹配)。
+            <code className="text-xs">PROTOCOL,MTProto</code> 规则匹配)。
           </InfoHint>
         </span>
       </div>
@@ -117,7 +117,7 @@ export function MtprotoSection({ data, update }: Props) {
               </Button>
             </div>
             {secretInvalid && (
-              <div className="text-[11px] text-destructive mt-1">
+              <div className="text-xs text-destructive mt-1">
                 secret 必须是 32 位十六进制字符(可选 dd 前缀),否则 Surge 输出会跳过该段
               </div>
             )}
@@ -141,9 +141,9 @@ export function MtprotoSection({ data, update }: Props) {
               className="text-xs"
             />
           </LabeledField>
-          <div className="text-[11px] text-muted-foreground border-t pt-2">
+          <div className="text-xs text-muted-foreground border-t pt-2">
             Telegram 客户端填:服务器 = 可达 interface 的地址,端口 = {mt.port},secret 同上;
-            或使用链接 <code className="text-[10px]">tg://proxy?server=&lt;host&gt;&amp;port={mt.port}&amp;secret=&lt;secret&gt;</code>
+            或使用链接 <code className="text-xs">tg://proxy?server=&lt;host&gt;&amp;port={mt.port}&amp;secret=&lt;secret&gt;</code>
           </div>
         </div>
       )}

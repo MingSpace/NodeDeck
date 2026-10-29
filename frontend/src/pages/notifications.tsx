@@ -103,7 +103,7 @@ export function NotificationsPage() {
 
   if (!draft) {
     return (
-      <div className="p-8 max-w-[1800px] mx-auto">
+      <div className="p-4 md:p-8 max-w-[1800px] mx-auto">
         <h1 className="text-2xl font-bold tracking-tight mb-4">通知</h1>
         <Card>
           <CardContent className="text-sm text-muted-foreground py-6">加载中...</CardContent>
@@ -122,7 +122,7 @@ export function NotificationsPage() {
     update({ events: { ...draft.events, ...patch } });
 
   return (
-    <div className="p-8 max-w-[1800px] mx-auto space-y-4 pb-24">
+    <div className="p-4 md:p-8 max-w-[1800px] mx-auto space-y-4 pb-24">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">通知</h1>
@@ -231,13 +231,12 @@ export function NotificationsPage() {
       <Card>
         <CardHeader>
           <CardTitle>通知场景</CardTitle>
-          <CardDescription>所有场景均可单独开关</CardDescription>
         </CardHeader>
         <CardContent className="space-y-1">
           <EventRow
             icon={CloudOff}
             title="节点源刷新失败"
-            description="在线(http)节点源拉取失败时推送;恢复后再次失败会立即重推"
+            description="连不上机场,或机场拒绝了请求(如 HTTP 403)时推送;恢复后再失败会立即重推"
             checked={draft.events.refresh_failure.enabled}
             onCheckedChange={(v) =>
               updateEvents({ refresh_failure: { ...draft.events.refresh_failure, enabled: v } })
@@ -266,8 +265,8 @@ export function NotificationsPage() {
 
           <EventRow
             icon={PackageX}
-            title="节点源解析为空"
-            description="刷新成功但解析出 0 个节点(订阅可能失效或被机场按 UA 网关)"
+            title="拉到了订阅,但没有节点"
+            description="机场正常返回了内容,但换遍 User-Agent 都没认出节点。多半是订阅已过期,或机场只给特定客户端发节点。有上次的节点会继续沿用;重推间隔与上一项相同"
             checked={draft.events.zero_nodes.enabled}
             onCheckedChange={(v) => updateEvents({ zero_nodes: { enabled: v } })}
           />
@@ -417,7 +416,7 @@ function UserinfoAlertOptions({
                   onCheckedChange={(v) => toggleProvider(p.id, v === true)}
                 />
                 <span className="text-xs truncate">{p.name}</span>
-                {!p.enabled && <span className="text-[10px] text-muted-foreground shrink-0">(已禁用)</span>}
+                {!p.enabled && <span className="text-xs text-muted-foreground shrink-0">(已禁用)</span>}
               </label>
             ))}
           </div>

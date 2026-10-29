@@ -1,0 +1,8 @@
+# 永远 403,且先走一个连不上的出口:复现「没有旧节点可沿用」+ 多条线路都失败
+id: fake-blocked
+name: 假机场 拦截
+type: http
+url: http://127.0.0.1:18090/blocked
+fetch_via: [dead-proxy]
+refresh:
+  interval: never

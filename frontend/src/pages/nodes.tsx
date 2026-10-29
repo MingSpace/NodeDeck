@@ -92,7 +92,7 @@ export function NodesPage() {
   }, []);
 
   return (
-    <div className="p-8 max-w-[1800px] mx-auto">
+    <div className="p-4 md:p-8 max-w-[1800px] mx-auto">
       <div className="mb-4">
         <h1 className="text-2xl font-bold tracking-tight">节点池</h1>
         <p className="text-muted-foreground mt-1">
@@ -322,7 +322,7 @@ function NodeRow({
         className="flex items-start gap-3 p-3 cursor-pointer hover:bg-muted/30"
         onClick={() => setExpanded((v) => !v)}
       >
-        <Badge variant="outline" className="text-[10px] font-mono px-1.5 py-0 shrink-0 mt-0.5">
+        <Badge variant="outline" className="text-xs font-mono px-1.5 py-0 shrink-0 mt-0.5">
           {n.type}
         </Badge>
         <div className="flex-1 min-w-0 space-y-1">
@@ -331,7 +331,7 @@ function NodeRow({
             {!hideSource && (
               <Badge
                 variant="secondary"
-                className="shrink-0 text-[10px] px-1.5 py-0 max-w-[180px] truncate"
+                className="shrink-0 text-xs px-1.5 py-0 max-w-[180px] truncate"
                 title={n.source_provider_id}
               >
                 {sourceName}
@@ -347,12 +347,12 @@ function NodeRow({
           {showThirdRow && (
             <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
               {n.udp && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                <Badge variant="outline" className="text-xs px-1.5 py-0 font-normal">
                   udp
                 </Badge>
               )}
               {n.tfo && (
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-normal">
+                <Badge variant="outline" className="text-xs px-1.5 py-0 font-normal">
                   tfo
                 </Badge>
               )}
@@ -360,7 +360,7 @@ function NodeRow({
                 <Badge
                   key={t}
                   variant="outline"
-                  className="text-[10px] px-1.5 py-0 font-normal text-muted-foreground"
+                  className="text-xs px-1.5 py-0 font-normal text-muted-foreground"
                 >
                   #{t}
                 </Badge>

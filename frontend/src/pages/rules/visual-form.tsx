@@ -252,7 +252,7 @@ export function RuleSetVisualForm({ data, update }: Props) {
           />
           <ToggleRow
             label="dns-failed"
-            badge={<Badge variant="outline" className="px-1 py-0 text-[9px] font-normal text-muted-foreground">FINAL</Badge>}
+            badge={<Badge variant="outline" className="px-1 py-0 text-xs font-normal text-muted-foreground">FINAL</Badge>}
             hint="仅用于 FINAL 规则:DNS 解析失败的流量交给该策略处理。Surge 专属。"
             checked={flags.dns_failed ?? false}
             onChange={(v) => update({ surge_flags: { ...flags, dns_failed: v } })}
@@ -330,7 +330,7 @@ export function RuleSetVisualForm({ data, update }: Props) {
             </LabeledField>
           </>
         ) : (
-          <div className="text-[11px] italic text-muted-foreground">未启用 — 命中 REJECT 策略时使用客户端默认行为</div>
+          <div className="text-xs italic text-muted-foreground">未启用 — 命中 REJECT 策略时使用客户端默认行为</div>
         )}
       </FieldGroup>
     </div>

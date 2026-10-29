@@ -17,6 +17,9 @@ import {
   Route,
   CloudOff,
   Cloud,
+  MoreHorizontal,
+  Link2,
+  HardDrive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/empty-state";
@@ -24,9 +27,17 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { NodeRow, type NodeBrief } from "@/components/node-row";
-import { RefreshedAt, UpdatedAt } from "@/components/refreshed-at";
+import { RefreshedAt } from "@/components/refreshed-at";
+import { FetchErrorLine } from "@/components/fetch-error-line";
+import { formatAbsoluteTime } from "@/lib/relative-time";
 import { useEntityList, useDeleteEntity, useDeleteEntitiesBulk } from "@/api/entities";
 import { EntityVisualDialog } from "@/components/entity-visual-dialog";
 import { DeleteEntityDialog, type DeleteTarget } from "@/components/delete-entity-dialog";
@@ -41,7 +52,7 @@ import {
   type RefreshInterval,
 } from "./visual-form";
 import { QuotaBadge, QuotaSummary, type ProviderQuotaStatus } from "./quota";
-import { resolveFetchRoutes, useRouteNames } from "./fetch-via";
+import { DIRECT_ROUTE, resolveFetchRoutes, useRouteNames } from "./fetch-via";
 
 interface ProviderNodesResp {
   provider_id: string;
@@ -50,16 +61,13 @@ interface ProviderNodesResp {
   nodes: NodeBrief[];
 }
 
-// @business_rule: 列表里的订阅 URL 经常带一长串 query (token / filename / 嵌套 url),
-// 完整展示会撑爆卡片;此处只显示 host + path,query 数量用徽标提示,完整 URL 走 hover title。
-function formatUrlDisplay(raw: string): { text: string; queryCount: number } {
+// 只显示 host + path:订阅 token 都在 query 里,不该明文摆在卡片上;完整地址在 hover
+function formatUrlDisplay(raw: string): string {
   try {
     const u = new URL(raw);
-    const path = u.pathname === "/" ? "" : u.pathname;
-    const queryCount = u.search ? Array.from(u.searchParams.keys()).length : 0;
-    return { text: `${u.host}${path}`, queryCount };
+    return `${u.host}${u.pathname === "/" ? "" : u.pathname}`;
   } catch {
-    return { text: raw, queryCount: 0 };
+    return raw;
   }
 }
 
@@ -293,12 +301,12 @@ export function ProvidersPage() {
   };
 
   return (
-    <div className="p-8 max-w-[1800px] mx-auto">
-      <div className="flex items-start justify-between mb-6">
+    <div className="p-4 md:p-8 max-w-[1800px] mx-auto">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">节点源</h1>
           <p className="text-muted-foreground mt-1">
-            订阅 URL / 静态节点; 多源去重合并
+            机场订阅和手动粘贴的节点,去重后合并进节点池
           </p>
         </div>
         <div className="flex gap-2">
@@ -347,54 +355,6 @@ export function ProvidersPage() {
         />
       )}
 
-      {items.length > 0 && (
-        <div
-          className={cn(
-            "flex items-center gap-3 px-4 py-2.5 mb-3 rounded-md border text-xs transition-colors",
-            hasSelection ? "bg-primary/5 border-primary/30" : "bg-muted/30",
-          )}
-        >
-          <Checkbox
-            checked={allSelected ? true : partialSelected ? "indeterminate" : false}
-            onCheckedChange={(v) => toggleSelectAll(v === true)}
-            aria-label="全选"
-          />
-          {hasSelection ? (
-            <>
-              <span className="font-medium text-foreground">
-                已选 {validSelected.size} / {items.length} 个节点源
-              </span>
-              <div className="ml-auto flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={clearSelection}
-                  disabled={bulkDel.isPending}
-                >
-                  <X className="h-3.5 w-3.5" />
-                  取消选择
-                </Button>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={openBulkDelete}
-                  disabled={bulkDel.isPending}
-                >
-                  {bulkDel.isPending ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
-                  )}
-                  批量删除
-                </Button>
-              </div>
-            </>
-          ) : (
-            <span className="text-muted-foreground">共 {items.length} 个,勾选以批量操作</span>
-          )}
-        </div>
-      )}
-
       <div className="grid gap-3">
         {items.map((p) => {
           const s = statusMap.get(p.id);
@@ -419,7 +379,8 @@ export function ProvidersPage() {
               )}
               onClick={canExpand ? () => toggleExpand(p.id) : undefined}
             >
-              <div className="flex items-start justify-between gap-4">
+              {/* 窄屏下右侧的状态徽标和按钮换到第二行,跟名字左对齐,不再把卡片撑出屏幕 */}
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
                 <div
                   className="pt-0.5 shrink-0"
                   onClick={(e) => e.stopPropagation()}
@@ -431,100 +392,65 @@ export function ProvidersPage() {
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <span
+                  {/* id 与配置文件修改时间不常看,收进名字的 hover,卡片上只留名字 */}
+                  <div
                     className={cn(
-                      "font-medium inline-flex items-baseline gap-2 min-w-0 flex-wrap",
+                      "font-medium truncate",
                       !p.enabled && "line-through decoration-1",
                     )}
+                    title={[
+                      `id: ${p.id}`,
+                      updatedAt !== undefined && `配置更新于 ${formatAbsoluteTime(updatedAt)}`,
+                    ]
+                      .filter(Boolean)
+                      .join("\n")}
                   >
-                    <span className="truncate">{p.name}</span>
-                    <span className="text-xs font-normal font-mono text-muted-foreground shrink-0">
-                      {p.id}
-                    </span>
-                  </span>
+                    {p.name}
+                  </div>
                   {(p.url ?? p.path) && (
                     <div
-                      className="text-xs text-muted-foreground mt-1 truncate"
-                      title={p.url ?? p.path}
+                      className="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+                      title={p.url ? `订阅 URL: ${p.url}` : `服务器本地路径: ${p.path}`}
                     >
                       {p.url ? (
-                        (() => {
-                          const { text, queryCount } = formatUrlDisplay(p.url);
-                          return (
-                            <>
-                              {text}
-                              {queryCount > 0 && (
-                                <span className="ml-1 text-muted-foreground/60">
-                                  · {queryCount} 个参数
-                                </span>
-                              )}
-                            </>
-                          );
-                        })()
+                        <Link2 className="h-3.5 w-3.5 shrink-0" />
                       ) : (
-                        p.path
+                        <HardDrive className="h-3.5 w-3.5 shrink-0" />
                       )}
+                      <span className="truncate">{p.url ? formatUrlDisplay(p.url) : p.path}</span>
                     </div>
                   )}
-                  {p.type === "http" && resolveFetchRoutes(p.fetch_via).length > 1 && (() => {
-                    const path = resolveFetchRoutes(p.fetch_via).map((r) => routeName(r) ?? `${r}(已删除)`).join(" → ");
-                    return (
-                      <div
-                        className="text-xs text-muted-foreground mt-1 flex items-center gap-1 min-w-0"
-                        title={`拉取线路(依次尝试):${path}`}
-                      >
-                        <Route className="h-3 w-3 shrink-0" />
-                        <span className="truncate">拉取线路 {path}</span>
-                      </div>
-                    );
-                  })()}
-                  {s?.fetched_at && !isInline && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      上次刷新： <RefreshedAt ts={s.fetched_at} /> · 刷新周期{" "}
-                      {REFRESH_INTERVAL_LABEL[p.refresh.interval] ?? p.refresh.interval}
-                    </div>
-                  )}
-                  {isInline && (
-                    <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-500" />
-                      最新
-                    </div>
-                  )}
+                  <ProviderFetchMeta
+                    provider={p}
+                    status={s}
+                    routeName={routeName}
+                  />
                   <QuotaSummary status={s?.quota} />
-                  {/* 与「上次刷新」区分:那是从机场拉节点的时间,这是这份节点源配置本身被改动的时间 */}
-                  {updatedAt !== undefined && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      <UpdatedAt ts={updatedAt} label="配置更新于" />
-                    </div>
-                  )}
                   {s?.error && (
-                    <div className="text-xs text-destructive mt-1">
-                      错误: {s.error}
-                    </div>
-                  )}
-                  {s?.retry_failures !== undefined && s.status !== "ok" && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      已连续失败 {s.retry_failures} 次
-                      {s.next_retry_at !== undefined &&
-                        (s.next_retry_at > Date.now() ? (
+                    <FetchErrorLine
+                      className="mt-1"
+                      error={s.error}
+                      tone={s.status === "stale" ? "stale" : "error"}
+                      extra={
+                        s.retry_failures !== undefined && s.status !== "ok" ? (
                           <>
-                            {" "}· 下次自动重试 <RefreshedAt ts={s.next_retry_at} />
+                            已失败 {s.retry_failures} 次
+                            {s.next_retry_at !== undefined &&
+                              (s.next_retry_at > Date.now() ? (
+                                <>
+                                  ,<RefreshedAt ts={s.next_retry_at} />重试
+                                </>
+                              ) : (
+                                ",即将重试"
+                              ))}
                           </>
-                        ) : (
-                          " · 即将自动重试"
-                        ))}
-                    </div>
+                        ) : undefined
+                      }
+                    />
                   )}
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                    <Badge variant="outline" className="text-xs">
-                      {p.type === "inline"
-                        ? "静态节点"
-                        : p.type === "file"
-                          ? "服务器本地路径"
-                          : "URL 订阅"}
-                    </Badge>
+                <div className="col-start-2 flex items-center justify-between gap-2 sm:col-start-auto sm:justify-end">
+                  <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
                     {!p.enabled && (
                       <Badge
                         variant="disabled"
@@ -562,7 +488,7 @@ export function ProvidersPage() {
                         }
                       >
                         {s.offline ? <CloudOff className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                        {s.offline ? "离线 · 沿用上次节点" : "使用旧缓存"}
+                        {s.offline ? "离线" : "沿用旧节点"}
                       </Badge>
                     )}
                     {s?.status === "error" && (
@@ -587,20 +513,6 @@ export function ProvidersPage() {
                     className="flex items-center gap-1"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {canExpand && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => toggleExpand(p.id)}
-                        title={expanded ? "收起节点列表" : "展开节点列表"}
-                      >
-                        <ChevronDown
-                          className={`h-4 w-4 transition-transform duration-200 ${
-                            expanded ? "rotate-180" : ""
-                          }`}
-                        />
-                      </Button>
-                    )}
                     {/* inline 没有"上游"可拉,不显示刷新按钮;后端在 PUT 路径会自动重解析,
                         保存即生效。这里渲染等宽透明占位,使 Edit/Trash2 与 http/file 卡片对齐。 */}
                     {!isInline ? (
@@ -633,18 +545,37 @@ export function ProvidersPage() {
                         setEditing(p);
                         setOpen(true);
                       }}
+                      title="编辑"
                     >
                       <Edit className="h-4 w-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setDeleteTargets([{ id: p.id, name: p.name }])}
-                      title="删除"
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {/* 删除不常用又危险,收进「更多」,不和刷新 / 编辑并排等着被误点 */}
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon" title="更多操作">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenuItem
+                          destructive
+                          onSelect={() => setDeleteTargets([{ id: p.id, name: p.name }])}
+                        >
+                          <Trash2 />
+                          删除
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
+                  {/* 整张卡都能点开节点列表,这里只是个提示,不是按钮 */}
+                  <ChevronDown
+                    aria-hidden
+                    className={cn(
+                      "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                      expanded && "rotate-180",
+                      !canExpand && "invisible",
+                    )}
+                  />
                 </div>
               </div>
               {canExpand && (
@@ -673,6 +604,34 @@ export function ProvidersPage() {
           );
         })}
       </div>
+
+      {/* 平时不占位,勾选了才浮在列表底部;放在列表后面用 sticky,出现时不会把卡片往下挤 */}
+      {hasSelection && (
+        <div className="sticky bottom-4 z-10 mt-3 flex items-center gap-3 rounded-md border border-primary/30 bg-card px-4 py-2.5 text-xs shadow-lg">
+          <Checkbox
+            checked={allSelected ? true : partialSelected ? "indeterminate" : false}
+            onCheckedChange={(v) => toggleSelectAll(v === true)}
+            aria-label="全选"
+          />
+          <span className="font-medium text-foreground">
+            已选 {validSelected.size} / {items.length} 个节点源
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={clearSelection} disabled={bulkDel.isPending}>
+              <X className="h-3.5 w-3.5" />
+              取消选择
+            </Button>
+            <Button variant="destructive" size="sm" onClick={openBulkDelete} disabled={bulkDel.isPending}>
+              {bulkDel.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="h-3.5 w-3.5" />
+              )}
+              批量删除
+            </Button>
+          </div>
+        </div>
+      )}
 
       <DeleteEntityDialog
         kind="providers"
@@ -874,6 +833,54 @@ function ProviderNodesPanel({
           filtered.map((n, i) => <NodeRow key={`${n.name}-${i}`} n={n} />)
         )}
       </div>
+    </div>
+  );
+}
+
+/** 卡片第三行:何时拉的、多久拉一次、经哪些出口拉,并成一行 */
+function ProviderFetchMeta({
+  provider: p,
+  status: s,
+  routeName,
+}: {
+  provider: ProviderData;
+  status?: ProviderStatusItem;
+  routeName: (route: string) => string | undefined;
+}) {
+  if (p.type === "inline") {
+    return (
+      <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+        <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+        静态节点,保存即生效
+      </div>
+    );
+  }
+  // 直连是固定兜底(resolveFetchRoutes 永远把它放最后),不用每张卡都写一遍
+  const egresses = p.type === "http"
+    ? resolveFetchRoutes(p.fetch_via).filter((r) => r !== DIRECT_ROUTE)
+    : [];
+  const egressNames = egresses.map((r) => routeName(r) ?? `${r}(已删除)`);
+  if (!s?.fetched_at && egressNames.length === 0) return null;
+  return (
+    <div className="text-xs text-muted-foreground mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 min-w-0">
+      {s?.fetched_at && (
+        <span>
+          {/* stale 的 fetched_at 是沿用的那份 cache 的时间,也就是最后一次成功 */}
+          {s.status === "stale" ? "上次成功于" : "刷新于"} <RefreshedAt ts={s.fetched_at} />
+          {" · "}
+          {REFRESH_INTERVAL_LABEL[p.refresh.interval] ?? p.refresh.interval}
+        </span>
+      )}
+      {egressNames.length > 0 && (
+        <span
+          className="inline-flex items-center gap-1 min-w-0"
+          title={`拉取线路(依次尝试):${[...egressNames, "服务器直连"].join(" → ")}`}
+        >
+          {s?.fetched_at && <span aria-hidden>·</span>}
+          <Route className="h-3 w-3 shrink-0" />
+          <span className="truncate">经 {egressNames.join(" → ")}</span>
+        </span>
+      )}
     </div>
   );
 }

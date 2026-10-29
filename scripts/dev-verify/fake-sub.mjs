@@ -21,6 +21,8 @@ const B64 = Buffer.from(
 const EXPIRE = Math.floor(new Date(2027, 5, 19).getTime() / 1000);
 
 export function startFakeSub(port) {
+  // /flaky 只在第一次请求时给节点,之后返回解析不出节点的页面:手动刷新一次即可复现「沿用旧节点」
+  let flakyHits = 0;
   const server = http.createServer((req, res) => {
     const ua = req.headers["user-agent"] ?? "";
     console.log(`[fake-sub] ${req.url} UA=${JSON.stringify(ua)}`);
@@ -34,6 +36,15 @@ export function startFakeSub(port) {
     if (req.url === "/b64") {
       if (/clash/i.test(ua)) return res.end("<!doctype html><html><body>请使用客户端订阅</body></html>");
       return res.end(B64);
+    }
+    if (req.url === "/flaky") {
+      flakyHits++;
+      return res.end(flakyHits === 1 ? META_YAML : "<!doctype html><html><body>订阅已过期</body></html>");
+    }
+    // 按来源 IP 拦截的机场:不管什么 UA 都 403
+    if (req.url === "/blocked") {
+      res.statusCode = 403;
+      return res.end("forbidden");
     }
     res.statusCode = 404;
     res.end();

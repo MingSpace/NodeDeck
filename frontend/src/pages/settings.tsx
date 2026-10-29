@@ -34,7 +34,7 @@ export function SettingsPage() {
   const [pwOpen, setPwOpen] = useState(false);
 
   return (
-    <div className="p-8 max-w-[1800px] mx-auto space-y-4">
+    <div className="p-4 md:p-8 max-w-[1800px] mx-auto space-y-4">
       <h1 className="text-2xl font-bold tracking-tight">设置</h1>
 
       <div className="grid gap-4 items-start lg:grid-cols-2">
@@ -190,7 +190,7 @@ function ServiceConfigCard() {
           <p className="text-xs text-muted-foreground mt-1 mb-2">
             限制 /api/* 与 Web UI 访问。留空 = 放行所有 IP(空白行保存时会被忽略)。订阅 URL 不受此限制。
           </p>
-          <p className="text-xs text-amber-600 mb-2">
+          <p className="text-xs text-amber-600 dark:text-amber-400 mb-2">
             填错会导致登录后所有接口 403,且设置页本身也被挡住,只能改服务器上的 data/config.yaml 才能恢复。
           </p>
           {draft.ip_allowlist.length === 0 && (
@@ -427,7 +427,7 @@ function ResetDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: 
                     <div className="text-xs text-muted-foreground mt-0.5">
                       {opt.description}
                       {linkedToProviders && (
-                        <span className="text-amber-600 ml-1">(已随节点源勾选)</span>
+                        <span className="text-amber-600 dark:text-amber-400 ml-1">(已随节点源勾选)</span>
                       )}
                     </div>
                   </div>

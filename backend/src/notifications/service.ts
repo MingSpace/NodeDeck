@@ -65,8 +65,9 @@ export async function notifyProviderZeroNodes(provider: Provider, reason: string
     const cooldownMs = cfg.events.refresh_failure.cooldown_hours * HOUR_MS;
     if (!(await shouldSend(`zero_nodes:${provider.id}`, cooldownMs))) return;
     await sendBark(cfg.bark, {
-      title: "节点源解析为空",
-      body: `「${provider.name}」刷新后未解析出任何节点:${truncate(reason)}`,
+      // 与 Web UI 通知页的场景名一致
+      title: "拉到了订阅,但没有节点",
+      body: `「${provider.name}」机场返回了内容,但没认出节点:${truncate(reason)}`,
     });
   } catch (err) {
     logger.warn({ err, providerId: provider.id }, "notifyProviderZeroNodes error");

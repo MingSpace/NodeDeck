@@ -13,7 +13,7 @@ interface Props {
 }
 
 const iosBadge = (
-  <Badge variant="outline" className="px-1 py-0 text-[9px] font-normal text-muted-foreground">
+  <Badge variant="outline" className="px-1 py-0 text-xs font-normal text-muted-foreground">
     iOS
   </Badge>
 );
@@ -294,7 +294,7 @@ export function HttpApiSection({ data, update }: Props) {
         Surge 控制台 API · 供外部程序 / 网页面板远程读写配置
         <InfoHint>
           开启后 Surge 会监听一个管理端口,可用于外部工具(如 Surge 网页面板、快捷指令)查询状态、切换策略。生成
-          <code className="mx-1 text-[10px]">http-api / http-api-web-dashboard / http-api-tls</code>
+          <code className="mx-1 text-xs">http-api / http-api-web-dashboard / http-api-tls</code>
           三行。
         </InfoHint>
       </div>
@@ -331,7 +331,7 @@ export function HttpApiSection({ data, update }: Props) {
               </button>
             </div>
             {api.password.length === 0 && (
-              <div className="text-[11px] text-destructive mt-1">
+              <div className="text-xs text-destructive mt-1">
                 密钥不能为空,否则会生成畸形的 http-api 行,保存时后端会拒绝
               </div>
             )}

@@ -2,6 +2,7 @@ import { Loader2 } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef } from "react";
 import type { OnMount } from "@monaco-editor/react";
 import { computeLineDiff } from "@/lib/line-diff";
+import { useTheme } from "@/hooks/use-theme";
 
 // Monaco 体积大(几 MB),拆出独立 chunk 按需加载。这一层 lazy 确保:
 // - 即使路由级 lazy 已经把 ProvidersPage 等页面切出去了,页面挂载时也不会立刻加载 Monaco
@@ -39,6 +40,7 @@ export function YamlEditor({
   highlightChanges = false,
   onDiffStats,
 }: YamlEditorProps) {
+  const { resolved: theme } = useTheme();
   const editorRef = useRef<MonacoEditor | null>(null);
   const monacoRef = useRef<MonacoNs | null>(null);
   const prevValueRef = useRef<string>(value);
@@ -134,7 +136,7 @@ export function YamlEditor({
           onChange={(v) => onChange(v ?? "")}
           height="100%"
           language={language}
-          theme="vs"
+          theme={theme === "dark" ? "vs-dark" : "vs"}
           onMount={handleMount}
           options={{
             minimap: { enabled: false },

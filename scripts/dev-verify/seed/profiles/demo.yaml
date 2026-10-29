@@ -1,0 +1,18 @@
+# token 是假的,只在本地免登录验证环境里用
+id: demo
+name: 主力订阅
+description: 手机和电脑共用
+token: dev-verify-token
+providers:
+  - fake-meta
+  - fake-b64
+  - fake-flaky
+proxy_groups:
+  - proxy
+  - auto
+rule_modules:
+  - ref: cn-direct
+    policy: DIRECT
+  - final: Proxy
+chain_rules: []
+surge_modules: []

@@ -64,14 +64,13 @@ export function useProfileForm(id: string) {
   };
 
   const onRegenerateToken = async () => {
-    if (!window.confirm("重新生成 token 后,旧的订阅 URL 会失效。继续?")) return;
     try {
       const data = await api.post<{ token: string }>(`/api/profiles/${id}/regenerate-token`);
-      toast({ title: "Token 已更新", variant: "success" });
+      toast({ title: "已重新生成 token", description: "旧链接已失效,请在客户端重新导入", variant: "success" });
       setDraft((prev) => (prev ? { ...prev, token: data.token } : prev));
       void profileQuery.refetch();
     } catch (err) {
-      toast({ title: "失败", description: String(err), variant: "error" });
+      toast({ title: "重新生成失败", description: String(err), variant: "error" });
     }
   };
 

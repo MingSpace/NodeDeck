@@ -135,7 +135,7 @@ export function RulePipeline({ draft, onChange }: Props) {
       <div className="px-4 py-2.5 border-b bg-muted/30 flex items-center gap-2 shrink-0">
         <Filter className="h-3.5 w-3.5 text-muted-foreground" />
         <span className="text-xs font-medium text-muted-foreground">规则模块流水线</span>
-        <span className="text-[11px] text-muted-foreground/70">(从上到下顺序匹配)</span>
+        <span className="text-xs text-muted-foreground/70">(从上到下顺序匹配)</span>
       </div>
 
       <div className="border-b p-2.5 flex flex-wrap gap-2 shrink-0">
@@ -235,7 +235,7 @@ function SortableRow({ id, idx, rule, rulesetOptions, usedRefs, policyOptions, o
           <RowTypeTag tone="final" label="FINAL" title="兜底规则" />
           <PolicySelect value={rule.final} options={policyOptions} onChange={(v) => onUpdate(idx, { ...rule, final: v })} />
           <label
-            className="flex items-center gap-1 text-[11px] text-muted-foreground whitespace-nowrap shrink-0"
+            className="flex items-center gap-1 text-xs text-muted-foreground whitespace-nowrap shrink-0"
             title="dns-failed"
           >
             <input
@@ -285,7 +285,7 @@ function SortableRow({ id, idx, rule, rulesetOptions, usedRefs, policyOptions, o
               )}
             </SelectContent>
           </Select>
-          <span className="text-muted-foreground/50 text-[11px] shrink-0">→</span>
+          <span className="text-muted-foreground/50 text-xs shrink-0">→</span>
           <PolicySelect value={rule.policy} options={policyOptions} onChange={(v) => onUpdate(idx, { ...rule, policy: v })} />
           <input
             type="checkbox"
@@ -323,7 +323,7 @@ function RowTypeTag({
         : "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300";
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded px-1.5 h-6 text-[10px] font-medium shrink-0 ${cls}`}
+      className={`inline-flex items-center gap-1 rounded px-1.5 h-6 text-xs font-medium shrink-0 ${cls}`}
       title={title}
     >
       <Icon className="h-3 w-3" />

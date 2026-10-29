@@ -188,7 +188,7 @@ export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: 
         <div className="flex flex-wrap items-center gap-2">
           <LinkIcon className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground">链式代理</span>
-          <span className="text-[11px] text-muted-foreground/70">
+          <span className="text-xs text-muted-foreground/70">
             从上到下顺序匹配,每个节点由第一条命中的规则决定前置出口
           </span>
           <div className="flex-1" />
@@ -199,7 +199,7 @@ export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: 
           </Button>
         </div>
         {data && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span>
               节点池 <span className="font-medium tabular-nums text-foreground">{data.node_count}</span>
             </span>
@@ -308,7 +308,7 @@ export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: 
               {pathsOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
               <Route className="h-3.5 w-3.5" />
               解析后的链路
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">
+              <span className="rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums">
                 {data.chains.length}
               </span>
               <span className="font-normal text-muted-foreground/70">
@@ -319,7 +319,7 @@ export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: 
               <div className="max-h-72 overflow-auto border-t px-3 py-2">
                 <div className="space-y-1">
                   {data.chains.map((c) => (
-                    <div key={c.node} className="flex flex-wrap items-center gap-1 text-[11px]">
+                    <div key={c.node} className="flex flex-wrap items-center gap-1 text-xs">
                       {c.path.map((hop, i) => (
                         <span key={`${hop}-${i}`} className="flex items-center gap-1">
                           {i > 0 && <span className="text-muted-foreground/50">→</span>}
@@ -336,7 +336,7 @@ export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: 
                       ))}
                       <span
                         className={cn(
-                          "ml-1 text-[10px]",
+                          "ml-1 text-xs",
                           c.terminal === "missing" || c.terminal === "cycle"
                             ? "text-destructive"
                             : "text-muted-foreground/70",

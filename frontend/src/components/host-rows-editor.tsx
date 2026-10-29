@@ -65,7 +65,7 @@ export function HostRowsEditor({ value, onChange }: Props) {
 
   return (
     <div className="space-y-2">
-      <div className="text-[11px] text-muted-foreground leading-relaxed">
+      <div className="text-xs text-muted-foreground leading-relaxed">
         域名解析覆盖;同一域名可添加多行(如多个 server: 上游 DNS),多个 IP 也可写成多行或逗号分隔。含{" "}
         <span className="font-mono">server:</span> 的条目:Surge 写入{" "}
         <span className="font-mono">[Host]</span>,Clash 写入{" "}

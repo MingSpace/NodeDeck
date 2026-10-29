@@ -135,7 +135,7 @@ export function ProfileLoadError({ id, error, onRetry, retrying }: Props) {
                         className="flex items-baseline gap-2 px-3 py-2 text-sm transition-colors hover:bg-accent"
                       >
                         <span className="truncate font-medium">{p.name || "未命名 Profile"}</span>
-                        <code className="ml-auto shrink-0 text-[11px] text-muted-foreground">
+                        <code className="ml-auto shrink-0 text-xs text-muted-foreground">
                           {p.id}
                         </code>
                       </Link>

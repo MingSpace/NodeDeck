@@ -33,7 +33,7 @@ export function EgressesPage() {
         const names = usedBy(e.id);
         return (
           <span className="flex items-center gap-2 min-w-0">
-            <span className="shrink-0 rounded border px-1.5 text-[10px] font-medium uppercase tracking-wide">
+            <span className="shrink-0 rounded border px-1.5 text-xs font-medium uppercase tracking-wide">
               {TYPE_LABEL[e.type]}
             </span>
             <span className="font-mono truncate">{egressAddress(e)}</span>

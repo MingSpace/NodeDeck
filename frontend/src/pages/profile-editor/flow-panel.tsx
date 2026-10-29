@@ -49,14 +49,14 @@ export function FlowPanel({ profileId, draft }: Props) {
         <div className="flex flex-wrap items-center gap-2">
           <Waypoints className="h-3.5 w-3.5 text-muted-foreground" />
           <span className="text-xs font-medium text-muted-foreground">流转</span>
-          <span className="text-[11px] text-muted-foreground/70">
+          <span className="text-xs text-muted-foreground/70">
             一次请求从规则命中到最终出站的完整走向
           </span>
           <div className="flex-1" />
           {preview.isFetching && <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />}
         </div>
         {data && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <span>
               规则入口 <span className="font-medium tabular-nums text-foreground">{data.entries.length}</span>
             </span>
@@ -126,7 +126,7 @@ export function FlowPanel({ profileId, draft }: Props) {
                 {data.warnings.map((w) => (
                   <div
                     key={w}
-                    className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300"
+                    className="flex items-start gap-1.5 text-xs leading-relaxed text-amber-800 dark:text-amber-300"
                   >
                     <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                     <span>{w}</span>
@@ -145,7 +145,7 @@ function EntryRow({ entry, onJump }: { entry: FlowEntry; onJump: () => void }) {
   const clickable = entry.policy_kind === "group";
   return (
     <div className="flex items-center gap-2 border-b px-3 py-1.5 text-xs last:border-b-0">
-      <span className="w-12 shrink-0 text-[10px] text-muted-foreground/70">
+      <span className="w-12 shrink-0 text-xs text-muted-foreground/70">
         {ENTRY_KIND_LABEL[entry.kind]}
       </span>
       <div className="min-w-0 flex-1">
@@ -153,7 +153,7 @@ function EntryRow({ entry, onJump }: { entry: FlowEntry; onJump: () => void }) {
           {entry.label}
         </div>
         {entry.detail && (
-          <div className="truncate text-[10px] text-muted-foreground/70" title={entry.detail}>
+          <div className="truncate text-xs text-muted-foreground/70" title={entry.detail}>
             {entry.detail}
           </div>
         )}
@@ -171,7 +171,7 @@ function EntryRow({ entry, onJump }: { entry: FlowEntry; onJump: () => void }) {
               : undefined
         }
         className={cn(
-          "max-w-[45%] shrink-0 truncate rounded px-1.5 py-0.5 font-mono text-[11px]",
+          "max-w-[45%] shrink-0 truncate rounded px-1.5 py-0.5 font-mono text-xs",
           entry.policy_kind === "group" && "bg-primary/10 text-primary hover:bg-primary/20",
           entry.policy_kind === "builtin" && "bg-muted text-muted-foreground",
           entry.policy_kind === "unknown" &&
@@ -199,7 +199,7 @@ function SectionTitle({
         {icon}
         {title}
       </span>
-      <span className="text-[11px] text-muted-foreground/70">{children}</span>
+      <span className="text-xs text-muted-foreground/70">{children}</span>
     </div>
   );
 }

@@ -100,19 +100,26 @@ export function QuotaBadge({ status }: { status?: ProviderQuotaStatus }) {
 export function QuotaSummary({ status }: { status?: ProviderQuotaStatus }) {
   if (!status) return null;
   const parts: string[] = [];
+  const hints: string[] = [];
   if (status.traffic) {
     const pct = Math.round((status.traffic.used / status.traffic.total) * 100);
-    parts.push(`流量 ${formatBytes(status.traffic.used)} / ${formatBytes(status.traffic.total)}(${pct}%)`);
+    parts.push(`流量 ${formatBytes(status.traffic.used)} / ${formatBytes(status.traffic.total)}`);
+    hints.push(`已用 ${pct}%`);
   }
   if (status.expire_at !== undefined) {
-    parts.push(`${toLocalDate(status.expire_at)} 到期${status.expire_source === "info_node" ? "(信息节点)" : ""}`);
+    parts.push(`${toLocalDate(status.expire_at)} 到期`);
+    if (status.expire_source === "info_node") hints.push("到期日来自订阅里的信息节点");
   }
-  if (status.next_reset_at !== undefined) parts.push(`${toLocalDate(status.next_reset_at)} 重置`);
+  // 重置日总在一个月内,只写月/日
+  if (status.next_reset_at !== undefined) parts.push(`${toShortDate(status.next_reset_at)} 重置`);
   if (parts.length === 0) return null;
   return (
-    <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+    <div
+      className="text-xs text-muted-foreground mt-1 flex items-center gap-1 min-w-0"
+      title={hints.length > 0 ? hints.join(";") : undefined}
+    >
       <CalendarClock className="h-3 w-3 shrink-0" />
-      {parts.join(" · ")}
+      <span className="truncate">{parts.join(" · ")}</span>
     </div>
   );
 }
@@ -169,7 +176,7 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
   return (
     <div className="space-y-3">
       {!isNew && (
-        <div className="rounded-md border bg-muted/30 p-2.5 text-[11px] text-muted-foreground leading-relaxed">
+        <div className="rounded-md border bg-muted/30 p-2.5 text-xs text-muted-foreground leading-relaxed">
           {hasUpstreamTraffic || hasUpstreamExpire ? (
             <>
               {upstream?.traffic_source === "info_node" ? "订阅信息节点(上次刷新):" : "上游数据(上次刷新):"}
@@ -251,7 +258,7 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
             onChange={(e) => set({ expire: e.target.value || undefined })}
           />
           {upstreamExpire !== undefined && q.expire && (
-            <p className="text-[11px] text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1">
               手填的 {q.expire} 不生效。
               <button
                 type="button"
@@ -294,7 +301,7 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
             <PauseCircle className="h-3.5 w-3.5" />
             {nextReset ? `排除到下个重置日(${nextReset})` : "排除到下个重置日"}
           </Button>
-          <span className="text-[11px] text-muted-foreground">或排除到</span>
+          <span className="text-xs text-muted-foreground">或排除到</span>
           <Input
             type="date"
             className="h-8 w-40"
@@ -303,7 +310,7 @@ export function QuotaEditor({ providerId, isNew, isInline, quota, onChange }: Ed
             onChange={(e) => set({ exhausted_until: e.target.value || undefined })}
           />
         </div>
-        <p className="text-[11px] text-muted-foreground">保存后生效。客户端要更新托管配置才会看到节点变化。</p>
+        <p className="text-xs text-muted-foreground">保存后生效。客户端要更新托管配置才会看到节点变化。</p>
       </div>
     </div>
   );

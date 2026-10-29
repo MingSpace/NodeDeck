@@ -123,7 +123,7 @@ export function ImportPage() {
   };
 
   return (
-    <div className="p-8 max-w-[1800px] mx-auto">
+    <div className="p-4 md:p-8 max-w-[1800px] mx-auto">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">导入向导</h1>
         <p className="text-muted-foreground mt-1">
@@ -220,8 +220,8 @@ export function ImportPage() {
                 </div>
 
                 {preview.warnings.length > 0 && (
-                  <Card className="bg-amber-50 border-amber-200">
-                    <CardContent className="p-3 text-xs text-amber-900">
+                  <Card className="bg-amber-50 border-amber-200 dark:bg-amber-950/30 dark:border-amber-900">
+                    <CardContent className="p-3 text-xs text-amber-900 dark:text-amber-200">
                       <div className="font-medium mb-1 flex items-center gap-1">
                         <AlertCircle className="h-3.5 w-3.5" /> {preview.warnings.length} 条警告
                       </div>
@@ -259,7 +259,7 @@ export function ImportPage() {
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               导入详情
             </DialogTitle>
             <DialogDescription>
@@ -282,12 +282,12 @@ export function ImportPage() {
                 <SkippedRow label="跳过通用预设" count={commitMutation.data.stats.general_skipped} />
               </div>
               {commitMutation.data.warnings.length > 0 && (
-                <div className="rounded-md bg-amber-50 border border-amber-200 p-3">
-                  <div className="text-xs font-medium text-amber-900 mb-2 flex items-center gap-1">
+                <div className="rounded-md bg-amber-50 border border-amber-200 p-3 dark:bg-amber-950/30 dark:border-amber-900">
+                  <div className="text-xs font-medium text-amber-900 mb-2 flex items-center gap-1 dark:text-amber-200">
                     <AlertCircle className="h-3.5 w-3.5" />
                     {commitMutation.data.warnings.length} 条警告
                   </div>
-                  <ul className="text-xs text-amber-900 list-disc list-inside space-y-1">
+                  <ul className="text-xs text-amber-900 list-disc list-inside space-y-1 dark:text-amber-200">
                     {commitMutation.data.warnings.map((w, i) => (
                       <li key={i} className="break-words">{w}</li>
                     ))}
@@ -315,7 +315,7 @@ function Stat({ label, count }: { label: string; count: number }) {
 function SkippedRow({ label, count }: { label: string; count: number }) {
   if (count <= 0) return null;
   return (
-    <div className="flex items-center justify-between py-0.5 text-amber-700">
+    <div className="flex items-center justify-between py-0.5 text-amber-700 dark:text-amber-400">
       <span>{label}</span>
       <span className="font-medium">{count}</span>
     </div>

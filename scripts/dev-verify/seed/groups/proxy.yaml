@@ -1,0 +1,6 @@
+# 主选择组:节点池里的节点全进来
+id: proxy
+name: Proxy
+type: select
+selector:
+  include_regex: ".*"

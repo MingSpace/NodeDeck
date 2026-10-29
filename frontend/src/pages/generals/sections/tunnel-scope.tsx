@@ -9,7 +9,7 @@ interface Props {
 }
 
 const iosBadge = (
-  <Badge variant="outline" className="px-1 py-0 text-[9px] font-normal text-muted-foreground">
+  <Badge variant="outline" className="px-1 py-0 text-xs font-normal text-muted-foreground">
     iOS
   </Badge>
 );
@@ -49,13 +49,13 @@ export function TunnelScopeSection({ data, update }: Props) {
       </div>
 
       <div className="rounded-lg border bg-amber-500/5 border-amber-500/30 p-2.5">
-        <div className="flex items-start gap-2 text-[11px] leading-relaxed">
+        <div className="flex items-start gap-2 text-xs leading-relaxed">
           <BellRing className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
           <span className="text-muted-foreground">
             <span className="font-medium text-foreground">收不到 Telegram / X 等境外 App 的推送?</span>{" "}
             iOS 推送走 Apple 的 APNs 独立链路,默认不经过代理。打开下面的
-            <code className="mx-1 text-[10px]">include-apns</code>
-            让它进入隧道,并给 <code className="text-[10px]">push.apple.com</code> 配一条走代理的规则。
+            <code className="mx-1 text-xs">include-apns</code>
+            让它进入隧道,并给 <code className="text-xs">push.apple.com</code> 配一条走代理的规则。
             务必把该规则指向带 fallback 的策略组 —— 节点挂掉时 APNs 要能退回直连,否则国内 App 的推送会一起收不到。
           </span>
         </div>
@@ -108,12 +108,12 @@ export function TunnelScopeSection({ data, update }: Props) {
       </div>
 
       {!all && (
-        <div className="text-[11px] text-muted-foreground">
+        <div className="text-xs text-muted-foreground">
           先打开「接管所有网络」才能配置上面三项 —— Surge 会静默忽略单独开启的子项。
         </div>
       )}
 
-      <div className="border-t pt-2 text-[11px] text-muted-foreground">
+      <div className="border-t pt-2 text-xs text-muted-foreground">
         改完这几项后需要在 iPhone 上重新加载配置,并开关一次飞行模式才会生效。
       </div>
     </div>

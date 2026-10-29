@@ -182,7 +182,7 @@ export function ProxyListEditor({
           (2) g.nested_groups 选中的组(嵌套引用,作为独立 proxy 项)— 独立 DnD 段
               (两个字段顺序敏感, 互不干扰)。
           每段都是「整行可拖」(整个边框可点击拖拽), 删除按钮的 pointerdown 被 stop 掉避免误触发拖拽。 */}
-      <div className="flex items-center justify-between text-[11px] text-muted-foreground px-0.5 pt-1">
+      <div className="flex items-center justify-between text-xs text-muted-foreground px-0.5 pt-1">
         <span>
           {/* g.proxies 里除了节点还可能有内置 policy 与策略组名,统称"显式项"更准确 */}
           已锁定 · 显式项 {proxies.length}
@@ -198,7 +198,7 @@ export function ProxyListEditor({
             <button
               type="button"
               onClick={() => setConfirmClear("proxies")}
-              className="text-[11px] text-muted-foreground hover:text-destructive transition-colors"
+              className="text-xs text-muted-foreground hover:text-destructive transition-colors"
               title="清空 g.proxies 数组(仅清空显式锁定,不影响 selector 与 nested_groups)"
             >
               清空节点
@@ -236,14 +236,14 @@ export function ProxyListEditor({
 
           {nestedGroups.length > 0 && (
             <>
-              <div className="flex items-center justify-between text-[10px] text-muted-foreground px-0.5 pt-1.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground px-0.5 pt-1.5">
                 <span className="italic">
                   嵌套引用的策略组 (作为单个 proxy 项, 客户端展开后可点进去再选, 顺序敏感, 可拖动):
                 </span>
                 <button
                   type="button"
                   onClick={() => setConfirmClear("nested")}
-                  className="text-[10px] text-muted-foreground hover:text-destructive transition-colors not-italic shrink-0"
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors not-italic shrink-0"
                   title="清空 g.nested_groups 数组(不影响 g.proxies 锁定的节点)"
                 >
                   清空嵌套组
@@ -392,7 +392,7 @@ function Picker({
           避免用户陷入"必须勾选才会生效"的旧心智模型。 */}
       <div className="flex items-start gap-2 px-2 py-1.5 border-b bg-muted/30">
         <Info className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-        <p className="text-[11px] text-muted-foreground leading-snug">
+        <p className="text-xs text-muted-foreground leading-snug">
           以下节点已通过 selector{" "}
           <span className="font-medium text-foreground">自动包含</span>
           {" "}在订阅里(含未来 provider 新增的同类节点),无需操作。仅当需要
@@ -429,7 +429,7 @@ function Picker({
       {/* @user_flow: 内置 policy 5 项常驻 chip 行,点击切换加入/移除(双向同步 g.proxies)。
           DIRECT/REJECT 这些不属于"节点池",所以仍是直接显式写入 g.proxies,锁定语义。 */}
       <div className="flex items-center gap-1.5 px-2 py-1.5 border-b flex-wrap">
-        <span className="text-[11px] text-muted-foreground shrink-0 mr-0.5">快捷:</span>
+        <span className="text-xs text-muted-foreground shrink-0 mr-0.5">快捷:</span>
         {BUILTIN_POLICIES.map((p) => {
           const added = pinnedSet.has(p);
           return (
@@ -439,8 +439,8 @@ function Picker({
               onClick={() => togglePin(p)}
               className={
                 added
-                  ? "px-2 py-0.5 rounded text-[11px] font-mono font-medium border bg-primary text-primary-foreground border-primary inline-flex items-center gap-1"
-                  : "px-2 py-0.5 rounded text-[11px] font-mono font-medium border bg-background text-foreground hover:bg-accent border-input inline-flex items-center gap-1"
+                  ? "px-2 py-0.5 rounded text-xs font-mono font-medium border bg-primary text-primary-foreground border-primary inline-flex items-center gap-1"
+                  : "px-2 py-0.5 rounded text-xs font-mono font-medium border bg-background text-foreground hover:bg-accent border-input inline-flex items-center gap-1"
               }
               title={added ? `已锁定 ${p} (点击解锁)` : `锁定 ${p} 到显式列表`}
             >
@@ -465,7 +465,7 @@ function Picker({
       {candidateGroups.length > 0 && (
         <div className="flex items-start gap-1.5 px-2 py-1.5 border-b flex-wrap">
           <span
-            className="text-[11px] text-muted-foreground shrink-0 mr-0.5 mt-0.5"
+            className="text-xs text-muted-foreground shrink-0 mr-0.5 mt-0.5"
             title="把其它策略组作为单个 proxy 项引用 — 客户端展开后可点进去再选那个组的成员。点 chip 右半的图钉可把它放进显式列表以控制顺序。"
           >
             嵌套组:
@@ -474,7 +474,7 @@ function Picker({
             const inProxies = pinnedSet.has(g.name);
             const inNested = nestedGroups.includes(g.name);
             const added = inProxies || inNested;
-            const chipBase = "px-2 py-0.5 text-[11px] font-medium border inline-flex items-center gap-1";
+            const chipBase = "px-2 py-0.5 text-xs font-medium border inline-flex items-center gap-1";
             const activeCls = "bg-primary text-primary-foreground border-primary";
             const idleCls = "bg-background text-foreground hover:bg-accent border-input";
             return (
@@ -536,7 +536,7 @@ function Picker({
           已锁定 = 当前可见(搜索框过滤后)且在 g.proxies 显式数组里的节点数
           自动包含 = 可见但未锁定 → 后端按节点池顺序追加在锁定段之后
           节点池 = /api/dashboard/node-pool 全量,让用户感知 selector 筛掉了多少。 */}
-      <div className="flex items-center gap-2 px-2 py-1 border-b text-[11px]">
+      <div className="flex items-center gap-2 px-2 py-1 border-b text-xs">
         <span className="text-muted-foreground">
           已锁定{" "}
           <span className="font-medium text-foreground tabular-nums">{visiblePinnedCount}</span>
@@ -550,7 +550,7 @@ function Picker({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-6 px-2 text-[11px]"
+          className="h-6 px-2 text-xs"
           onClick={pinAllVisible}
           disabled={visibleAutoCount === 0}
           title="把当前可见且未锁定的节点全部加入显式列表(通常仅在需要固定 fallback 顺序时才用)"
@@ -562,7 +562,7 @@ function Picker({
           type="button"
           variant="ghost"
           size="sm"
-          className="h-6 px-2 text-[11px]"
+          className="h-6 px-2 text-xs"
           onClick={unpinAllVisible}
           disabled={visiblePinnedCount === 0}
           title="把当前可见的已锁定节点全部解锁(仍由 selector 自动包含)"
@@ -636,7 +636,7 @@ function NodePickerRow({
       {pinned ? (
         <Badge
           variant="default"
-          className="text-[10px] px-1.5 py-0 shrink-0 gap-0.5 inline-flex items-center font-medium tabular-nums"
+          className="text-xs px-1.5 py-0 shrink-0 gap-0.5 inline-flex items-center font-medium tabular-nums"
           title={pinIndex !== undefined ? `已锁定 — 在显式列表第 ${pinIndex} 位` : "已锁定"}
         >
           <Pin className="h-2.5 w-2.5" strokeWidth={2.5} />
@@ -645,13 +645,13 @@ function NodePickerRow({
       ) : (
         <Badge
           variant="success"
-          className="text-[10px] px-1.5 py-0 shrink-0 font-medium"
+          className="text-xs px-1.5 py-0 shrink-0 font-medium"
           title="该节点会被 selector 自动包含在订阅里。点击可锁定它在显式列表中的位置(用于固定 fallback / url-test 优先顺序)"
         >
           自动
         </Badge>
       )}
-      <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0 shrink-0">
+      <Badge variant="outline" className="font-mono text-xs px-1.5 py-0 shrink-0">
         {node.type}
       </Badge>
       <div className="flex-1 min-w-0">
@@ -660,7 +660,7 @@ function NodePickerRow({
       {sourceLabel ? (
         <Badge
           variant="outline"
-          className="text-[10px] px-1.5 py-0 shrink-0 max-w-[180px] truncate"
+          className="text-xs px-1.5 py-0 shrink-0 max-w-[180px] truncate"
           title={`来自节点源: ${sourceLabel}`}
         >
           {sourceLabel}
@@ -668,7 +668,7 @@ function NodePickerRow({
       ) : (
         <Badge
           variant="outline"
-          className="text-[10px] px-1.5 py-0 shrink-0 text-muted-foreground"
+          className="text-xs px-1.5 py-0 shrink-0 text-muted-foreground"
           title="manual 节点 / provider 已删除"
         >
           (无来源)
@@ -727,13 +727,13 @@ function SortableGroupRefRow({
       title="拖动调整顺序"
     >
       <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
-      <Badge variant="secondary" className="text-[10px] uppercase shrink-0">
+      <Badge variant="secondary" className="text-xs uppercase shrink-0">
         组
       </Badge>
       {danglingHint && (
         <Badge
           variant="outline"
-          className="text-[10px] text-amber-700 dark:text-amber-300 border-amber-500/50 bg-amber-500/10 gap-1 shrink-0"
+          className="text-xs text-amber-700 dark:text-amber-300 border-amber-500/50 bg-amber-500/10 gap-1 shrink-0"
           title={danglingHint}
         >
           <AlertTriangle className="h-3 w-3" />
@@ -784,7 +784,7 @@ function SortableRow({
     >
       <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
       {isSpecial && (
-        <Badge variant="secondary" className="text-[10px] uppercase shrink-0">
+        <Badge variant="secondary" className="text-xs uppercase shrink-0">
           内置
         </Badge>
       )}
@@ -798,7 +798,7 @@ function SortableRow({
       {!isSpecial && classification === "node-out" && (
         <Badge
           variant="outline"
-          className="text-[10px] text-muted-foreground border-muted-foreground/30 bg-muted/40 gap-1 shrink-0"
+          className="text-xs text-muted-foreground border-muted-foreground/30 bg-muted/40 gap-1 shrink-0"
           title="该节点在节点池里存在,但当前 selector 不命中(被 from_providers / include_regex / exclude_type 过滤掉)。订阅里仍会输出它,因为锁定优先于 selector;如不需要可解锁。"
         >
           <Info className="h-3 w-3" />
@@ -808,7 +808,7 @@ function SortableRow({
       {!isSpecial && classification === "group-ref" && (
         <Badge
           variant="outline"
-          className="text-[10px] text-sky-700 dark:text-sky-300 border-sky-500/50 bg-sky-500/10 gap-1 shrink-0"
+          className="text-xs text-sky-700 dark:text-sky-300 border-sky-500/50 bg-sky-500/10 gap-1 shrink-0"
           title="该名字是另一个策略组。放在这里(g.proxies)而不是下方嵌套组区域(g.nested_groups)通常是有意为之:成员入列顺序为 proxies → nested_groups → selector,只有写进 proxies 才能让这个组排在 DIRECT 等内置 policy 之前(如 fallback 组要「代理优先、DIRECT 兜底」)。不需要控制顺序时,用下方嵌套组区域语义更清晰。"
         >
           <Layers className="h-3 w-3" />
@@ -818,7 +818,7 @@ function SortableRow({
       {!isSpecial && classification === "unknown" && (
         <Badge
           variant="outline"
-          className="text-[10px] text-amber-700 dark:text-amber-300 border-amber-500/50 bg-amber-500/10 gap-1 shrink-0"
+          className="text-xs text-amber-700 dark:text-amber-300 border-amber-500/50 bg-amber-500/10 gap-1 shrink-0"
           title="该引用名既不在节点池、也不是已知策略组名、也不是内置 policy,可能已失效(机场改名 / 节点被删 / 拼写错误)。"
         >
           <AlertTriangle className="h-3 w-3" />

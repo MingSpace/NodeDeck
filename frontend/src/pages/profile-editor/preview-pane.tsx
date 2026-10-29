@@ -45,7 +45,8 @@ function readStoredWidth(): number {
 }
 
 export function PreviewPane({ profileId, draft, enabled }: Props) {
-  const [collapsed, setCollapsed] = useState(false);
+  // 手机宽度下编辑区本来就窄,预览默认收起成右侧一条竖栏,要看再展开
+  const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   const [target, setTarget] = useState<"clash" | "surge">("clash");
   const preview = useGeneratedPreview(profileId, target, draft, enabled && !collapsed);
   const [diffStats, setDiffStats] = useState<{ added: number; removed: number } | null>(null);
@@ -211,15 +212,15 @@ export function PreviewPane({ profileId, draft, enabled }: Props) {
               className="text-xs font-mono tabular-nums"
               title="本次预览相比上次的行数变化"
             >
-              {diffStats.added > 0 && <span className="text-emerald-600">+{diffStats.added}</span>}
+              {diffStats.added > 0 && <span className="text-emerald-600 dark:text-emerald-400">+{diffStats.added}</span>}
               {diffStats.added > 0 && diffStats.removed > 0 && <span className="mx-1 text-muted-foreground">/</span>}
-              {diffStats.removed > 0 && <span className="text-rose-600">-{diffStats.removed}</span>}
+              {diffStats.removed > 0 && <span className="text-rose-600 dark:text-rose-400">-{diffStats.removed}</span>}
             </Badge>
           )}
           {preview.data?.revalidating && (
             <Badge
               variant="outline"
-              className="text-xs gap-1 border-amber-300 text-amber-700 bg-amber-50"
+              className="text-xs gap-1 border-amber-300 text-amber-700 bg-amber-50 dark:border-amber-800 dark:text-amber-300 dark:bg-amber-950/40"
               title="部分机场首次无缓存,正在后台拉取节点,完成后会自动刷新预览"
             >
               <RefreshCw className="h-3 w-3 animate-spin" />
@@ -235,7 +236,7 @@ export function PreviewPane({ profileId, draft, enabled }: Props) {
         </Card>
       )}
       {preview.data?.warnings && preview.data.warnings.length > 0 && (
-        <Card className="mx-2 my-1 p-2 text-xs bg-amber-50 border-amber-200 text-amber-900 shrink-0 max-h-32 overflow-auto">
+        <Card className="mx-2 my-1 p-2 text-xs bg-amber-50 border-amber-200 text-amber-900 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-200 shrink-0 max-h-32 overflow-auto">
           <div className="font-medium mb-1">{preview.data.warnings.length} 条警告:</div>
           <ul className="list-disc list-inside space-y-0.5">
             {preview.data.warnings.map((w, i) => (

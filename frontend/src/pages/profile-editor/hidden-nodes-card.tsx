@@ -86,20 +86,20 @@ export function HiddenNodesCard({
         <span className="shrink-0 text-xs font-medium">仅作链式落地的节点</span>
         {!empty && hiddenCount !== undefined && (
           <span
-            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] tabular-nums"
+            className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs tabular-nums"
             title="命中的节点数量"
           >
             {hiddenCount}
           </span>
         )}
-        <span className="min-w-0 flex-1 truncate text-[11px] font-normal text-muted-foreground" title={describe(value)}>
+        <span className="min-w-0 flex-1 truncate text-xs font-normal text-muted-foreground" title={describe(value)}>
           {describe(value)}
         </span>
       </button>
 
       {open && (
         <div className="space-y-3 border-t px-3 py-3">
-          <div className="flex gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          <div className="flex gap-2 rounded-md bg-muted/40 px-2.5 py-2 text-xs leading-relaxed text-muted-foreground">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <div>
               命中的节点仍会写进订阅的节点段,所以能被上面的规则当作链式出口、也能被策略组的成员清单
@@ -145,7 +145,7 @@ export function HiddenNodesCard({
           <SelectorRow label="协议">
             <div className="space-y-1.5">
               <div className="flex items-start gap-2">
-                <span className="mt-0.5 w-8 shrink-0 text-[11px] text-muted-foreground">仅</span>
+                <span className="mt-0.5 w-8 shrink-0 text-xs text-muted-foreground">仅</span>
                 <div className="min-w-0 flex-1">
                   <ChipToggles
                     options={typeOptions}
@@ -156,7 +156,7 @@ export function HiddenNodesCard({
                 </div>
               </div>
               <div className="flex items-start gap-2">
-                <span className="mt-0.5 w-8 shrink-0 text-[11px] text-muted-foreground">排除</span>
+                <span className="mt-0.5 w-8 shrink-0 text-xs text-muted-foreground">排除</span>
                 <div className="min-w-0 flex-1">
                   <ChipToggles
                     options={typeOptions}
@@ -195,20 +195,20 @@ export function HiddenNodesCard({
                     {hiddenSample.map((name) => (
                       <span
                         key={name}
-                        className="max-w-[200px] truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px]"
+                        className="max-w-[200px] truncate rounded bg-muted px-1.5 py-0.5 font-mono text-xs"
                         title={name}
                       >
                         {name}
                       </span>
                     ))}
                     {hiddenCount !== undefined && hiddenCount > hiddenSample.length && (
-                      <span className="px-1 py-0.5 text-[11px] text-muted-foreground">
+                      <span className="px-1 py-0.5 text-xs text-muted-foreground">
                         …另外 {hiddenCount - hiddenSample.length} 个
                       </span>
                     )}
                   </div>
                 ) : (
-                  <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                  <span className="text-xs text-amber-700 dark:text-amber-400">
                     当前条件没有命中任何节点
                   </span>
                 )}

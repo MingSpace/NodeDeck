@@ -118,7 +118,7 @@ export function UserAgentsField({
               <span className="min-w-0 truncate text-muted-foreground/70">{preset?.hint ?? "自定义"}</span>
               {ua === remembered && (
                 <span
-                  className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-[11px] text-emerald-700 dark:text-emerald-400"
+                  className="shrink-0 rounded bg-emerald-500/10 px-1.5 py-px text-xs text-emerald-700 dark:text-emerald-400"
                   title="上次刷新用它拿到了节点,下次刷新先试它;改动这个列表后会按新顺序重新试"
                 >
                   上次可用 · 先试
@@ -199,7 +199,7 @@ export function UserAgentsField({
                 {options.map((p) => (
                   <SelectItem key={p.ua || EMPTY_UA_VALUE} value={p.ua || EMPTY_UA_VALUE}>
                     <span>{p.label}</span>
-                    <span className="ml-2 text-[11px] text-muted-foreground">{p.hint}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">{p.hint}</span>
                   </SelectItem>
                 ))}
                 {options.length > 0 && <SelectSeparator />}
@@ -209,7 +209,7 @@ export function UserAgentsField({
           </li>
         )}
       </ol>
-      <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
         从上往下试,拿到能解析出节点的内容就停;空 body、「请使用客户端」之类的页面会换下一个。
         上次能用的 UA 下次先试,失败再按顺序往下;改动列表后按新顺序重新试。
         机场按 UA 决定吐什么格式:Clash Meta 格式协议最全,还带 hosts,所以排在前面。

@@ -141,13 +141,13 @@ export function MitmSection({ data, update }: Props) {
         <div className="text-xs font-medium flex items-center gap-2">
           CA 证书 (.p12)
           {p12Length > 0 && (
-            <Badge variant="success" className="text-[10px]">
+            <Badge variant="success" className="text-xs">
               <FileCheck2 className="h-3 w-3" />
               已嵌入 ({(p12Length * 0.75 / 1024).toFixed(1)} KB)
             </Badge>
           )}
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           上传 PKCS#12 格式 CA 证书,内容会以 base64 嵌入 yaml 文件
         </p>
         <div className="flex flex-wrap gap-2">
@@ -326,7 +326,7 @@ function GenerateCaDialog({
               </button>
             </div>
           </div>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             生成后会自动填充到 CA 证书和 ca_passphrase 字段。RSA-2048 在普通设备需要 1-3 秒。
           </p>
         </div>

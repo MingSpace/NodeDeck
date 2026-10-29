@@ -65,10 +65,10 @@ function ToastItem({ item, onDismiss }: { item: ToastItem; onDismiss: () => void
   const Icon = item.variant === "success" ? CheckCircle2 : item.variant === "error" ? AlertCircle : Info;
   const color =
     item.variant === "success"
-      ? "text-emerald-600"
+      ? "text-emerald-600 dark:text-emerald-400"
       : item.variant === "error"
         ? "text-destructive"
-        : "text-blue-600";
+        : "text-blue-600 dark:text-blue-400";
 
   return (
     <div className="flex items-start gap-3 min-w-[280px] max-w-md rounded-lg border bg-card p-3 shadow-lg">

@@ -1,0 +1,7 @@
+# 首次拉取成功,之后只返回解析不出节点的页面;点一次刷新复现「沿用旧节点」+ 解析失败
+id: fake-flaky
+name: 假机场 时好时坏
+type: http
+url: http://127.0.0.1:18090/flaky
+refresh:
+  interval: never

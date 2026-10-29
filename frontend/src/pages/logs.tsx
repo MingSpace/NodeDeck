@@ -73,7 +73,7 @@ export function LogsPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen p-6 max-w-[1800px] mx-auto w-full">
+    <div className="flex flex-col h-full p-4 md:p-8 max-w-[1800px] mx-auto w-full">
       <header className="mb-4 shrink-0">
         <h1 className="text-2xl font-bold tracking-tight">日志</h1>
         <p className="text-sm text-muted-foreground mt-1">{retentionHint(retentionDays)}</p>
@@ -190,7 +190,7 @@ function LogRow({ entry, expanded, onToggle }: LogRowProps) {
         </span>
       </div>
       {expanded && (
-        <pre className="mt-1 ml-4 p-2 bg-muted/40 rounded text-[11px] leading-relaxed whitespace-pre-wrap break-all">
+        <pre className="mt-1 ml-4 p-2 bg-muted/40 rounded text-xs leading-relaxed whitespace-pre-wrap break-all">
           {prettify(entry.raw)}
         </pre>
       )}
@@ -211,8 +211,8 @@ function LevelTag({ label }: { label: string }) {
   return (
     <span
       className={cn(
-        "shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wide leading-none mt-0.5",
-        LEVEL_CLASS[label] ?? "bg-zinc-200 text-zinc-700",
+        "shrink-0 px-1.5 py-0.5 rounded text-xs font-semibold uppercase tracking-wide leading-none mt-0.5",
+        LEVEL_CLASS[label] ?? "bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300",
       )}
     >
       {label}

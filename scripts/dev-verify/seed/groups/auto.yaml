@@ -1,0 +1,8 @@
+# 显式点名了一个不存在的节点,生成时会出 warning,用来看仪表板流水线的「警告」状态
+id: auto
+name: Auto
+type: url-test
+proxies:
+  - 已经下线的节点
+selector:
+  include_regex: ".*"

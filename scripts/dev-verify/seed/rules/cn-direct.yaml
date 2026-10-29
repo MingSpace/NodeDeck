@@ -1,0 +1,7 @@
+id: cn-direct
+name: 国内直连
+type: inline_list
+behavior: classical
+payload:
+  - DOMAIN-SUFFIX,example.cn
+  - DOMAIN-SUFFIX,example.com.cn

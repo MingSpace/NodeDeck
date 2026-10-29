@@ -21,7 +21,7 @@ interface Props {
 type SsidRule = NonNullable<GeneralPresetData["ssid_rules"]>[number];
 
 const platformBadge = (text: string) => (
-  <Badge variant="outline" className="px-1 py-0 text-[9px] font-normal text-muted-foreground">
+  <Badge variant="outline" className="px-1 py-0 text-xs font-normal text-muted-foreground">
     {text}
   </Badge>
 );
@@ -155,7 +155,7 @@ export function SsidSection({ data, update }: Props) {
             </div>
 
             {value.trim() === "" && (
-              <div className="text-[11px] text-destructive">匹配表达式不能为空,否则该行生成时会被跳过</div>
+              <div className="text-xs text-destructive">匹配表达式不能为空,否则该行生成时会被跳过</div>
             )}
 
             <div className="divide-y rounded-md border">
@@ -261,7 +261,7 @@ export function SsidSection({ data, update }: Props) {
             </div>
 
             {hasNoParams(r) && (
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-xs text-muted-foreground">
                 没有任何生效参数,该行不会写进配置(裸表达式在 Surge 里是空操作)
               </div>
             )}

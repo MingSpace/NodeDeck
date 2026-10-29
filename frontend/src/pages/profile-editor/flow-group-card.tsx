@@ -48,14 +48,14 @@ export function FlowGroupCard({
       <div className="border-b px-3 py-2">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <span className="font-mono text-sm font-medium">{group.name}</span>
-          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+          <span className="rounded bg-primary/10 px-1.5 py-0.5 text-xs font-medium text-primary">
             {group.type}
           </span>
-          <span className="text-[11px] tabular-nums text-muted-foreground">
+          <span className="text-xs tabular-nums text-muted-foreground">
             覆盖 {group.node_total} 个节点
           </span>
         </div>
-        <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
           {group.notes.find((n) => n.level === "info")?.text}
         </p>
         <TestParams group={group} />
@@ -70,7 +70,7 @@ export function FlowGroupCard({
           ancestors={new Set([group.name])}
         />
         {group.selector_omitted > 0 && (
-          <div className="mt-1 pl-6 text-[11px] text-muted-foreground/70">
+          <div className="mt-1 pl-6 text-xs text-muted-foreground/70">
             还有 {group.selector_omitted} 个由条件自动匹配的节点未列出
           </div>
         )}
@@ -83,7 +83,7 @@ export function FlowGroupCard({
             .map((n) => (
               <div
                 key={n.text}
-                className="flex items-start gap-1.5 text-[11px] leading-relaxed text-amber-800 dark:text-amber-300"
+                className="flex items-start gap-1.5 text-xs leading-relaxed text-amber-800 dark:text-amber-300"
               >
                 <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
                 <span>{n.text}</span>
@@ -106,7 +106,7 @@ function TestParams({ group }: { group: FlowGroup }) {
   if (group.clash_type !== group.type) parts.push(`Clash 端降级为 ${group.clash_type}`);
   if (parts.length === 0) return null;
   return (
-    <div className="mt-1 flex items-start gap-1.5 text-[11px] text-muted-foreground/80">
+    <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground/80">
       <Info className="mt-0.5 h-3 w-3 shrink-0" />
       <span className="break-all">{parts.join(" · ")}</span>
     </div>
@@ -166,7 +166,7 @@ function MemberRow({
     <div>
       <div className="flex items-start gap-1.5 py-0.5 text-xs">
         {mark ? (
-          <span className="w-4 shrink-0 text-center text-[11px] tabular-nums text-primary">{mark}</span>
+          <span className="w-4 shrink-0 text-center text-xs tabular-nums text-primary">{mark}</span>
         ) : (
           <span className="w-4 shrink-0" />
         )}
@@ -194,10 +194,10 @@ function MemberRow({
             >
               {member.name}
             </span>
-            <span className="text-[10px] text-muted-foreground/70">
+            <span className="text-xs text-muted-foreground/70">
               {KIND_LABEL[member.kind]} · {ORIGIN_LABEL[member.origin]}
             </span>
-            {cyclic && <span className="text-[10px] text-amber-600 dark:text-amber-400">循环引用,不再展开</span>}
+            {cyclic && <span className="text-xs text-amber-600 dark:text-amber-400">循环引用,不再展开</span>}
           </div>
           {member.chain_path && <ChainTrail path={member.chain_path} />}
         </div>
@@ -205,7 +205,7 @@ function MemberRow({
 
       {expandable && open && nested && (
         <div className="ml-6 border-l pl-2.5">
-          <div className="py-1 text-[10px] text-muted-foreground/70">
+          <div className="py-1 text-xs text-muted-foreground/70">
             {nested.type} · 覆盖 {nested.node_total} 个节点
           </div>
           <MemberList
@@ -216,7 +216,7 @@ function MemberRow({
             ancestors={new Set([...ancestors, nested.name])}
           />
           {nested.selector_omitted > 0 && (
-            <div className="pb-1 pl-6 text-[10px] text-muted-foreground/70">
+            <div className="pb-1 pl-6 text-xs text-muted-foreground/70">
               还有 {nested.selector_omitted} 个自动匹配的节点未列出
             </div>
           )}
@@ -229,7 +229,7 @@ function MemberRow({
 /** 链式节点的实际出站路径:`自身 → 前置 → …`,末项才是真正落地的地方。 */
 function ChainTrail({ path }: { path: string[] }) {
   return (
-    <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+    <div className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
       <CornerDownRight className="h-3 w-3 shrink-0" />
       <span>先连</span>
       {path.slice(1).map((hop, i) => (

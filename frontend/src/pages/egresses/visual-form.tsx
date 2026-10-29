@@ -63,7 +63,7 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
 }
 
 function Hint({ children }: { children: React.ReactNode }) {
-  return <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">{children}</p>;
+  return <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{children}</p>;
 }
 
 export function EgressVisualForm({
@@ -242,7 +242,7 @@ function PublicKeyPanel() {
           {copied ? "已复制" : "复制"}
         </Button>
       </div>
-      <code className="block font-mono text-[11px] leading-relaxed break-all text-muted-foreground select-all">
+      <code className="block font-mono text-xs leading-relaxed break-all text-muted-foreground select-all">
         {key.data?.authorized_keys_line ?? (key.error ? `读取公钥失败:${(key.error as Error).message}` : "加载中…")}
       </code>
       <Hint>

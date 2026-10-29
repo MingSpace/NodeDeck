@@ -188,7 +188,7 @@ export function FetchViaField({
                 {options.map((o) => (
                   <SelectItem key={o.id} value={o.id}>
                     <span>{o.label}</span>
-                    <span className="ml-2 font-mono text-[11px] text-muted-foreground">{o.hint}</span>
+                    <span className="ml-2 font-mono text-xs text-muted-foreground">{o.hint}</span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -196,7 +196,7 @@ export function FetchViaField({
           </li>
         )}
       </ol>
-      <p className="text-[11px] text-muted-foreground mt-1 leading-relaxed">
+      <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
         机场拦了服务器的 IP 时(常见是直连 403),借出口机的网络拉订阅。从上往下试,前一条失败才换下一条;
         「服务器直连」固定在列表里不能移除,可以上下挪。只影响拉订阅,不影响客户端连节点。
         {noEgress && (

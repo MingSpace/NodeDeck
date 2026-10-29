@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Info, Loader2, Network, Search } from "lucide-react";
+import { Info, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -49,11 +49,6 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
 
   return (
     <div className="flex flex-col h-full min-h-0">
-      <div className="px-3 py-2.5 border-b bg-muted/30 flex items-center gap-2 shrink-0">
-        <Network className="h-3.5 w-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium text-muted-foreground">节点来源</span>
-      </div>
-
       <div className="px-3 py-3 space-y-3 border-b shrink-0">
         <div>
           <div className="text-xs font-medium mb-1.5 flex items-center justify-between">
@@ -113,7 +108,7 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
               <label className="text-xs font-medium block" htmlFor="sort-by-region">
                 按地区排序
               </label>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 港 → 台 → 日 → 新 → 美 → 其他,策略组成员同步聚类
               </span>
             </div>
@@ -128,7 +123,7 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
               <label className="text-xs font-medium block" htmlFor="source-prefix-all">
                 全部节点加来源前缀
               </label>
-              <span className="text-[11px] text-muted-foreground">
+              <span className="text-xs text-muted-foreground">
                 如【奶】🇭🇰 香港 01;关闭时只给撞名节点加。前缀在节点源里设置
               </span>
             </div>
@@ -181,12 +176,12 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
               className="px-3 py-1.5 flex items-center gap-2 hover:bg-muted/30 text-xs"
               title={`${n.name}\n${n.server}:${n.port}${n.region ? ` · ${n.region}` : ""}${n.line ? ` · ${n.line}` : ""}`}
             >
-              <Badge variant="outline" className="font-mono text-[10px] px-1.5 py-0 shrink-0">
+              <Badge variant="outline" className="font-mono text-xs px-1.5 py-0 shrink-0">
                 {n.type}
               </Badge>
               <div className="flex-1 min-w-0">
                 <div className="font-medium truncate">{n.name}</div>
-                <div className="text-muted-foreground text-[11px] truncate">
+                <div className="text-muted-foreground text-xs truncate">
                   {n.server}:{n.port}
                   {n.region && ` · ${n.region}`}
                   {n.line && ` · ${n.line}`}
@@ -197,7 +192,7 @@ export function NodeSelector({ profileId, draft, onChange, onFilterChange }: Pro
         </div>
       </div>
 
-      <div className="px-3 py-1.5 border-t bg-muted/20 flex items-center gap-1.5 text-[11px] text-muted-foreground shrink-0">
+      <div className="px-3 py-1.5 border-t bg-muted/20 flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
         {preview.data?.revalidating ? (
           <>
             <Loader2 className="h-3 w-3 shrink-0 animate-spin" />

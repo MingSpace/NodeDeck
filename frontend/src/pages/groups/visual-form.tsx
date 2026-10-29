@@ -261,7 +261,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
             </SelectContent>
           </Select>
           {data.type === "ssid" && (
-            <div className="mt-1 text-[11px] text-destructive">
+            <div className="mt-1 text-xs text-destructive">
               subnet 组尚未实现,生成的 .conf 会缺少必需的 default,Surge 会拒绝加载整份配置。请改成其它类型,按网络分流暂时用 SUBNET 规则。
             </div>
           )}
@@ -328,7 +328,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
             </Field>
           </div>
           {data.timeout !== undefined && (
-            <p className="mt-3 border-t pt-2 text-[11px] leading-relaxed text-muted-foreground">
+            <p className="mt-3 border-t pt-2 text-xs leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">超时</span>在两端不是同一个东西。Surge:实测延迟高于此值的成员判为不可用。
               mihomo 没有这个能力,它的 <code className="rounded bg-muted px-1 font-mono">timeout</code> 指健康检查请求自身的超时且单位是毫秒,
               因此输出时按 ×1000 换算 —— 填 {data.timeout} 秒,clash.yaml 里是{" "}
@@ -356,7 +356,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
               })
             }
           />
-          <span className="text-[11px] text-muted-foreground leading-snug">
+          <span className="text-xs text-muted-foreground leading-snug">
             启用动态选择器。
             {selectorEnabled ? (
               <>
@@ -570,7 +570,7 @@ function ChipMultiSelect({
             {showCount && (
               <span
                 className={cn(
-                  "inline-flex items-center justify-center rounded-sm px-1 text-[10px] leading-4 tabular-nums",
+                  "inline-flex items-center justify-center rounded-sm px-1 text-xs leading-4 tabular-nums",
                   active
                     ? "bg-primary-foreground/20 text-primary-foreground"
                     : item.count === 0
