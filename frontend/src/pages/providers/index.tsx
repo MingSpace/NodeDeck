@@ -122,13 +122,17 @@ export function ProvidersPage() {
         description: `刷新 ${data?.count ?? 0} 个`,
         variant: "success",
       });
-      void queryClient.invalidateQueries({ queryKey: ["providers", "status"] });
+      // 仪表盘机场卡的流量 / 到期也来自 provider 缓存,一起失效,否则 30s staleTime 内切回仪表盘仍是旧值
+      void queryClient.invalidateQueries({ queryKey: ["providers"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
   const refreshOne = useMutation({
     mutationFn: (id: string) => api.post(`/api/providers/${id}/refresh`),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["providers", "status"] });
+      // 仪表盘机场卡的流量 / 到期也来自 provider 缓存,一起失效,否则 30s staleTime 内切回仪表盘仍是旧值
+      void queryClient.invalidateQueries({ queryKey: ["providers"] });
+      void queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
     onError: (err: Error) => {
       toast({ title: "刷新失败", description: err.message ?? "", variant: "error" });

@@ -75,6 +75,7 @@ export function useSaveEntity<T extends { id: string }>(kind: EntityKind) {
       // 在编辑后必须同步失效,否则节点数 / 错误徽标 / 展开面板里的节点列表会停在旧值。
       if (kind === "providers") {
         void qc.invalidateQueries({ queryKey: ["providers"] });
+        void qc.invalidateQueries({ queryKey: ["dashboard"] });
       }
     },
   });
@@ -125,6 +126,7 @@ export function useDeleteEntity(kind: EntityKind) {
       void qc.invalidateQueries({ queryKey: ["entities", kind] });
       if (kind === "providers") {
         void qc.invalidateQueries({ queryKey: ["providers"] });
+        void qc.invalidateQueries({ queryKey: ["dashboard"] });
       }
     },
   });
@@ -159,6 +161,7 @@ export function useDeleteEntitiesBulk(kind: EntityKind) {
       void qc.invalidateQueries({ queryKey: ["entities", kind] });
       if (kind === "providers") {
         void qc.invalidateQueries({ queryKey: ["providers"] });
+        void qc.invalidateQueries({ queryKey: ["dashboard"] });
       }
     },
   });
