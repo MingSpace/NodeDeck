@@ -1,4 +1,4 @@
-import { CircleAlert, Cloud, Copy, Download, FilePen, LoaderCircle, RefreshCw } from "lucide-react";
+import { CircleAlert, Cloud, Copy, Download, FilePen, Globe, LoaderCircle, Lock, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -93,7 +93,13 @@ function LinkActions({ module: m, status }: { module: SurgeModuleData; status: M
   const onCopy = async () => {
     try {
       await navigator.clipboard.writeText(status.url);
-      toast({ title: "已复制模块链接", description: "在 Surge 的「模块 → 安装新模块」里粘贴即可", variant: "success" });
+      toast({
+        title: "已复制模块链接",
+        description: status.public
+          ? "在 Surge 的「模块 → 安装新模块」里粘贴即可"
+          : "链接里带访问 token,不要发到公开的地方;在 Surge 的「模块 → 安装新模块」里粘贴即可",
+        variant: "success",
+      });
     } catch (err) {
       toast({ title: "复制失败", description: err instanceof Error ? err.message : String(err), variant: "error" });
     }
@@ -108,8 +114,19 @@ function LinkActions({ module: m, status }: { module: SurgeModuleData; status: M
     });
   return (
     <div className="flex flex-wrap items-center gap-1.5">
+      <span
+        className="inline-flex shrink-0 items-center"
+        title={status.public ? "公开链接:不带 token 也能访问" : "链接带模块专属 token,不对返回 404"}
+      >
+        {status.public ? (
+          <Globe className="h-3 w-3 text-amber-600 dark:text-amber-400" />
+        ) : (
+          <Lock className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
+        )}
+      </span>
+      {/* token 打码显示,复制按钮拿到完整链接;截图 / 共享屏幕不顺手泄露 */}
       <code className="max-w-full truncate rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground/80">
-        {status.url}
+        {status.url.replace(/([?&]t=)[^&]+/, "$1••••••")}
       </code>
       <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => void onCopy()}>
         <Copy className="h-3 w-3" />

@@ -26,7 +26,7 @@ data/
   providers/*.yaml         # 节点源:订阅 URL / 服务器本地文件 / 静态节点(inline 类型,含手输 / 导入节点)
   rules/*.yaml             # 规则模块
   groups/*.yaml            # 策略组模板
-  modules/*.yaml           # Surge 模块(本地按段编辑 / 远程 .sgmodule URL),另有公开地址 /module/<id>.sgmodule
+  modules/*.yaml           # Surge 模块(本地按段编辑 / 远程 .sgmodule URL),另有安装地址 /module/<id>.sgmodule(默认带模块 token,public: true 时免 token)
   general/*.yaml           # General + Host + SSID + DNS + MITM 预设
   profiles/*.yaml          # Profile 拼装单元
   egresses/*.yaml          # 拉订阅用的出口(SSH 登录 / 现成代理),节点源 fetch_via 按顺序引用

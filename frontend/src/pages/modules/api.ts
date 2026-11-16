@@ -18,7 +18,9 @@ export interface RemoteCacheSummary {
 export interface ModuleStatus {
   id: string;
   source: "local" | "remote";
-  /** 公开安装地址 /module/<id>.sgmodule(无需 token) */
+  /** false = url 带 ?t=<模块 token> */
+  public: boolean;
+  /** 安装地址 /module/<id>.sgmodule[?t=...] */
   url: string;
   /** surge:///install-module?url=... */
   install_url: string;

@@ -29,9 +29,13 @@ vi.mock("../../src/storage/config-store.js", () => ({
 vi.mock("../../src/surge-modules/remote.js", () => ({
   loadRemoteModule: vi.fn(),
 }));
+vi.mock("../../src/auth/secret.js", () => ({
+  getSessionSecret: () => "test-secret-0123456789abcdef",
+}));
 
 import { profileRepo, providerRepo, proxyGroupRepo, rulesetRepo, surgeModuleRepo } from "../../src/storage/repos.js";
 import { loadRemoteModule } from "../../src/surge-modules/remote.js";
+import { moduleAccessToken } from "../../src/surge-modules/links.js";
 import { buildNodePool } from "../../src/providers/pool.js";
 import { loadProviderNodes } from "../../src/providers/load.js";
 import { aggregateUserInfo } from "../../src/userinfo/aggregate.js";
@@ -439,12 +443,13 @@ describe("GET /module/:file", () => {
   const app = new Hono();
   mountSubRoute(app);
 
-  it("serves a local module as .sgmodule without any token", async () => {
+  it("serves a public local module as .sgmodule without any token", async () => {
     mockedModuleGet.mockResolvedValue({
       data: {
         id: "ads",
         name: "去广告",
         source: "local",
+        public: true,
         fetch_via: [],
         content_sections: { rule: "DOMAIN,ads.example.com,REJECT" },
       },
@@ -461,6 +466,7 @@ describe("GET /module/:file", () => {
       id: "r",
       name: "R",
       source: "remote",
+      public: true,
       url: "https://example.com/r.sgmodule",
       fetch_via: [],
       content_sections: {},
@@ -483,5 +489,29 @@ describe("GET /module/:file", () => {
     expect((await app.request("/module/nope.sgmodule")).status).toBe(404);
     expect((await app.request("/module/ads.conf")).status).toBe(404);
     expect((await app.request("/module/..%2Fx.sgmodule")).status).toBe(404);
+  });
+
+  it("private module (default) needs its own ?t= token; wrong / missing / other module's token → 404", async () => {
+    mockedModuleGet.mockResolvedValue({
+      data: {
+        id: "secret-mod",
+        name: "含密码",
+        source: "local",
+        public: false,
+        fetch_via: [],
+        content_sections: { general: "external-controller-access = pw@0.0.0.0:6170" },
+      },
+    });
+    const token = moduleAccessToken("secret-mod", "test-secret-0123456789abcdef");
+    expect(token).toMatch(/^[A-Za-z0-9_-]{22}$/);
+
+    for (const q of ["", "?t=", "?t=wrong", `?t=${moduleAccessToken("other", "test-secret-0123456789abcdef")}`]) {
+      const res = await app.request(`/module/secret-mod.sgmodule${q}`);
+      expect(res.status).toBe(404);
+      expect(await res.text()).toBe("module not found");
+    }
+    const ok = await app.request(`/module/secret-mod.sgmodule?t=${token}`);
+    expect(ok.status).toBe(200);
+    expect(await ok.text()).toContain("external-controller-access");
   });
 });

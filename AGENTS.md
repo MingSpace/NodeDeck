@@ -135,7 +135,7 @@ NodeDeck/
 │   │   ├── log-buffer.ts           # pino 行 → 结构化内存缓冲(Web UI 日志页 + SSE)
 │   │   ├── log-store.ts            # 按日 NDJSON 落盘 data/logs/,retention_days 热生效
 │   │   ├── routes/
-│   │   │   ├── sub.ts              # /sub、/sub/{clash,surge}/:profile、/sub/provider/:id/clash.yaml、/module/:id.sgmodule(公开,无 token)
+│   │   │   ├── sub.ts              # /sub、/sub/{clash,surge}/:profile、/sub/provider/:id/clash.yaml、/module/:id.sgmodule(默认 ?t=<模块 HMAC token>,public 模块免 token)
 │   │   │   ├── api.ts              # /api/health、/api/version + 各子路由装配 + session/IP 白名单挂载点
 │   │   │   ├── entities.ts         # 各实体 CRUD
 │   │   │   ├── profile-preview.ts  # Web UI 实时预览 + 链式诊断

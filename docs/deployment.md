@@ -108,7 +108,7 @@ server {
     ssl_protocols       TLSv1.2 TLSv1.3;
 
     # 客户端拉取的路径:订阅 /sub,Surge 模块安装地址 /module/<id>.sgmodule。
-    # 下面的 location / 已经覆盖 /module/;如果你给 Web UI 加了 IP 白名单 / basic auth,
+    # 下面的 location / 已经覆盖 /module/(非公开模块靠 ?t= token 校验);如果你给 Web UI 加了 IP 白名单 / basic auth,
     # 要像 /sub 一样给 /module/ 单独开一个不受限的 location,否则设备装不上模块。
     location /sub {
         proxy_pass http://127.0.0.1:8080;

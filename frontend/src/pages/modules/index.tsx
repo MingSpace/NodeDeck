@@ -9,6 +9,7 @@ const TEMPLATE: Partial<SurgeModuleData> = {
   name: "新模块",
   description: "",
   source: "local",
+  public: false,
   content_sections: {
     mitm: "hostname = %APPEND% example.com",
   },

@@ -3,6 +3,7 @@ import { getConnInfo } from "@hono/node-server/conninfo";
 import { profileRepo, providerRepo, surgeModuleRepo } from "../storage/repos.js";
 import { loadRemoteModule } from "../surge-modules/remote.js";
 import { renderLocalSgmodule } from "../surge-modules/sgmodule.js";
+import { verifyModuleToken } from "../surge-modules/links.js";
 import { resolveProfile } from "../generators/profile-resolver.js";
 import { generateClashConfig, generateProxyProviderYaml } from "../generators/clash.js";
 import { generateSurgeConfig } from "../generators/surge.js";
@@ -36,8 +37,8 @@ export function mountSubRoute(app: Hono): void {
   // mihomo proxy-providers 拉取目标:把单个机场的节点切片输出为仅含 proxies: 段的 yaml。
   // 校验通过 profile token 实现:必须带 ?profile=<pid>&t=<token>,且 provider 在该 profile 中。
   app.get("/sub/provider/:id/clash.yaml", async (c) => handleProviderClashYaml(c));
-  // 单个 Surge 模块,设备上「从 URL 安装模块」用。不挂在 /sub 下,地址短一些;按用户要求公开、不校验 token ——
-  // 模块里不要放密码 / 私有 token 之类的内容(远程模块的上游 URL 不会出现在响应里)。
+  // 单个 Surge 模块,设备上「从 URL 安装模块」用。不挂在 /sub 下,地址短一些。
+  // 默认要带 ?t=<模块 token>;模块开了 public 才允许不带(远程模块的上游 URL 不会出现在响应里)。
   app.get("/module/:file", async (c) => handleModuleFile(c));
 }
 
@@ -45,8 +46,13 @@ async function handleModuleFile(c: import("hono").Context) {
   const match = /^([A-Za-z0-9_-]+)\.sgmodule$/.exec(c.req.param("file") ?? "");
   if (!match) return c.text("not found", 404);
   const entry = await surgeModuleRepo.get(match[1]);
+  // token 不对与模块不存在返回同样的 404,不暴露有哪些模块 id
   if (!entry) return c.text("module not found", 404);
   const mod = entry.data;
+  if (!mod.public && !verifyModuleToken(mod.id, c.req.query("t"))) {
+    logger.warn({ moduleId: mod.id, ip: getClientIp(c), hasToken: !!c.req.query("t") }, "Module request: token mismatch");
+    return c.text("module not found", 404);
+  }
   let text: string;
   if (mod.source === "remote") {
     const cache = await loadRemoteModule(mod);

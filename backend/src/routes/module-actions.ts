@@ -35,7 +35,8 @@ moduleActionsRouter.get("/status", async (c) => {
     entries.map(async ({ data: m }) => ({
       id: m.id,
       source: m.source,
-      ...moduleLinks(baseUrl, m.id),
+      public: m.public,
+      ...moduleLinks(baseUrl, m.id, m.public),
       remote: m.source === "remote" ? (cacheSummary(await readModuleCache(m.id), m.url) ?? null) : undefined,
     })),
   );

@@ -615,13 +615,17 @@ mihomo 启动后会自己去拉两个 provider URL,健康检查独立运行。
 `data/modules/<id>.yaml` 里的每个模块有两种用法,可以同时用:
 
 1. **Profile 引用 → 并进订阅**:Profile 的 `surge_modules: [google-cn]`,生成的 Surge `.conf` 里自动带上。
-2. **单独安装 → 各设备各自开关**:每个模块都有公开地址 `https://<你的域名>/module/<id>.sgmodule`(**不需要 token**),
-   在 Surge 里「模块 → 安装新模块」粘贴即可;Web UI 模块列表的「安装到 Surge」按钮就是
+2. **单独安装 → 各设备各自开关**:每个模块都有安装地址 `https://<你的域名>/module/<id>.sgmodule?t=<模块 token>`,
+   从 Web UI 模块列表「复制链接」拿到,在 Surge 里「模块 → 安装新模块」粘贴即可;Web UI 模块列表的「安装到 Surge」按钮就是
    `surge:///install-module?url=<地址>`,在装了 Surge 的设备上点一下直接装。模块的开关状态不在设备间同步,
    所以「iPhone 开、Mac 不开」这类差异直接在设备上切;还可以用 `#!requirement=SYSTEM = 'iOS'`
    (iOS 5.10.0+ / Mac 5.6.0+)让模块只在某个平台生效。
 
-> 安装地址是公开的,模块里不要写密码、私有 token 之类的内容。
+**访问控制**:模块默认不公开,安装地址必须带 `?t=<模块 token>`,不带或不对一律 404(不暴露有哪些模块)。
+token 由服务端密钥 `data/secret.key` 按模块 id 算出(HMAC),每个模块各不相同、不用保存也不会因编辑而变;
+想让所有模块链接一起失效,删 `data/secret.key` 重启(会同时踢掉所有登录会话)。
+确定不含敏感内容的模块,可以在编辑页打开「公开安装链接」(`public: true`),地址就不需要 `?t=`。
+**模块里有密码 / 私有 token(如 `external-controller-access`)时不要公开。**
 
 ### 5.1 本地模块:在 NodeDeck 里按段编辑
 

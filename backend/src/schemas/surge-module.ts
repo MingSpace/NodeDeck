@@ -12,7 +12,8 @@ import { fetchViaSchema } from "./provider.js";
  *
  * 两种来源用法相同:
  * - Profile 的 surge_modules 选中 → 按 Surge 模块语义并进生成的 .conf(generators/surge-module-merge.ts);
- * - 公开地址 /module/<id>.sgmodule(无需 token) → 设备上「从 URL 安装模块」,各设备各自开关。
+ * - 安装地址 /module/<id>.sgmodule → 设备上「从 URL 安装模块」,各设备各自开关。
+ *   默认要带 ?t=<模块 token>(见 surge-modules/links.ts);`public: true` 才允许不带 token 访问。
  *
  * 各段内容一律按 **Surge 模块语法** 写(manual.nssurge.com/profile/module.html):
  * [General] / [MITM] 支持 `key = %APPEND% v` / `key = %INSERT% v`,`{{{参数}}}` 引用 #!arguments。
@@ -24,6 +25,8 @@ export const surgeModuleSchema = z
     description: z.string().optional(),
 
     source: z.enum(["local", "remote"]).default("local"),
+    // 安装地址是否允许不带 token 访问。默认关:模块里常有密码(如 external-controller-access)
+    public: z.boolean().default(false),
     // remote:上游 .sgmodule 地址
     url: z.string().optional(),
     // remote:拉取线路(出口 id 列表),语义同节点源 fetch_via —— 服务器连不上 GitHub 等时借出口机拉

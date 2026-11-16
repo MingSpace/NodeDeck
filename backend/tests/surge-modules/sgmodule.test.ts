@@ -99,11 +99,25 @@ describe("arguments", () => {
 
 describe("surgeModuleSchema", () => {
   it("defaults to local, requires an http(s) url for remote", () => {
-    expect(surgeModuleSchema.parse({ id: "a", name: "A" })).toMatchObject({ source: "local", fetch_via: [], content_sections: {} });
+    expect(surgeModuleSchema.parse({ id: "a", name: "A" })).toMatchObject({ source: "local", public: false, fetch_via: [], content_sections: {} });
     expect(surgeModuleSchema.safeParse({ id: "a", name: "A", source: "remote" }).success).toBe(false);
     expect(surgeModuleSchema.safeParse({ id: "a", name: "A", source: "remote", url: "ftp://x" }).success).toBe(false);
     expect(
       surgeModuleSchema.safeParse({ id: "a", name: "A", source: "remote", url: "https://example.com/a.sgmodule" }).success,
     ).toBe(true);
+  });
+});
+
+describe("module links", () => {
+  it("adds ?t= only for private modules, stable per id and secret", async () => {
+    const { moduleLinks, moduleAccessToken } = await import("../../src/surge-modules/links.js");
+    const secret = "s".repeat(32);
+    expect(moduleAccessToken("a", secret)).toBe(moduleAccessToken("a", secret));
+    expect(moduleAccessToken("a", secret)).not.toBe(moduleAccessToken("b", secret));
+    expect(moduleAccessToken("a", secret)).not.toBe(moduleAccessToken("a", "t".repeat(32)));
+    expect(moduleLinks("https://sub.example.com/", "a", true)).toEqual({
+      url: "https://sub.example.com/module/a.sgmodule",
+      install_url: "surge:///install-module?url=https%3A%2F%2Fsub.example.com%2Fmodule%2Fa.sgmodule",
+    });
   });
 });

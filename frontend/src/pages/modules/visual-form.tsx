@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { YamlEditor } from "@/components/yaml-editor";
-import { LabeledField, InfoHint } from "@/components/config-fields";
+import { LabeledField, InfoHint, ToggleRow } from "@/components/config-fields";
 import { RemoteModuleFields } from "./remote-source";
 
 // 与 backend/src/schemas/surge-module.ts 保持同步
@@ -13,6 +13,8 @@ export interface SurgeModuleData {
   description?: string;
   /** local = 在这里按段编辑;remote = 内容来自 url */
   source?: "local" | "remote";
+  /** 安装地址允许不带 token 访问;默认 false */
+  public?: boolean;
   url?: string;
   fetch_via?: string[];
   arguments?: string;
@@ -104,6 +106,17 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
           </TabsList>
         </Tabs>
       </Field>
+
+      <ToggleRow
+        label="公开安装链接(不需要 token)"
+        checked={data.public ?? false}
+        onChange={(v) => update({ public: v })}
+        description={
+          data.public
+            ? "任何人知道模块 id 就能读到内容。模块里有密码 / 私有 token(如 external-controller-access)时不要打开。"
+            : "安装链接带 ?t=<模块专属 token>,不对就返回 404;Profile 引用不受影响。"
+        }
+      />
 
       {source === "remote" ? (
         <RemoteModuleFields data={data} update={update} />
