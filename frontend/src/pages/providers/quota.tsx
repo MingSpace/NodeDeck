@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, PauseCircle, X } from "lucide-react";
+import { PauseCircle, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn, formatBytes } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +44,7 @@ export function toLocalDate(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function toShortDate(ms: number): string {
+export function toShortDate(ms: number): string {
   const d = new Date(ms);
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
@@ -93,34 +93,6 @@ export function QuotaBadge({ status }: { status?: ProviderQuotaStatus }) {
       <PauseCircle className="h-3 w-3" /> 已排除 · {label}
       {restore}
     </Badge>
-  );
-}
-
-/** 列表卡片里的一行流量 / 到期摘要;什么都没有时不渲染 */
-export function QuotaSummary({ status }: { status?: ProviderQuotaStatus }) {
-  if (!status) return null;
-  const parts: string[] = [];
-  const hints: string[] = [];
-  if (status.traffic) {
-    const pct = Math.round((status.traffic.used / status.traffic.total) * 100);
-    parts.push(`流量 ${formatBytes(status.traffic.used)} / ${formatBytes(status.traffic.total)}`);
-    hints.push(`已用 ${pct}%`);
-  }
-  if (status.expire_at !== undefined) {
-    parts.push(`${toLocalDate(status.expire_at)} 到期`);
-    if (status.expire_source === "info_node") hints.push("到期日来自订阅里的信息节点");
-  }
-  // 重置日总在一个月内,只写月/日
-  if (status.next_reset_at !== undefined) parts.push(`${toShortDate(status.next_reset_at)} 重置`);
-  if (parts.length === 0) return null;
-  return (
-    <div
-      className="text-xs text-muted-foreground mt-1 flex items-center gap-1 min-w-0"
-      title={hints.length > 0 ? hints.join(";") : undefined}
-    >
-      <CalendarClock className="h-3 w-3 shrink-0" />
-      <span className="truncate">{parts.join(" · ")}</span>
-    </div>
   );
 }
 

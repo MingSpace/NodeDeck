@@ -51,7 +51,14 @@ import {
   type ProviderType,
   type RefreshInterval,
 } from "./visual-form";
-import { QuotaBadge, QuotaSummary, type ProviderQuotaStatus } from "./quota";
+import { QuotaBadge, type ProviderQuotaStatus } from "./quota";
+import {
+  ExpiryCell,
+  HealthDot,
+  NodeCountCell,
+  TrafficMeter,
+  type ProviderHealth,
+} from "./provider-stats";
 import { DIRECT_ROUTE, resolveFetchRoutes, useRouteNames } from "./fetch-via";
 
 interface ProviderNodesResp {
@@ -70,6 +77,11 @@ function formatUrlDisplay(raw: string): string {
     return raw;
   }
 }
+
+// 表头和每张卡共用:窄屏 [勾选 | 名字 | 操作],宽屏再插入 流量 / 到期 / 节点 三列。
+// 宽屏操作列写死宽度(刷新 + 编辑 + 更多 + 展开箭头 = 8.5rem):表头那格是空的,用 auto 会塌成 0 导致整排错位
+const PROVIDER_ROW_GRID =
+  "grid grid-cols-[auto_minmax(0,1fr)_auto] gap-x-4 xl:grid-cols-[auto_minmax(0,1fr)_15rem_4.5rem_3rem_8.5rem] xl:gap-x-6";
 
 const REFRESH_INTERVAL_LABEL: Record<RefreshInterval, string> = {
   never: "手动刷新",
@@ -359,6 +371,26 @@ export function ProvidersPage() {
         />
       )}
 
+      {items.length > 0 && (
+        <div
+          className={cn(
+            PROVIDER_ROW_GRID,
+            "hidden items-center px-[17px] pb-2 text-xs text-muted-foreground xl:grid",
+          )}
+        >
+          <Checkbox
+            checked={allSelected ? true : partialSelected ? "indeterminate" : false}
+            onCheckedChange={(v) => toggleSelectAll(v === true)}
+            aria-label="全选"
+          />
+          <span>{items.length} 个节点源</span>
+          <span title="竖线是本周期已经过去的时间;用量跑到竖线前面时会推算用完日期">流量</span>
+          <span>到期</span>
+          <span>节点</span>
+          <span />
+        </div>
+      )}
+
       <div className="grid gap-3">
         {items.map((p) => {
           const s = statusMap.get(p.id);
@@ -370,6 +402,16 @@ export function ProvidersPage() {
           const canExpand = !!s?.cached;
           const isInline = p.type === "inline";
           const zeroNodes = s?.cached && (s.node_count ?? 0) === 0;
+          const pending = p.enabled && !!s && !s.cached && !isInline;
+          const health: ProviderHealth = !p.enabled
+            ? "off"
+            : !s || pending
+              ? "pending"
+              : s.status === "error"
+                ? "error"
+                : s.status === "stale" || zeroNodes || s.quota?.excluded
+                  ? "warn"
+                  : "ok";
           return (
             <Card
               key={p.id}
@@ -383,8 +425,9 @@ export function ProvidersPage() {
               )}
               onClick={canExpand ? () => toggleExpand(p.id) : undefined}
             >
-              {/* 窄屏下右侧的状态徽标和按钮换到第二行,跟名字左对齐,不再把卡片撑出屏幕 */}
-              <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-4 gap-y-2 sm:grid-cols-[auto_minmax(0,1fr)_auto]">
+              {/* 宽屏:与表头同一套列模板,各行的流量 / 到期 / 节点列上下对齐;
+                  窄屏:名字 + 操作一行,流量 / 到期 / 节点换到第二行 */}
+              <div className={cn(PROVIDER_ROW_GRID, "items-start gap-y-3")}>
                 <div
                   className="pt-0.5 shrink-0"
                   onClick={(e) => e.stopPropagation()}
@@ -396,20 +439,58 @@ export function ProvidersPage() {
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  {/* id 与配置文件修改时间不常看,收进名字的 hover,卡片上只留名字 */}
-                  <div
-                    className={cn(
-                      "font-medium truncate",
-                      !p.enabled && "line-through decoration-1",
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <HealthDot health={health} />
+                    {/* id 与配置文件修改时间不常看,收进名字的 hover,卡片上只留名字 */}
+                    <span
+                      className={cn(
+                        "font-medium truncate",
+                        !p.enabled && "line-through decoration-1",
+                      )}
+                      title={[
+                        `id: ${p.id}`,
+                        updatedAt !== undefined && `配置更新于 ${formatAbsoluteTime(updatedAt)}`,
+                      ]
+                        .filter(Boolean)
+                        .join("\n")}
+                    >
+                      {p.name}
+                    </span>
+                    {/* 正常状态只靠圆点,这里只放需要留意的状态 */}
+                    {!p.enabled && (
+                      <Badge variant="disabled" className="text-xs flex items-center gap-1">
+                        <Ban className="h-3 w-3" /> 已禁用
+                      </Badge>
                     )}
-                    title={[
-                      `id: ${p.id}`,
-                      updatedAt !== undefined && `配置更新于 ${formatAbsoluteTime(updatedAt)}`,
-                    ]
-                      .filter(Boolean)
-                      .join("\n")}
-                  >
-                    {p.name}
+                    {p.enabled && <QuotaBadge status={s?.quota} />}
+                    {s?.status === "stale" && (
+                      <Badge
+                        variant="warning"
+                        className="text-xs flex items-center gap-1"
+                        title={
+                          s.offline
+                            ? `连续 ${s.retry_failures} 次没拉到,沿用上次拉到的 ${s.node_count} 个节点;之后只按刷新周期偶尔再试。换了订阅链接保存后会立刻重拉`
+                            : `这次没拉到,沿用上次的 ${s.node_count} 个节点`
+                        }
+                      >
+                        {s.offline ? <CloudOff className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                        {s.offline ? "离线" : "沿用旧节点"}
+                      </Badge>
+                    )}
+                    {s?.status === "error" && (
+                      <Badge variant="destructive" className="text-xs flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" /> 失败
+                      </Badge>
+                    )}
+                    {pending && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs flex items-center gap-1 border-amber-500 text-amber-600 dark:text-amber-400"
+                        title="后端正在首次拉取节点,稍候自动刷新"
+                      >
+                        <Loader2 className="h-3 w-3 animate-spin" /> 拉取中...
+                      </Badge>
+                    )}
                   </div>
                   {/* 只显示当前类型真正在用的地址;静态节点没有地址可显示 */}
                   {((p.type === "http" && p.url) || (p.type === "file" && p.path)) && (
@@ -430,7 +511,6 @@ export function ProvidersPage() {
                     status={s}
                     routeName={routeName}
                   />
-                  <QuotaSummary status={s?.quota} />
                   {s?.error && (
                     <FetchErrorLine
                       className="mt-1"
@@ -454,66 +534,32 @@ export function ProvidersPage() {
                     />
                   )}
                 </div>
-                <div className="col-start-2 flex items-center justify-between gap-2 sm:col-start-auto sm:justify-end">
-                  <div className="flex items-center gap-1.5 flex-wrap sm:justify-end">
-                    {!p.enabled && (
-                      <Badge
-                        variant="disabled"
-                        className="text-xs flex items-center gap-1"
-                      >
-                        <Ban className="h-3 w-3" /> 已禁用
-                      </Badge>
-                    )}
-                    {p.enabled && <QuotaBadge status={s?.quota} />}
-                    {s?.status === "ok" && s.node_count > 0 && (
-                      <Badge
-                        variant="success"
-                        className="text-xs flex items-center gap-1"
-                      >
-                        <CheckCircle2 className="h-3 w-3" /> {s.node_count} 个节点
-                      </Badge>
-                    )}
-                    {s?.status === "ok" && s.node_count === 0 && (
-                      <Badge
-                        variant="warning"
-                        className="text-xs flex items-center gap-1"
-                        title="解析未识别到任何节点,展开查看详情"
-                      >
-                        <AlertCircle className="h-3 w-3" /> 0 个节点
-                      </Badge>
-                    )}
-                    {s?.status === "stale" && (
-                      <Badge
-                        variant="warning"
-                        className="text-xs flex items-center gap-1"
-                        title={
-                          s.offline
-                            ? `连续 ${s.retry_failures} 次没拉到,沿用上次拉到的 ${s.node_count} 个节点;之后只按刷新周期偶尔再试。换了订阅链接保存后会立刻重拉`
-                            : `这次没拉到,沿用上次的 ${s.node_count} 个节点`
-                        }
-                      >
-                        {s.offline ? <CloudOff className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
-                        {s.offline ? "离线" : "沿用旧节点"}
-                      </Badge>
-                    )}
-                    {s?.status === "error" && (
-                      <Badge
-                        variant="destructive"
-                        className="text-xs flex items-center gap-1"
-                      >
-                        <AlertCircle className="h-3 w-3" /> 失败
-                      </Badge>
-                    )}
-                    {p.enabled && s && !s.cached && !isInline && (
-                      <Badge
-                        variant="outline"
-                        className="text-xs flex items-center gap-1 border-amber-500 text-amber-600 dark:text-amber-400"
-                        title="后端正在首次拉取节点,稍候自动刷新"
-                      >
-                        <Loader2 className="h-3 w-3 animate-spin" /> 拉取中...
-                      </Badge>
-                    )}
-                  </div>
+                {/* 窄屏自成一行三列;宽屏 display:contents,三格直接落进外层列模板 */}
+                <div className="col-span-2 col-start-2 grid grid-cols-[minmax(0,1fr)_4.5rem_3rem] items-start gap-x-5 xl:contents">
+                  <TrafficMeter
+                    status={s?.quota}
+                    emptyHint={p.type === "http" && s?.cached ? "上游没给流量信息" : undefined}
+                  />
+                  <ExpiryCell status={s?.quota} />
+                  <NodeCountCell
+                    count={s?.cached ? s.node_count : undefined}
+                    tone={
+                      !s?.cached
+                        ? "muted"
+                        : s.status === "stale" || s.node_count === 0
+                          ? "warn"
+                          : "normal"
+                    }
+                    title={
+                      zeroNodes
+                        ? "解析未识别到任何节点,展开查看详情"
+                        : s?.status === "stale"
+                          ? "沿用上次拉到的节点"
+                          : undefined
+                    }
+                  />
+                </div>
+                <div className="col-start-3 row-start-1 flex items-center gap-1 xl:col-start-6">
                   <div
                     className="flex items-center gap-1"
                     onClick={(e) => e.stopPropagation()}

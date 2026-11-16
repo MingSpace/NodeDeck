@@ -33,6 +33,12 @@ export function startFakeSub(port) {
       );
       return res.end(/meta|verge/i.test(ua) ? META_YAML : "");
     }
+    // 流量用完 / 用得比周期快:配合「重置倒计时」信息节点验证节点源页的流量条
+    if (req.url === "/exhausted" || req.url === "/fast") {
+      const used = req.url === "/exhausted" ? 214748364800 : 182536110080;
+      res.setHeader("subscription-userinfo", `upload=0; download=${used}; total=214748364800; expire=${EXPIRE}`);
+      return res.end(META_YAML);
+    }
     if (req.url === "/b64") {
       if (/clash/i.test(ua)) return res.end("<!doctype html><html><body>请使用客户端订阅</body></html>");
       return res.end(B64);

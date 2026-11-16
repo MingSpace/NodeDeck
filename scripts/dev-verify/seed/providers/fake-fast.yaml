@@ -1,0 +1,7 @@
+# 用量跑在周期进度前面:验证「照此速度约 M/D 用完」推算
+id: fake-fast
+name: 假机场 用得快
+type: http
+url: http://127.0.0.1:18090/fast
+refresh:
+  interval: 12h

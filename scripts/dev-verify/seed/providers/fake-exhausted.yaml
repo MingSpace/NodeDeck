@@ -1,0 +1,5 @@
+# 流量用完:验证自动排除徽标和满格流量条
+id: fake-exhausted
+name: 假机场 流量用完
+type: http
+url: http://127.0.0.1:18090/exhausted

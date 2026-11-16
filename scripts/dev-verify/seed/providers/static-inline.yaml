@@ -1,0 +1,6 @@
+# 静态节点:没有流量和到期,验证空列不错位
+id: static-inline
+name: 自建落地
+type: inline
+content: |
+  ss://YWVzLTI1Ni1nY206cHc@10.0.0.20:443#Landing
