@@ -66,6 +66,7 @@ function resolved(nodes: Node[], warnings: string[]) {
     rules: [],
     surgeModules: [],
     warnings,
+    surgeWarnings: [],
     revalidating: [],
   };
 }

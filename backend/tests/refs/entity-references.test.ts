@@ -19,6 +19,7 @@ import {
   proxyGroupRepo,
   generalPresetRepo,
   profileRepo,
+  surgeModuleRepo,
 } from "../../src/storage/repos.js";
 import { loadNotificationConfig } from "../../src/storage/notification-store.js";
 import {
@@ -31,6 +32,7 @@ import { providerSchema } from "../../src/schemas/provider.js";
 import { proxyGroupSchema } from "../../src/schemas/proxy-group.js";
 import { rulesetSchema } from "../../src/schemas/ruleset.js";
 import { generalPresetSchema } from "../../src/schemas/general-preset.js";
+import { surgeModuleSchema } from "../../src/schemas/surge-module.js";
 import { defaultNotificationConfig } from "../../src/schemas/notification.js";
 
 type Mock = ReturnType<typeof vi.fn>;
@@ -74,8 +76,10 @@ function setSources(s: {
   rules?: ReturnType<typeof ruleset>[];
   generals?: ReturnType<typeof general>[];
   providers?: ReturnType<typeof providerSchema.parse>[];
+  modules?: ReturnType<typeof surgeModuleSchema.parse>[];
   providerIds?: string[] | null;
 }): void {
+  (surgeModuleRepo.list as unknown as Mock).mockResolvedValue(entries(s.modules ?? []));
   (profileRepo.list as unknown as Mock).mockResolvedValue(entries(s.profiles ?? []));
   (providerRepo.list as unknown as Mock).mockResolvedValue(entries(s.providers ?? []));
   (proxyGroupRepo.list as unknown as Mock).mockResolvedValue(entries(s.groups ?? []));
@@ -304,6 +308,23 @@ describe("findEntityReferences: egresses", () => {
   it("没有节点源用到 → 空数组", async () => {
     setSources({ providers: [provider("a", [])] });
     expect(await findEntityReferences("egresses", "eg-1")).toEqual([]);
+  });
+
+  it("被远程 Surge 模块的 fetch_via 引用时同样阻止删除;本地模块残留的 fetch_via 不算", async () => {
+    const mod = (id: string, source: "local" | "remote") =>
+      surgeModuleSchema.parse({
+        id,
+        name: `模块 ${id}`,
+        source,
+        url: source === "remote" ? "https://example.com/m.sgmodule" : undefined,
+        fetch_via: ["eg-1"],
+      });
+    setSources({ modules: [mod("r", "remote"), mod("l", "local")] });
+    const refs = await findEntityReferences("egresses", "eg-1");
+    expect(refs).toEqual([
+      expect.objectContaining({ from_kind: "modules", from_id: "r", field: "fetch_via", blocking: true }),
+    ]);
+    expect(describeReferences(refs)).toBe("Surge 模块「模块 r」的 fetch_via");
   });
 });
 

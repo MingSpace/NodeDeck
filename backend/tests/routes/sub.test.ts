@@ -26,8 +26,12 @@ vi.mock("../../src/userinfo/aggregate.js", () => ({
 vi.mock("../../src/storage/config-store.js", () => ({
   loadConfig: vi.fn(),
 }));
+vi.mock("../../src/surge-modules/remote.js", () => ({
+  loadRemoteModule: vi.fn(),
+}));
 
-import { profileRepo, providerRepo, proxyGroupRepo, rulesetRepo } from "../../src/storage/repos.js";
+import { profileRepo, providerRepo, proxyGroupRepo, rulesetRepo, surgeModuleRepo } from "../../src/storage/repos.js";
+import { loadRemoteModule } from "../../src/surge-modules/remote.js";
 import { buildNodePool } from "../../src/providers/pool.js";
 import { loadProviderNodes } from "../../src/providers/load.js";
 import { aggregateUserInfo } from "../../src/userinfo/aggregate.js";
@@ -426,5 +430,58 @@ describe("/sub/provider/:id/clash.yaml route", () => {
     expect(res.status).toBe(404);
     const text = await res.text();
     expect(text).toContain("provider disabled");
+  });
+});
+
+describe("GET /module/:file", () => {
+  const mockedModuleGet = surgeModuleRepo.get as unknown as ReturnType<typeof vi.fn>;
+  const mockedLoadRemote = loadRemoteModule as unknown as ReturnType<typeof vi.fn>;
+  const app = new Hono();
+  mountSubRoute(app);
+
+  it("serves a local module as .sgmodule without any token", async () => {
+    mockedModuleGet.mockResolvedValue({
+      data: {
+        id: "ads",
+        name: "去广告",
+        source: "local",
+        fetch_via: [],
+        content_sections: { rule: "DOMAIN,ads.example.com,REJECT" },
+      },
+    });
+    const res = await app.request("/module/ads.sgmodule");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("text/plain");
+    expect(await res.text()).toBe("#!name=去广告\n\n[Rule]\nDOMAIN,ads.example.com,REJECT\n");
+    expect(mockedModuleGet).toHaveBeenCalledWith("ads");
+  });
+
+  it("passes remote module text through verbatim, 502 when nothing cached", async () => {
+    const remote = {
+      id: "r",
+      name: "R",
+      source: "remote",
+      url: "https://example.com/r.sgmodule",
+      fetch_via: [],
+      content_sections: {},
+    };
+    mockedModuleGet.mockResolvedValue({ data: remote });
+    mockedLoadRemote.mockResolvedValueOnce({ status: "ok", text: "#!name=Upstream\n[Rule]\nDOMAIN,a.com,REJECT" });
+    const ok = await app.request("/module/r.sgmodule");
+    expect(ok.status).toBe(200);
+    expect(await ok.text()).toBe("#!name=Upstream\n[Rule]\nDOMAIN,a.com,REJECT");
+
+    mockedLoadRemote.mockResolvedValueOnce({ status: "error", error: "HTTP 404" });
+    const bad = await app.request("/module/r.sgmodule");
+    expect(bad.status).toBe(502);
+    // 不泄露上游地址 / 错误细节
+    expect(await bad.text()).toBe("module content unavailable");
+  });
+
+  it("404 for unknown module or malformed file name", async () => {
+    mockedModuleGet.mockResolvedValue(null);
+    expect((await app.request("/module/nope.sgmodule")).status).toBe(404);
+    expect((await app.request("/module/ads.conf")).status).toBe(404);
+    expect((await app.request("/module/..%2Fx.sgmodule")).status).toBe(404);
   });
 });

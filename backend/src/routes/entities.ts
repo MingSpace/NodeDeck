@@ -14,7 +14,8 @@ import { providerSchema, type Provider } from "../schemas/provider.js";
 import { rulesetSchema } from "../schemas/ruleset.js";
 import { proxyGroupSchema } from "../schemas/proxy-group.js";
 import { generalPresetSchema } from "../schemas/general-preset.js";
-import { surgeModuleSchema } from "../schemas/surge-module.js";
+import { surgeModuleSchema, type SurgeModule } from "../schemas/surge-module.js";
+import { loadRemoteModule } from "../surge-modules/remote.js";
 import { profileSchema } from "../schemas/profile.js";
 import { egressSchema } from "../schemas/egress.js";
 import { refreshProvider } from "../providers/load.js";
@@ -97,6 +98,21 @@ function maybeAutoRefreshProvider(kind: string, isNew: boolean, data: unknown, p
   });
 }
 
+// 远程 Surge 模块:新建、或改了 URL / 拉取线路时后台拉一次,列表里马上能看到拉取结果;
+// 其余编辑不动缓存(内容按 TTL 在用到时再拉)。
+function maybeAutoFetchModule(kind: string, data: unknown, previous?: unknown): void {
+  if (kind !== "modules") return;
+  const mod = data as SurgeModule;
+  if (mod.source !== "remote") return;
+  const prev = previous as SurgeModule | undefined;
+  const changed =
+    !prev || prev.source !== "remote" || prev.url !== mod.url || prev.fetch_via.join(",") !== mod.fetch_via.join(",");
+  if (!changed) return;
+  void loadRemoteModule(mod, { force: true }).catch((err) => {
+    logger.warn({ err, moduleId: mod.id }, "auto-fetch on module save failed");
+  });
+}
+
 entitiesRouter.put("/:kind/:id", async (c) => {
   const kind = c.req.param("kind");
   const def = KINDS[kind];
@@ -136,6 +152,7 @@ entitiesRouter.put("/:kind/:id", async (c) => {
     "Entity saved",
   );
   maybeAutoRefreshProvider(kind, !existed, saved.data, previous?.data);
+  maybeAutoFetchModule(kind, saved.data, previous?.data);
   return c.json(saved.data);
 });
 
@@ -152,6 +169,7 @@ entitiesRouter.post("/:kind", async (c) => {
   const saved = await def.repo.save(result.data);
   logger.info({ kind, id: saved.data.id, op: "create" }, "Entity saved");
   maybeAutoRefreshProvider(kind, true, saved.data);
+  maybeAutoFetchModule(kind, saved.data);
   return c.json(saved.data, 201);
 });
 

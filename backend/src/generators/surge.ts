@@ -3,7 +3,6 @@ import type { Profile } from "../schemas/profile.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { RuleSet } from "../schemas/ruleset.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
-import type { SurgeModule } from "../schemas/surge-module.js";
 import type { Provider } from "../schemas/provider.js";
 import { applyNodeFilter } from "./node-filter.js";
 import { sortNodesByRegion } from "./node-sort.js";
@@ -15,6 +14,7 @@ import { resolveHiddenNodeNames } from "./hidden-nodes.js";
 import { REJECT_TYPE_MAP } from "./protocol-mapping.js";
 import { buildSurgeHostLines } from "./hosts.js";
 import { buildExpandedRuleLine } from "./rule-line.js";
+import { applyKvOps, collectModuleContributions, type SurgeModuleInput } from "./surge-module-merge.js";
 
 export interface SurgeGenerateInput {
   profile: Profile;
@@ -26,7 +26,8 @@ export interface SurgeGenerateInput {
   general?: GeneralPreset;
   // general.hosts + provider.hosts 合并后的结果(由 profile-resolver 计算)。
   hosts?: Record<string, string | string[]>;
-  surgeModules: SurgeModule[];
+  // profile.surge_modules 解析后的模块;远程模块带 remote_text(见 surge-module-merge.ts)
+  surgeModules: SurgeModuleInput[];
   managed_config_url?: string;
   // providers 元数据,用于同名节点改名时计算来源前缀 `【标识】`(见 node-naming.ts)。
   providers?: Provider[];
@@ -68,39 +69,37 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
   // 全部生成完后才把 header(含 # WARN: ...)拼到最前面 — 否则 wireguard section
   // 在主循环更后面才被构造,新产生的 warnings 会被早期固化的 header 漏掉。
   const lines: string[] = [];
+  // 模块按 Surge 模块语义并入:[General]/[MITM] 走 key 级覆盖 / %APPEND% / %INSERT%,
+  // 行型段的模块行排在 profile 原有行之前(见 surge-module-merge.ts)
+  const modules = collectModuleContributions(input.surgeModules, input.warnings);
+  const moduleLines = (section: string) => modules.lineSections.get(section) ?? [];
 
-  // [General] section: merge general preset + module general fragments
+  // [General]
   lines.push("[General]");
-  if (general) {
-    appendGeneralLines(lines, general);
-  }
-  for (const m of input.surgeModules) {
-    if (m.content_sections.general) {
-      lines.push(...splitNonEmpty(m.content_sections.general));
-    }
-  }
+  const generalLines: string[] = [];
+  if (general) appendGeneralLines(generalLines, general);
+  lines.push(...applyKvOps(generalLines, modules.kvOps.get("General") ?? []));
   lines.push("");
 
   // [Host]
-  if ((input.hosts && Object.keys(input.hosts).length > 0) || hasModuleSection(input.surgeModules, "host")) {
+  const hostLines = [...moduleLines("Host"), ...(input.hosts ? buildSurgeHostLines(input.hosts, input.warnings) : [])];
+  if (hostLines.length > 0) {
     lines.push("[Host]");
-    if (input.hosts) {
-      lines.push(...buildSurgeHostLines(input.hosts, input.warnings));
-    }
-    for (const m of input.surgeModules) {
-      if (m.content_sections.host) lines.push(...splitNonEmpty(m.content_sections.host));
-    }
+    lines.push(...hostLines);
     lines.push("");
   }
 
   // [SSID Setting](官方文档名 Subnet Settings)
-  if (general?.ssid_rules && general.ssid_rules.length > 0) {
-    const ssidLines = buildSubnetSettingLines(general.ssid_rules, input.warnings);
-    if (ssidLines.length > 0) {
-      lines.push("[SSID Setting]");
-      lines.push(...ssidLines);
-      lines.push("");
-    }
+  const ssidLines = [
+    ...moduleLines("SSID Setting"),
+    ...(general?.ssid_rules && general.ssid_rules.length > 0
+      ? buildSubnetSettingLines(general.ssid_rules, input.warnings)
+      : []),
+  ];
+  if (ssidLines.length > 0) {
+    lines.push("[SSID Setting]");
+    lines.push(...ssidLines);
+    lines.push("");
   }
 
   // [MTProto] — Surge 作为 Telegram MTProto 入站代理(iOS 5.21.0+ / Mac 6.8.0+)。
@@ -158,6 +157,8 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
 
   // [Rule]
   lines.push("[Rule]");
+  // 模块规则排最前,与设备上安装模块的效果一致(模块规则优先于 profile 规则)
+  lines.push(...moduleLines("Rule"));
   // For inline_ruleset format, we collect them into a separate section header to emit later
   const inlineRulesets: { name: string; payload: string[] }[] = [];
   for (const r of input.rules) {
@@ -248,10 +249,6 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
       lines.push(parts.join(","));
     }
   }
-  // Module-level [Rule] additions (only DIRECT/REJECT allowed in modules)
-  for (const m of input.surgeModules) {
-    if (m.content_sections.rule) lines.push(...splitNonEmpty(m.content_sections.rule));
-  }
   if (input.geoipFallback) {
     lines.push(`GEOIP,CN,${input.geoipFallback.policy},no-resolve`);
   }
@@ -276,59 +273,33 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
     lines.push("");
   }
 
-  // [URL Rewrite]
-  if (hasModuleSection(input.surgeModules, "url_rewrite")) {
-    lines.push("[URL Rewrite]");
-    for (const m of input.surgeModules) {
-      if (m.content_sections.url_rewrite) lines.push(...splitNonEmpty(m.content_sections.url_rewrite));
-    }
-    lines.push("");
-  }
-
-  // [Header Rewrite]
-  if (hasModuleSection(input.surgeModules, "header_rewrite")) {
-    lines.push("[Header Rewrite]");
-    for (const m of input.surgeModules) {
-      if (m.content_sections.header_rewrite) lines.push(...splitNonEmpty(m.content_sections.header_rewrite));
-    }
-    lines.push("");
-  }
-
-  // [Body Rewrite]
-  if (hasModuleSection(input.surgeModules, "body_rewrite")) {
-    lines.push("[Body Rewrite]");
-    for (const m of input.surgeModules) {
-      if (m.content_sections.body_rewrite) lines.push(...splitNonEmpty(m.content_sections.body_rewrite));
-    }
-    lines.push("");
-  }
-
-  // [Script]
-  if (hasModuleSection(input.surgeModules, "script")) {
-    lines.push("[Script]");
-    for (const m of input.surgeModules) {
-      if (m.content_sections.script) lines.push(...splitNonEmpty(m.content_sections.script));
-    }
+  // 只由模块提供的行型段:[URL Rewrite] / [Header Rewrite] / [Body Rewrite] / [Script] / [Map Local] /
+  // [IP Rewrite] / [Panel]
+  for (const section of ["URL Rewrite", "Header Rewrite", "Body Rewrite", "Script", "Map Local", "IP Rewrite", "Panel"]) {
+    const sectionLines = moduleLines(section);
+    if (sectionLines.length === 0) continue;
+    lines.push(`[${section}]`);
+    lines.push(...sectionLines);
     lines.push("");
   }
 
   // [MITM]
-  if (general?.mitm?.enable || hasModuleSection(input.surgeModules, "mitm")) {
-    lines.push("[MITM]");
+  const mitmOps = modules.kvOps.get("MITM") ?? [];
+  if (general?.mitm?.enable || mitmOps.length > 0) {
+    const mitmLines: string[] = [];
     if (general?.mitm) {
-      lines.push(`enable = ${general.mitm.enable}`);
-      lines.push(`h2 = ${general.mitm.h2}`);
-      if (general.mitm.tcp_connection) lines.push(`tcp-connection = ${general.mitm.tcp_connection}`);
-      if (general.mitm.skip_server_cert_verify) lines.push(`skip-server-cert-verify = ${general.mitm.skip_server_cert_verify}`);
+      mitmLines.push(`enable = ${general.mitm.enable}`);
+      mitmLines.push(`h2 = ${general.mitm.h2}`);
+      if (general.mitm.tcp_connection) mitmLines.push(`tcp-connection = ${general.mitm.tcp_connection}`);
+      if (general.mitm.skip_server_cert_verify) mitmLines.push(`skip-server-cert-verify = ${general.mitm.skip_server_cert_verify}`);
       if (general.mitm.hostname && general.mitm.hostname.length > 0) {
-        lines.push(`hostname = ${general.mitm.hostname.join(", ")}`);
+        mitmLines.push(`hostname = ${general.mitm.hostname.join(", ")}`);
       }
-      if (general.mitm.ca_passphrase) lines.push(`ca-passphrase = ${general.mitm.ca_passphrase}`);
-      if (general.mitm.ca_p12) lines.push(`ca-p12 = ${general.mitm.ca_p12}`);
+      if (general.mitm.ca_passphrase) mitmLines.push(`ca-passphrase = ${general.mitm.ca_passphrase}`);
+      if (general.mitm.ca_p12) mitmLines.push(`ca-p12 = ${general.mitm.ca_p12}`);
     }
-    for (const m of input.surgeModules) {
-      if (m.content_sections.mitm) lines.push(...splitNonEmpty(m.content_sections.mitm));
-    }
+    lines.push("[MITM]");
+    lines.push(...applyKvOps(mitmLines, mitmOps));
     lines.push("");
   }
 
@@ -440,17 +411,6 @@ function buildSubnetSettingLines(
     lines.push(`${/\s/.test(expr) ? `"${expr}"` : expr} ${params.join(",")}`);
   });
   return lines;
-}
-
-function hasModuleSection(modules: SurgeModule[], key: keyof SurgeModule["content_sections"]): boolean {
-  return modules.some((m) => Boolean(m.content_sections[key]?.trim()));
-}
-
-function splitNonEmpty(s: string): string[] {
-  return s
-    .split(/\r?\n/)
-    .map((l) => l.trimEnd())
-    .filter((l) => l.length > 0);
 }
 
 export function buildSurgeProxyLine(node: Node, warnings: string[]): string | null {

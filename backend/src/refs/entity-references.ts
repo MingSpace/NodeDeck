@@ -5,12 +5,14 @@ import {
   generalPresetRepo,
   profileRepo,
   providerRepo,
+  surgeModuleRepo,
 } from "../storage/repos.js";
 import type { Profile } from "../schemas/profile.js";
 import type { Provider } from "../schemas/provider.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
 import type { RuleSet } from "../schemas/ruleset.js";
+import type { SurgeModule } from "../schemas/surge-module.js";
 import type { NotificationConfig } from "../schemas/notification.js";
 
 /**
@@ -26,7 +28,7 @@ export function isReferenceableKind(kind: string): kind is ReferenceableKind {
 
 export interface EntityReference {
   /** 引用方实体类型;`notification` 是全局配置文件而不是列表实体 */
-  from_kind: "profiles" | "providers" | "groups" | "generals" | "rules" | "notification";
+  from_kind: "profiles" | "providers" | "groups" | "generals" | "rules" | "modules" | "notification";
   /** 引用方 id(notification 固定为 `notification`) */
   from_id: string;
   /** 引用方展示名 */
@@ -51,16 +53,18 @@ interface Sources {
   groups: ProxyGroup[];
   generals: GeneralPreset[];
   rules: RuleSet[];
+  modules: SurgeModule[];
   notification: NotificationConfig;
 }
 
 async function loadSources(): Promise<Sources> {
-  const [profiles, providers, groups, generals, rules, notification] = await Promise.all([
+  const [profiles, providers, groups, generals, rules, modules, notification] = await Promise.all([
     profileRepo.list(),
     providerRepo.list(),
     proxyGroupRepo.list(),
     generalPresetRepo.list(),
     rulesetRepo.list(),
+    surgeModuleRepo.list(),
     loadNotificationConfig(),
   ]);
   return {
@@ -69,6 +73,7 @@ async function loadSources(): Promise<Sources> {
     groups: groups.map((e) => e.data),
     generals: generals.map((e) => e.data),
     rules: rules.map((e) => e.data),
+    modules: modules.map((e) => e.data),
     notification,
   };
 }
@@ -213,12 +218,12 @@ function findSurgeModuleReferences(id: string, s: Sources): EntityReference[] {
 }
 
 // ---------------------------------------------------------------------------
-// egresses —— 只被 provider.fetch_via 按 id 引用。删了会让该节点源少一条拉取线路,
-// 若它是唯一一条就拉不到订阅,所以也拦。
+// egresses —— 被 provider.fetch_via / 远程 Surge 模块的 module.fetch_via 按 id 引用。
+// 删了会让它们少一条拉取线路,若它是唯一一条就拉不到内容,所以也拦。
 // ---------------------------------------------------------------------------
 
 function findEgressReferences(id: string, s: Sources): EntityReference[] {
-  return s.providers
+  const viaProviders = s.providers
     .filter((p) => p.fetch_via.includes(id))
     .map((p) => ({
       from_kind: "providers" as const,
@@ -229,6 +234,18 @@ function findEgressReferences(id: string, s: Sources): EntityReference[] {
       value: id,
       blocking: true,
     }));
+  const viaModules = s.modules
+    .filter((m) => m.source === "remote" && m.fetch_via.includes(id))
+    .map((m) => ({
+      from_kind: "modules" as const,
+      from_id: m.id,
+      from_name: m.name,
+      field: "fetch_via",
+      via: "id" as const,
+      value: id,
+      blocking: true,
+    }));
+  return [...viaProviders, ...viaModules];
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +339,7 @@ const KIND_LABELS: Record<EntityReference["from_kind"], string> = {
   groups: "策略组",
   generals: "全局配置",
   rules: "规则集",
+  modules: "Surge 模块",
   notification: "通知设置",
 };
 

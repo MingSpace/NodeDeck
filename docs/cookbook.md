@@ -10,7 +10,7 @@
 2. [四种规则形态](#2-四种规则形态)
 3. [链式代理三段式](#3-链式代理三段式)
 4. [Clash proxy-providers 模式](#4-clash-proxy-providers-模式)
-5. [Surge 模块嵌入](#5-surge-模块嵌入)
+5. [Surge 模块](#5-surge-模块)
 6. [Profile 拼装与订阅 URL](#6-profile-拼装与订阅-url)
 7. [嵌套引用其它策略组 (nested_groups)](#7-嵌套引用其它策略组-nested_groups)
 8. [Telegram MTProto 入站代理 (Surge)](#8-telegram-mtproto-入站代理-surge)
@@ -610,24 +610,69 @@ mihomo 启动后会自己去拉两个 provider URL,健康检查独立运行。
 
 ---
 
-## 5. Surge 模块嵌入
+## 5. Surge 模块
 
-Surge `.sgmodule` 不能"原样 include",但可以把内容拆解到 `data/modules/<id>.yaml`:
+`data/modules/<id>.yaml` 里的每个模块有两种用法,可以同时用:
+
+1. **Profile 引用 → 并进订阅**:Profile 的 `surge_modules: [google-cn]`,生成的 Surge `.conf` 里自动带上。
+2. **单独安装 → 各设备各自开关**:每个模块都有公开地址 `https://<你的域名>/module/<id>.sgmodule`(**不需要 token**),
+   在 Surge 里「模块 → 安装新模块」粘贴即可;Web UI 模块列表的「安装到 Surge」按钮就是
+   `surge:///install-module?url=<地址>`,在装了 Surge 的设备上点一下直接装。模块的开关状态不在设备间同步,
+   所以「iPhone 开、Mac 不开」这类差异直接在设备上切;还可以用 `#!requirement=SYSTEM = 'iOS'`
+   (iOS 5.10.0+ / Mac 5.6.0+)让模块只在某个平台生效。
+
+> 安装地址是公开的,模块里不要写密码、私有 token 之类的内容。
+
+### 5.1 本地模块:在 NodeDeck 里按段编辑
 
 ```yaml
 # data/modules/google-cn.yaml
 id: google-cn
 name: Google 中国版重写到国际版
+source: local            # 默认值,可省略
+arguments: policy:Proxys # 可选,#!arguments=
 content_sections:
   url_rewrite: |
     ^https?://(www.)?(g|google)\.?(cn|com\.hk) https://www.google.com 302
   mitm: |
     hostname = %APPEND% *.google.cn
   rule: |
-    DOMAIN-SUFFIX,google.cn,Proxys
+    DOMAIN-SUFFIX,google.cn,{{{policy}}}
 ```
 
-然后 Profile 的 `surge_modules: [google-cn]` 引用即可。Surge 输出会自动把 `url_rewrite` 段并到 `[URL Rewrite]`、`mitm` 并到 `[MITM]`、`rule` 并到 `[Rule]`。
+各段一律按 **Surge 模块语法** 写(与 `.sgmodule` 文件里一模一样)。
+
+### 5.2 远程模块:引用别处维护的 .sgmodule
+
+```yaml
+# data/modules/my-rewrite.yaml
+id: my-rewrite
+name: 我的重写
+source: remote
+url: https://raw.githubusercontent.com/you/repo/main/my-rewrite.sgmodule
+fetch_via: []            # 可选,服务器连不上上游时借出口拉,语义同节点源(见 1.4)
+```
+
+改远程文件即可,不用回 NodeDeck:
+
+- NodeDeck 把拉到的内容缓存在 `data/cache/module.<id>.json`,**5 分钟**内直接用缓存,过期后在被用到时
+  (订阅生成 / 设备拉模块)重新拉;想立刻生效就在模块列表点「刷新」。
+- 拉取失败时沿用上次拿到的内容;从没拉到过的远程模块,Profile 生成时跳过并在文件头 `# WARN:` 提示,
+  安装地址返回 502。
+- 安装地址原样转发上游内容(上游 URL 不出现在响应里)。
+
+### 5.3 并进 Profile 时怎么合并
+
+目标是「并进 Profile」与「在设备上安装同一个模块」效果一致,按 Surge 模块语义合并:
+
+| 段 | 合并方式 |
+| --- | --- |
+| `[General]` / `[MITM]` | `key = value` 覆盖;`key = %APPEND% v` 追加到末尾;`key = %INSERT% v` 插到开头(逗号拼接) |
+| `[Rule]` `[Script]` `[URL Rewrite]` `[Header Rewrite]` `[Body Rewrite]` `[Map Local]` `[Host]` `[IP Rewrite]` `[SSID Setting]` `[Panel]` | 模块的行放在 Profile 原有内容**之前**(多个模块按 `surge_modules` 顺序) |
+| `{{{参数}}}` | 用 `#!arguments` 的默认值替换;没有默认值替换为空并告警 |
+| `[WireGuard *]` `[Tailscale *]` `[MTProto]` `[Snell Server]` `[Ruleset *]` 等 | 不并入,告警跳过 —— 这类模块请在设备上安装 |
+
+`#!system` / `#!requirement` 只在设备上安装时生效,并进 Profile 后不判断。
 
 ---
 

@@ -1,6 +1,8 @@
 import type { Hono } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { profileRepo, providerRepo } from "../storage/repos.js";
+import { profileRepo, providerRepo, surgeModuleRepo } from "../storage/repos.js";
+import { loadRemoteModule } from "../surge-modules/remote.js";
+import { renderLocalSgmodule } from "../surge-modules/sgmodule.js";
 import { resolveProfile } from "../generators/profile-resolver.js";
 import { generateClashConfig, generateProxyProviderYaml } from "../generators/clash.js";
 import { generateSurgeConfig } from "../generators/surge.js";
@@ -34,6 +36,32 @@ export function mountSubRoute(app: Hono): void {
   // mihomo proxy-providers 拉取目标:把单个机场的节点切片输出为仅含 proxies: 段的 yaml。
   // 校验通过 profile token 实现:必须带 ?profile=<pid>&t=<token>,且 provider 在该 profile 中。
   app.get("/sub/provider/:id/clash.yaml", async (c) => handleProviderClashYaml(c));
+  // 单个 Surge 模块,设备上「从 URL 安装模块」用。不挂在 /sub 下,地址短一些;按用户要求公开、不校验 token ——
+  // 模块里不要放密码 / 私有 token 之类的内容(远程模块的上游 URL 不会出现在响应里)。
+  app.get("/module/:file", async (c) => handleModuleFile(c));
+}
+
+async function handleModuleFile(c: import("hono").Context) {
+  const match = /^([A-Za-z0-9_-]+)\.sgmodule$/.exec(c.req.param("file") ?? "");
+  if (!match) return c.text("not found", 404);
+  const entry = await surgeModuleRepo.get(match[1]);
+  if (!entry) return c.text("module not found", 404);
+  const mod = entry.data;
+  let text: string;
+  if (mod.source === "remote") {
+    const cache = await loadRemoteModule(mod);
+    if (cache.text === undefined) {
+      logger.warn({ moduleId: mod.id, error: cache.error }, "Module request: remote content unavailable");
+      return c.text("module content unavailable", 502);
+    }
+    text = cache.text;
+  } else {
+    text = renderLocalSgmodule(mod);
+  }
+  logger.info({ moduleId: mod.id, source: mod.source, ip: getClientIp(c), bytes: text.length }, "Module served");
+  c.header("Content-Type", "text/plain; charset=utf-8");
+  c.header("Cache-Control", "no-cache");
+  return c.body(text);
 }
 
 async function handleSub(c: import("hono").Context) {
@@ -74,7 +102,7 @@ async function handleSubInner(
     return c.text("invalid token", 401);
   }
 
-  const resolved = await resolveProfile(profile);
+  const resolved = await resolveProfile(profile, { loadRemoteModules: args.target === "surge" });
   // 只统计 token 校验通过的拉取;生成抛错走 onError 返回 500,不计数
   const userAgent = c.req.header("user-agent");
   const statsIp = ip !== "unknown" ? ip : socketAddress(c);
@@ -137,6 +165,7 @@ async function handleSubInner(
     c.header("Profile-Update-Interval", intervalHours);
     return c.body(text);
   } else {
+    resolved.warnings.push(...resolved.surgeWarnings);
     const text = generateSurgeConfig({
       profile,
       nodes: resolved.nodes,
@@ -269,7 +298,7 @@ async function handleProviderClashYaml(c: import("hono").Context) {
   //
   // 唯一不复刻的是 validateChain:chain_via 可以指向主订阅里的节点或策略组,那些在本文件里
   // 必然"不存在",按悬空清掉反而会误伤。引用合法性由主订阅那侧统一校验。
-  const resolved = await resolveProfile(profile, { staleWhileRevalidate: false });
+  const resolved = await resolveProfile(profile, { staleWhileRevalidate: false, loadRemoteModules: false });
   const poolFiltered = applyNodeFilter(resolved.nodes, profile.node_filter);
   const poolSorted = profile.node_filter.sort_by_region ? sortNodesByRegion(poolFiltered) : poolFiltered;
   // 改名 warning 覆盖全量池,对单机场产物是噪音,丢进单独的数组不并入响应头。

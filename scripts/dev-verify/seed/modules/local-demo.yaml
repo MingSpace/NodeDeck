@@ -1,0 +1,7 @@
+id: local-demo
+name: 本地示例模块
+description: 谷歌跳转
+source: local
+content_sections:
+  url_rewrite: ^https?://(www.)?(g|google)\.cn https://www.google.com 302
+  mitm: hostname = %APPEND% *.google.cn

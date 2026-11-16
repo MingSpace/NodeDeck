@@ -18,6 +18,20 @@ const B64 = Buffer.from(
   [ss("10.0.0.9", "到期时间：2027-03-01"), ss("10.0.0.3", "US 01"), ss("10.0.0.4", "SG 01")].join("\n"),
 ).toString("base64");
 
+// 远程 Surge 模块(验证模块的「远程 URL」来源);/module-html 模拟误填了 GitHub blob 页面
+const MODULE = [
+  "#!name=假远程模块",
+  "#!desc=dev-verify 假数据",
+  "#!arguments=policy:REJECT",
+  "[Rule]",
+  "DOMAIN-SUFFIX,ads.example.com,{{{policy}}}",
+  "[URL Rewrite]",
+  "^https?://www\\.example\\.com/old https://www.example.com/new 302",
+  "[MITM]",
+  "hostname = %APPEND% api.example.com",
+  "",
+].join("\n");
+
 const EXPIRE = Math.floor(new Date(2027, 5, 19).getTime() / 1000);
 
 export function startFakeSub(port) {
@@ -47,6 +61,8 @@ export function startFakeSub(port) {
       flakyHits++;
       return res.end(flakyHits === 1 ? META_YAML : "<!doctype html><html><body>订阅已过期</body></html>");
     }
+    if (req.url === "/module.sgmodule") return res.end(MODULE);
+    if (req.url === "/module-html") return res.end("<!doctype html><html><body>blob page</body></html>");
     // 按来源 IP 拦截的机场:不管什么 UA 都 403
     if (req.url === "/blocked") {
       res.statusCode = 403;

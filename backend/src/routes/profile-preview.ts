@@ -122,7 +122,10 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
   const { profile, validationWarnings } = resolution.result;
 
   // 预览走 stale-while-revalidate:有 cache(含 stale)立即返回,无 cache 的机场后台刷新、不同步等网络。
-  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true });
+  const resolved = await resolveProfile(profile, {
+    staleWhileRevalidate: true,
+    loadRemoteModules: target === "surge",
+  });
   const allWarnings = [...validationWarnings, ...resolved.warnings];
   const revalidating = (resolved.revalidating?.length ?? 0) > 0;
 
@@ -150,6 +153,7 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
     );
     return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length, revalidating });
   }
+  allWarnings.push(...resolved.surgeWarnings);
   const cfg = await loadConfig();
   const baseUrl = cfg.public_base_url ?? env.PUBLIC_BASE_URL ?? new URL(c.req.url).origin;
   const managedConfigUrl =
@@ -292,7 +296,7 @@ profilePreviewRouter.post("/:id/chain-preview", async (c) => {
   }
   const { profile, validationWarnings } = resolution.result;
 
-  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true });
+  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true, loadRemoteModules: false });
   const filteredRaw = applyNodeFilter(resolved.nodes, profile.node_filter);
   const sorted = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const uniqued = uniquifyNodeNames(sorted, [], {
@@ -386,7 +390,7 @@ profilePreviewRouter.post("/:id/flow-preview", async (c) => {
   }
   const { profile, validationWarnings } = resolution.result;
 
-  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true });
+  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true, loadRemoteModules: false });
   const filteredRaw = applyNodeFilter(resolved.nodes, profile.node_filter);
   const sorted = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const uniqued = uniquifyNodeNames(sorted, [], {

@@ -66,7 +66,7 @@ pnpm dev
 
 # 单独
 pnpm -F backend dev          # tsx watch backend/src/index.ts
-pnpm -F frontend dev         # vite dev (port 5173, /api 与 /sub 反代到 8080)
+pnpm -F frontend dev         # vite dev (port 5173, /api、/sub、/module/ 反代到 8080)
 pnpm dev:verify              # agent 验证 UI 用:临时数据 + 假订阅 + 免登录,5174 / 8081(见下文)
 
 # 校验
@@ -135,12 +135,13 @@ NodeDeck/
 │   │   ├── log-buffer.ts           # pino 行 → 结构化内存缓冲(Web UI 日志页 + SSE)
 │   │   ├── log-store.ts            # 按日 NDJSON 落盘 data/logs/,retention_days 热生效
 │   │   ├── routes/
-│   │   │   ├── sub.ts              # /sub、/sub/{clash,surge}/:profile、/sub/provider/:id/clash.yaml
+│   │   │   ├── sub.ts              # /sub、/sub/{clash,surge}/:profile、/sub/provider/:id/clash.yaml、/module/:id.sgmodule(公开,无 token)
 │   │   │   ├── api.ts              # /api/health、/api/version + 各子路由装配 + session/IP 白名单挂载点
 │   │   │   ├── entities.ts         # 各实体 CRUD
 │   │   │   ├── profile-preview.ts  # Web UI 实时预览 + 链式诊断
 │   │   │   ├── provider-actions.ts # status / :id/nodes / :id/refresh / :id/extracted-hosts / refresh-all / test-fetch
 │   │   │   ├── egress-actions.ts   # /api/egresses:public-key(NodeDeck 的 SSH 公钥)/ test(经出口探测出口 IP)
+│   │   │   ├── module-actions.ts   # /api/modules:status(安装地址 + 远程缓存状态)/ :id/refresh / test-fetch
 │   │   │   └── dashboard.ts / logs.ts / notification.ts / config.ts / import.ts / auth.ts
 │   │   ├── parsers/                # clash / surge / v2ray / uri / dedup / normalize / info-node-filter
 │   │   ├── import/                 # 整包 clash / surge 导入 + extract-hosts + dedup-pool
@@ -154,8 +155,10 @@ NodeDeck/
 │   │   │   ├── group-members.ts    # selector→节点池 + 组成员索引
 │   │   │   ├── group-refs.ts       # group.proxies 悬空引用清理
 │   │   │   ├── hosts.ts            # hosts 合并 + splitClashHosts
+│   │   │   ├── surge-module-merge.ts # Profile 引用的模块按 Surge 模块语义并入 .conf(%APPEND% / 行置顶 / {{{参数}}})
 │   │   │   └── protocol-mapping.ts # 字段映射表(权威源)
 │   │   ├── providers/              # fetcher / egress(SSH 出口)/ egress-key / fetch-proxy / scheduler(cron) / cache-store / pool / load
+│   │   ├── surge-modules/          # sgmodule 解析/生成 + 远程模块拉取缓存(data/cache/module.<id>.json)+ 安装链接
 │   │   ├── chain/apply.ts          # applyChainRules + validateChain + 诊断
 │   │   ├── notifications/          # bark / checks / service / state(订阅到期与刷新失败告警)
 │   │   ├── schemas/                # zod schema(全部实体)

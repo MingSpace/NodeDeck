@@ -811,7 +811,99 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("[URL Rewrite]");
     expect(out).toContain("^https?://(www.)?(g|google)\\.?(cn|com.hk) https://www.google.com 302");
     expect(out).toContain("[MITM]");
-    expect(out).toContain("hostname = %APPEND% *.google.cn");
+    // %APPEND% 是模块语法,并进 profile 时要展开成普通 key = value
+    expect(out).toContain("hostname = *.google.cn");
+    expect(out).not.toContain("%APPEND%");
+  });
+
+  it("merges modules with Surge module semantics: kv ops, rules on top, arguments, remote text", () => {
+    const warnings: string[] = [];
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [],
+      finalRule: { policy: "DIRECT" },
+      general: {
+        id: "g",
+        name: "g",
+        allow_lan: false,
+        mode: "rule",
+        log_level: "notify",
+        ipv6: false,
+        skip_proxy: ["127.0.0.1"],
+        mitm: { enable: true, h2: true, hostname: ["a.example.com"] },
+      } as never,
+      surgeModules: [
+        {
+          id: "local",
+          name: "Local",
+          source: "local",
+          fetch_via: [],
+          arguments: "host:b.example.com,policy",
+          content_sections: {
+            general: "skip-proxy = %APPEND% 10.0.0.0/8\nipv6 = true",
+            rule: "DOMAIN,ads.example.com,REJECT\nDOMAIN,x.example.com,{{{policy}}}",
+            mitm: "hostname = %INSERT% {{{host}}}",
+          },
+        },
+        {
+          id: "remote",
+          name: "Remote",
+          source: "remote",
+          url: "https://example.com/r.sgmodule",
+          fetch_via: [],
+          content_sections: {},
+          remote_text: [
+            "#!name=Remote",
+            "#!arguments=target:REJECT",
+            "[Rule]",
+            "DOMAIN,tracker.example.com,{{{target}}}",
+            "[Map Local]",
+            "^https://example.com/api data-type=text data=\"{}\"",
+            "[MITM]",
+            "hostname = %APPEND% c.example.com",
+            "[WireGuard wg]",
+            "private-key = x",
+          ].join("\n"),
+        },
+      ],
+      warnings,
+    });
+    const lines = out.split(/\r?\n/);
+    expect(lines).toContain("skip-proxy = 127.0.0.1, 10.0.0.0/8");
+    expect(lines).toContain("ipv6 = true");
+    expect(lines.filter((l) => l.startsWith("ipv6 ="))).toHaveLength(1);
+    // 模块规则在最前,按 surge_modules 顺序;FINAL 仍在最后
+    const ruleStart = lines.indexOf("[Rule]");
+    expect(lines.slice(ruleStart + 1, ruleStart + 4)).toEqual([
+      "DOMAIN,ads.example.com,REJECT",
+      "DOMAIN,x.example.com,",
+      "DOMAIN,tracker.example.com,REJECT",
+    ]);
+    expect(lines).toContain("[Map Local]");
+    expect(lines).toContain("hostname = b.example.com, a.example.com, c.example.com");
+    expect(lines).not.toContain("[WireGuard wg]");
+    expect(warnings).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("{{{policy}}}"),
+        expect.stringContaining("[WireGuard wg]"),
+      ]),
+    );
+  });
+
+  it("skips remote modules without content", () => {
+    const out = generateSurgeConfig({
+      profile: baseProfile(),
+      nodes: [],
+      groups: [],
+      rules: [],
+      surgeModules: [
+        { id: "r", name: "R", source: "remote", url: "https://example.com/r.sgmodule", fetch_via: [], content_sections: {} },
+      ],
+      warnings: [],
+    });
+    expect(out).not.toContain("[MITM]");
   });
 
   // 手册: `http-api = key@ip:port`,key 是不可再切分的整串密钥。含 `^` / `:` 的 key 曾被

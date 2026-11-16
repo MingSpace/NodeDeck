@@ -554,6 +554,8 @@ function extractInlineModules(text: string): SurgeModule[] {
       id: generateImportedId("module"),
       name: "Imported Module",
       description: "Module sections imported from Surge .conf",
+      source: "local",
+      fetch_via: [],
       content_sections: {
         url_rewrite: sections["URL Rewrite"],
         header_rewrite: sections["Header Rewrite"],

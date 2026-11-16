@@ -1,0 +1,5 @@
+# 指向本地假订阅服务的远程模块(假数据)
+id: remote-demo
+name: 远程示例模块
+source: remote
+url: http://127.0.0.1:18090/module.sgmodule

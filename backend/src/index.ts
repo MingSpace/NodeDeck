@@ -56,10 +56,11 @@ async function bootstrap() {
   // hono/logger 默认给状态码加 ANSI 颜色码,进 pino JSON 后变成 \u001b[32m 乱码,这里剥掉。
   app.use("*", honoLogger((message: string) => accessLogger.info(stripAnsi(message))));
 
-  // 未捕获异常:保持 500 行为不变,但 /sub 路径额外发 Bark 通知(订阅生成失败客户端只会静默拿到 5xx)。
+  // 未捕获异常:保持 500 行为不变,但客户端拉取路径(/sub、/module/)额外发 Bark 通知
+  // (订阅 / 模块生成失败客户端只会静默拿到 5xx)。
   app.onError((err, c) => {
     logger.error({ err, path: c.req.path }, "Unhandled error");
-    if (c.req.path.startsWith("/sub")) {
+    if (c.req.path.startsWith("/sub") || c.req.path.startsWith("/module/")) {
       void notifySubError(c.req.path, err instanceof Error ? err.message : String(err));
     }
     return c.text("internal server error", 500);
@@ -86,8 +87,8 @@ async function bootstrap() {
     );
     app.get("/", (c) => c.html(indexHtml));
     app.get("*", (c) => {
-      // SPA fallback for client routes
-      if (c.req.path.startsWith("/api") || c.req.path.startsWith("/sub")) {
+      // SPA fallback for client routes。/module/ 带斜杠:前端页面 /modules 仍走 SPA
+      if (c.req.path.startsWith("/api") || c.req.path.startsWith("/sub") || c.req.path.startsWith("/module/")) {
         return c.notFound();
       }
       return c.html(indexHtml);

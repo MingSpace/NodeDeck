@@ -83,7 +83,7 @@ export function useSaveEntity<T extends { id: string }>(kind: EntityKind) {
 
 // 与 backend/src/refs/entity-references.ts 的 EntityReference 保持同步
 export interface EntityReference {
-  from_kind: "profiles" | "providers" | "groups" | "generals" | "rules" | "notification";
+  from_kind: "profiles" | "providers" | "groups" | "generals" | "rules" | "modules" | "notification";
   from_id: string;
   from_name: string;
   field: string;

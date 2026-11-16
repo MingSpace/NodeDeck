@@ -15,4 +15,6 @@ rule_modules:
     policy: DIRECT
   - final: Proxy
 chain_rules: []
-surge_modules: []
+surge_modules:
+  - local-demo
+  - remote-demo

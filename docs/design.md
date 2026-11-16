@@ -26,7 +26,7 @@ data/
   providers/*.yaml         # 节点源:订阅 URL / 服务器本地文件 / 静态节点(inline 类型,含手输 / 导入节点)
   rules/*.yaml             # 规则模块
   groups/*.yaml            # 策略组模板
-  modules/*.yaml           # Surge 模块([MITM]/[URL Rewrite]/...)
+  modules/*.yaml           # Surge 模块(本地按段编辑 / 远程 .sgmodule URL),另有公开地址 /module/<id>.sgmodule
   general/*.yaml           # General + Host + SSID + DNS + MITM 预设
   profiles/*.yaml          # Profile 拼装单元
   egresses/*.yaml          # 拉订阅用的出口(SSH 登录 / 现成代理),节点源 fetch_via 按顺序引用
@@ -62,7 +62,7 @@ Providers → Fetch + Cache → Parse → Normalize (region/level/line tag)
 ## 5. 输出 Generator
 
 - `clash.ts`: 生成 Mihomo 兼容 YAML,完整 proxies/proxy-groups/rule-providers/dns/tun
-- `surge.ts`: 生成 Surge .conf,完整段顺序 + #!MANAGED-CONFIG + RULE-SET flags + REJECT 子类型 + inline ruleset + module 合并 + MITM + MTProto(Telegram 入站代理)
+- `surge.ts`: 生成 Surge .conf,完整段顺序 + #!MANAGED-CONFIG + RULE-SET flags + REJECT 子类型 + inline ruleset + module 合并(按 Surge 模块语义,见 generators/surge-module-merge.ts) + MITM + MTProto(Telegram 入站代理)
 - 共享 `protocol-mapping.ts` 作为字段映射权威源
 
 详见 [`protocol-mapping.md`](protocol-mapping.md)。

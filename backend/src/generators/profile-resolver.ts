@@ -3,6 +3,8 @@ import type { ProxyGroup } from "../schemas/proxy-group.js";
 import type { RuleSet } from "../schemas/ruleset.js";
 import type { GeneralPreset } from "../schemas/general-preset.js";
 import type { SurgeModule } from "../schemas/surge-module.js";
+import type { SurgeModuleInput } from "./surge-module-merge.js";
+import { loadRemoteModule } from "../surge-modules/remote.js";
 import type { Node } from "../schemas/node.js";
 import type { Provider } from "../schemas/provider.js";
 import { providerRepo, proxyGroupRepo, rulesetRepo, generalPresetRepo, surgeModuleRepo } from "../storage/repos.js";
@@ -35,15 +37,22 @@ export interface ResolvedProfile {
   general?: GeneralPreset;
   // general.hosts + 启用且 emit_hosts 的 provider.hosts 去重合并后的结果(两端 generator 消费)。
   hosts?: Record<string, string[]>;
-  surgeModules: SurgeModule[];
+  // 远程模块附带拉到的内容(remote_text);拉不到且无旧缓存的远程模块不在列表里
+  surgeModules: SurgeModuleInput[];
   warnings: string[];
+  // 只与 Surge 输出相关的诊断(远程模块拉取失败等);生成 Surge 时并进 warnings,Clash 不带
+  surgeWarnings: string[];
   // SWR 预览路径下,当前没有可用 cache、正在后台刷新的 provider id 列表(真实下发路径恒为空)。
   revalidating: string[];
 }
 
 export async function resolveProfile(
   profile: Profile,
-  opts: { staleWhileRevalidate?: boolean } = {},
+  opts: {
+    staleWhileRevalidate?: boolean;
+    /** 是否拉取远程 Surge 模块内容;只生成 Clash 时传 false,省掉无用的网络请求 */
+    loadRemoteModules?: boolean;
+  } = {},
 ): Promise<ResolvedProfile> {
   const warnings: string[] = [];
 
@@ -107,12 +116,13 @@ export async function resolveProfile(
     else warnings.push(`general_preset "${profile.general_preset}" not found`);
   }
 
-  const surgeModules: SurgeModule[] = [];
-  profile.surge_modules.forEach((id, i) => {
-    const entry = surgeModuleEntries[i];
-    if (entry) surgeModules.push(entry.data);
-    else warnings.push(`surge_module "${id}" not found`);
-  });
+  const surgeWarnings: string[] = [];
+  const surgeModules = await resolveSurgeModules(
+    profile.surge_modules,
+    surgeModuleEntries.map((e) => e?.data ?? null),
+    opts.loadRemoteModules !== false,
+    surgeWarnings,
+  );
 
   // hosts 合并:general.hosts → 各启用 provider 的手动 hosts → 各 provider 上游自动解析的 hosts。
   // emit_hosts 关闭的 provider 两类都不带出。自动解析结果随刷新写入 provider cache
@@ -143,6 +153,7 @@ export async function resolveProfile(
     hosts,
     surgeModules,
     warnings,
+    surgeWarnings,
     // mock 测试可能不返回该字段,容错为空数组。
     revalidating: pool.revalidating ?? [],
   };
@@ -165,4 +176,37 @@ async function quotaExcludedIds(providers: Provider[], warnings: string[]): Prom
     if (statuses[i].excluded) warnings.push(describeQuotaExclusion(p.name, statuses[i]));
   });
   return excluded;
+}
+
+/**
+ * 远程模块并发拉内容(带 TTL 缓存,见 surge-modules/remote.ts)。拉取失败但有旧内容 → 用旧内容,
+ * 只记日志;完全没有内容 → 跳过并告警。顺序与 profile.surge_modules 一致。
+ */
+async function resolveSurgeModules(
+  ids: string[],
+  modules: Array<SurgeModule | null>,
+  loadRemote: boolean,
+  warnings: string[],
+): Promise<SurgeModuleInput[]> {
+  const loaded = await Promise.all(
+    modules.map(async (m): Promise<SurgeModuleInput | null> => {
+      if (!m || m.source !== "remote" || !loadRemote) return m;
+      const cache = await loadRemoteModule(m);
+      return { ...m, remote_text: cache.text };
+    }),
+  );
+  const out: SurgeModuleInput[] = [];
+  ids.forEach((id, i) => {
+    const m = loaded[i];
+    if (!m) {
+      warnings.push(`surge_module "${id}" not found`);
+      return;
+    }
+    if (m.source === "remote" && loadRemote && m.remote_text === undefined) {
+      warnings.push(`Surge 模块 "${m.name}" 远程内容拉取失败且没有缓存,本次未并入`);
+      return;
+    }
+    out.push(m);
+  });
+  return out;
 }

@@ -57,7 +57,7 @@ async function profileHealth(profile: Profile) {
     general: resolved.general,
   };
   const clashWarnings = [...resolved.warnings];
-  const surgeWarnings = [...resolved.warnings];
+  const surgeWarnings = [...resolved.warnings, ...resolved.surgeWarnings];
   generateClashConfig({ ...base, warnings: clashWarnings });
   // managed_config_url 只影响产物头部,不产生 warning,这里不必拼真实地址
   generateSurgeConfig({ ...base, surgeModules: resolved.surgeModules, warnings: surgeWarnings });

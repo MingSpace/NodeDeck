@@ -1,14 +1,20 @@
-import { Puzzle } from "lucide-react";
+import { Cloud, FilePen, Puzzle } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { YamlEditor } from "@/components/yaml-editor";
 import { LabeledField, InfoHint } from "@/components/config-fields";
+import { RemoteModuleFields } from "./remote-source";
 
+// 与 backend/src/schemas/surge-module.ts 保持同步
 export interface SurgeModuleData {
   id: string;
   name: string;
   description?: string;
+  /** local = 在这里按段编辑;remote = 内容来自 url */
+  source?: "local" | "remote";
+  url?: string;
+  fetch_via?: string[];
   arguments?: string;
   requirement?: string;
   content_sections: {
@@ -29,7 +35,7 @@ interface Props {
   update: (patch: Partial<SurgeModuleData>) => void;
 }
 
-const SECTION_LABELS: Array<{ key: keyof SurgeModuleData["content_sections"]; label: string }> = [
+export const LOCAL_SECTION_LABELS: Array<{ key: keyof SurgeModuleData["content_sections"]; label: string }> = [
   { key: "general", label: "General" },
   { key: "host", label: "Host" },
   { key: "rule", label: "Rule" },
@@ -52,16 +58,20 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
   };
 
   const defaultTab =
-    SECTION_LABELS.find(({ key }) => !!data.content_sections[key])?.key ??
-    SECTION_LABELS[0].key;
+    LOCAL_SECTION_LABELS.find(({ key }) => !!data.content_sections?.[key])?.key ??
+    LOCAL_SECTION_LABELS[0].key;
+  const source = data.source ?? "local";
 
   return (
     <div className="space-y-4">
       <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
         <Puzzle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
         <span>
-          Surge 模块 · 打包 General / 规则 / 重写 / 脚本 / MITM 等片段,供 Profile 引用后注入 .conf
-          <InfoHint>各段对应 Surge 模块内的 [General] / [Rule] / [URL Rewrite] / [Script] / [MITM] 等章节。仅 Surge 输出生效。</InfoHint>
+          Surge 模块 · 可被 Profile 引用(并进 .conf),也可以单独在设备上安装(列表里的「安装到 Surge」)
+          <InfoHint>
+            并进 Profile 时按 Surge 模块语义合并:[General] / [MITM] 支持 %APPEND% / %INSERT%,规则等行排在
+            Profile 原有内容之前,{"{{{参数}}}"} 用 #!arguments 的默认值。仅 Surge 输出生效。
+          </InfoHint>
         </span>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -80,6 +90,41 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
         />
       </Field>
 
+      <Field label="内容来源">
+        <Tabs value={source} onValueChange={(v) => update({ source: v as "local" | "remote" })}>
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="local" className="gap-1.5 text-xs">
+              <FilePen className="h-3.5 w-3.5" />
+              在这里编辑
+            </TabsTrigger>
+            <TabsTrigger value="remote" className="gap-1.5 text-xs">
+              <Cloud className="h-3.5 w-3.5" />
+              远程 URL
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+      </Field>
+
+      {source === "remote" ? (
+        <RemoteModuleFields data={data} update={update} />
+      ) : (
+        <LocalModuleFields data={data} update={update} setSection={setSection} defaultTab={defaultTab} />
+      )}
+    </div>
+  );
+}
+
+function LocalModuleFields({
+  data,
+  update,
+  setSection,
+  defaultTab,
+}: Props & {
+  setSection: (key: keyof SurgeModuleData["content_sections"], value: string) => void;
+  defaultTab: keyof SurgeModuleData["content_sections"];
+}) {
+  return (
+    <>
       <div className="grid grid-cols-2 gap-3">
         <Field
           label="arguments (#!arguments=)"
@@ -91,8 +136,8 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
           />
         </Field>
         <Field
-          label="requirement (#!REQUIREMENT)"
-          hint="模块生效的最低核心版本要求,对应 #!REQUIREMENT,如 CORE_VERSION>=22。"
+          label="requirement (#!requirement=)"
+          hint="模块生效条件,如 CORE_VERSION>=22 或 SYSTEM = 'iOS'(iOS 5.10.0+ / Mac 5.6.0+)。只在设备上安装模块时生效,并进 Profile 时不判断。"
         >
           <Input
             value={data.requirement ?? ""}
@@ -105,12 +150,15 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
       <div>
         <Label className="flex items-center gap-1.5 text-xs">
           Content Sections (按段编辑;留空表示该段不输出)
-          <InfoHint>标题带小圆点表示该段已有内容。每段直接写 Surge 模块该章节的原文(INI 风格)。</InfoHint>
+          <InfoHint>
+            标题带小圆点表示该段已有内容。每段直接写 Surge 模块该章节的原文(模块语法,如 hostname = %APPEND%
+            example.com)。
+          </InfoHint>
         </Label>
         <Tabs defaultValue={defaultTab} className="mt-2">
           <TabsList className="flex-wrap h-auto">
-            {SECTION_LABELS.map(({ key, label }) => {
-              const has = !!data.content_sections[key];
+            {LOCAL_SECTION_LABELS.map(({ key, label }) => {
+              const has = !!data.content_sections?.[key];
               return (
                 <TabsTrigger key={key} value={key} className="text-xs">
                   {label}
@@ -119,10 +167,10 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
               );
             })}
           </TabsList>
-          {SECTION_LABELS.map(({ key }) => (
+          {LOCAL_SECTION_LABELS.map(({ key }) => (
             <TabsContent key={key} value={key}>
               <YamlEditor
-                value={data.content_sections[key] ?? ""}
+                value={data.content_sections?.[key] ?? ""}
                 onChange={(v) => setSection(key, v)}
                 language="ini"
                 height={280}
@@ -131,7 +179,7 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
           ))}
         </Tabs>
       </div>
-    </div>
+    </>
   );
 }
 

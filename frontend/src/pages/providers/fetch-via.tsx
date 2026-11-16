@@ -78,25 +78,7 @@ export function FetchViaField({
   update: (patch: Partial<ProviderData>) => void;
 }) {
   const egresses = useEntityList<EgressData>("egresses");
-  const nameOf = useRouteNames();
-  const routes = resolveFetchRoutes(data.fetch_via);
-  const options = (egresses.data?.items ?? [])
-    .map((e) => ({ id: e.id, label: e.name, hint: egressAddress(e) }))
-    .filter((o) => !routes.includes(o.id));
   const noEgress = egresses.isSuccess && egresses.data.items.length === 0;
-
-  // 直连总在列表里,存回去时只剩直连就存空,保持 yaml 干净
-  const setRoutes = (next: string[]) => update({ fetch_via: next.length === 1 ? [] : next });
-  // 新线路默认插在直连前面(直连在最后兜底时);直连被挪到中间就追加到末尾
-  const add = (id: string) =>
-    setRoutes(
-      routes.at(-1) === DIRECT_ROUTE ? [...routes.slice(0, -1), id, DIRECT_ROUTE] : [...routes, id],
-    );
-  const move = (i: number, delta: number) => {
-    const next = [...routes];
-    [next[i], next[i + delta]] = [next[i + delta], next[i]];
-    setRoutes(next);
-  };
 
   const current: TestFetchInput = {
     url: data.url ?? "",
@@ -129,73 +111,7 @@ export function FetchViaField({
         </Button>
       </div>
 
-      <ol className="mt-1.5 rounded-md border divide-y text-xs">
-        {routes.map((route, i) => {
-          const name = nameOf(route);
-          const direct = route === DIRECT_ROUTE;
-          return (
-            <li key={route} className="flex items-center gap-2 px-2.5 py-1.5">
-              <span className="w-4 text-center tabular-nums text-muted-foreground">{i + 1}</span>
-              <span className={cn("min-w-0 truncate", !name && "text-destructive")}>
-                {name ?? `${route}(出口已删除)`}
-              </span>
-              {direct && <span className="shrink-0 text-muted-foreground/70">固定兜底</span>}
-              <div className="ml-auto flex items-center shrink-0">
-                <Button type="button" variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => move(i, -1)} aria-label="上移">
-                  <ArrowUp className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  disabled={i === routes.length - 1}
-                  onClick={() => move(i, 1)}
-                  aria-label="下移"
-                >
-                  <ArrowDown className="h-3.5 w-3.5" />
-                </Button>
-                {direct ? (
-                  // 直连不可移除,留同宽占位让上下移按钮对齐
-                  <span className="h-6 w-6" aria-hidden />
-                ) : (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6"
-                    onClick={() => setRoutes(routes.filter((r) => r !== route))}
-                    aria-label="移除"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-              </div>
-            </li>
-          );
-        })}
-        {options.length > 0 && (
-          <li className="px-1.5 py-1">
-            {/* value 固定为空:选完立刻追加,下拉框回到占位状态 */}
-            <Select value="" onValueChange={add}>
-              <SelectTrigger className="h-7 border-0 shadow-none text-xs text-muted-foreground focus:ring-0">
-                <span className="flex items-center gap-1.5">
-                  <Plus className="h-3.5 w-3.5" />
-                  <SelectValue placeholder="添加出口" />
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                {options.map((o) => (
-                  <SelectItem key={o.id} value={o.id}>
-                    <span>{o.label}</span>
-                    <span className="ml-2 font-mono text-xs text-muted-foreground">{o.hint}</span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </li>
-        )}
-      </ol>
+      <FetchRoutesEditor value={data.fetch_via ?? []} onChange={(fetch_via) => update({ fetch_via })} />
       <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
         机场拦了服务器的 IP 时(常见是直连 403),借出口机的网络拉订阅。从上往下试,前一条失败才换下一条;
         「服务器直连」固定在列表里不能移除,可以上下挪。只影响拉订阅,不影响客户端连节点。
@@ -238,6 +154,102 @@ export function FetchViaField({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 拉取线路列表(出口 + 固定兜底的服务器直连):排序 / 移除 / 添加出口。
+ * 节点源与远程 Surge 模块共用,语义同 backend resolveFetchRoutes。
+ */
+export function FetchRoutesEditor({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
+  const egresses = useEntityList<EgressData>("egresses");
+  const nameOf = useRouteNames();
+  const routes = resolveFetchRoutes(value);
+  const options = (egresses.data?.items ?? [])
+    .map((e) => ({ id: e.id, label: e.name, hint: egressAddress(e) }))
+    .filter((o) => !routes.includes(o.id));
+
+  // 直连总在列表里,存回去时只剩直连就存空,保持 yaml 干净
+  const setRoutes = (next: string[]) => onChange(next.length === 1 ? [] : next);
+  // 新线路默认插在直连前面(直连在最后兜底时);直连被挪到中间就追加到末尾
+  const add = (id: string) =>
+    setRoutes(
+      routes.at(-1) === DIRECT_ROUTE ? [...routes.slice(0, -1), id, DIRECT_ROUTE] : [...routes, id],
+    );
+  const move = (i: number, delta: number) => {
+    const next = [...routes];
+    [next[i], next[i + delta]] = [next[i + delta], next[i]];
+    setRoutes(next);
+  };
+
+  return (
+    <ol className="mt-1.5 rounded-md border divide-y text-xs">
+      {routes.map((route, i) => {
+        const name = nameOf(route);
+        const direct = route === DIRECT_ROUTE;
+        return (
+          <li key={route} className="flex items-center gap-2 px-2.5 py-1.5">
+            <span className="w-4 text-center tabular-nums text-muted-foreground">{i + 1}</span>
+            <span className={cn("min-w-0 truncate", !name && "text-destructive")}>
+              {name ?? `${route}(出口已删除)`}
+            </span>
+            {direct && <span className="shrink-0 text-muted-foreground/70">固定兜底</span>}
+            <div className="ml-auto flex items-center shrink-0">
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" disabled={i === 0} onClick={() => move(i, -1)} aria-label="上移">
+                <ArrowUp className="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                disabled={i === routes.length - 1}
+                onClick={() => move(i, 1)}
+                aria-label="下移"
+              >
+                <ArrowDown className="h-3.5 w-3.5" />
+              </Button>
+              {direct ? (
+                // 直连不可移除,留同宽占位让上下移按钮对齐
+                <span className="h-6 w-6" aria-hidden />
+              ) : (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                  onClick={() => setRoutes(routes.filter((r) => r !== route))}
+                  aria-label="移除"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          </li>
+        );
+      })}
+      {options.length > 0 && (
+        <li className="px-1.5 py-1">
+          {/* value 固定为空:选完立刻追加,下拉框回到占位状态 */}
+          <Select value="" onValueChange={add}>
+            <SelectTrigger className="h-7 border-0 shadow-none text-xs text-muted-foreground focus:ring-0">
+              <span className="flex items-center gap-1.5">
+                <Plus className="h-3.5 w-3.5" />
+                <SelectValue placeholder="添加出口" />
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {options.map((o) => (
+                <SelectItem key={o.id} value={o.id}>
+                  <span>{o.label}</span>
+                  <span className="ml-2 font-mono text-xs text-muted-foreground">{o.hint}</span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </li>
+      )}
+    </ol>
   );
 }
 

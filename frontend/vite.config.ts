@@ -17,6 +17,8 @@ export default defineConfig({
     proxy: {
       "/api": backend,
       "/sub": backend,
+      // 模块安装地址 /module/<id>.sgmodule;带斜杠,不会吞掉前端页面 /modules
+      "/module/": backend,
     },
   },
   build: {

@@ -47,6 +47,14 @@ export function cachePath(providerId: string): string {
 }
 
 /**
+ * 远程 Surge 模块拉下来的内容缓存。与节点源 cache 同目录,用 `module.` 前缀区分 ——
+ * id 只允许 [A-Za-z0-9_-],不会与节点源的 `<id>.json` 撞名。
+ */
+export function moduleCachePath(moduleId: string): string {
+  return dataPath("cache", `module.${moduleId}.json`);
+}
+
+/**
  * 日志落盘目录。不放进 SUBDIRS:它不是实体目录(没有 repo / 不参与 chokidar 缓存失效),
  * 由 log-store 在首次写入时按需创建。
  */

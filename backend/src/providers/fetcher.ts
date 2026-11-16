@@ -296,3 +296,60 @@ function redactSubscriptionUrl(url: string): string {
     return "(invalid url)";
   }
 }
+
+export interface FetchTextOptions {
+  userAgent: string;
+  timeoutMs?: number;
+  loadEgress?: (id: string) => Promise<Egress | null>;
+  /** 拿到 2xx 内容后的检查:返回 null = 可用;返回字符串 = 不可用的原因,换下一条线路。 */
+  check?: (text: string) => string | null;
+  /** 日志上下文(如 { moduleId }) */
+  logContext?: Record<string, unknown>;
+}
+
+/**
+ * 通用的「按 fetch_via 线路顺序拉一段文本」:远程 Surge 模块等非订阅资源用。
+ * 与 fetchProviderContent 共用线路 / 出口 / 大小上限,但只用一个 UA、不解析节点。
+ * 全部线路失败时抛错,错误信息按线路拼接。
+ */
+export async function fetchTextViaRoutes(
+  url: string,
+  fetchVia: readonly string[] | undefined,
+  opts: FetchTextOptions,
+): Promise<{ text: string; fetched_at: number }> {
+  const routes = resolveFetchRoutes(fetchVia ? [...fetchVia] : []);
+  const loadEgress = opts.loadEgress ?? defaultLoadEgress;
+  const timeoutMs = opts.timeoutMs ?? FETCH_TIMEOUT_MS;
+  const logUrl = redactSubscriptionUrl(url);
+  const failures: string[] = [];
+
+  for (const route of routes) {
+    let label = route === DIRECT_ROUTE ? "直连" : `出口 ${route}`;
+    try {
+      let attempt: FetchOnceResult;
+      if (route === DIRECT_ROUTE) {
+        attempt = await fetchOnce(globalThis.fetch, url, opts.userAgent, timeoutMs);
+      } else {
+        const egress = await loadEgress(route);
+        if (!egress) throw new Error("不存在(可能已删除)");
+        label = `经 ${egress.name}`;
+        const routed = openEgressFetch(egress);
+        try {
+          attempt = await fetchOnce(routed.fetch, url, opts.userAgent, timeoutMs);
+        } finally {
+          await routed.close().catch(() => undefined);
+        }
+      }
+      if (!attempt.ok) throw new Error(`HTTP ${attempt.status}`);
+      const reason = opts.check?.(attempt.text) ?? null;
+      if (reason) throw new Error(reason);
+      return { text: attempt.text, fetched_at: Date.now() };
+    } catch (err) {
+      const reason = describeFetchError(err);
+      failures.push(`${label}: ${reason}`);
+      logger.warn({ ...opts.logContext, url: logUrl, route, reason }, "Text fetch route failed");
+    }
+  }
+  if (routes.length === 1) throw new Error(failures[0].replace(/^直连: /, ""));
+  throw new Error(failures.join(";"));
+}
