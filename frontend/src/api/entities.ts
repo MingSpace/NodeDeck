@@ -81,6 +81,32 @@ export function useSaveEntity<T extends { id: string }>(kind: EntityKind) {
   });
 }
 
+// 与 backend/src/refs/rename-entity.ts RENAMEABLE_KINDS 保持同步。Profile 不在内:id 写在订阅链接里
+export const RENAMEABLE_KINDS: readonly EntityKind[] = ["providers", "rules", "groups", "generals", "modules", "egresses"];
+
+// 与 backend/src/refs/rename-entity.ts RenameResult 保持同步
+export interface RenameResult {
+  old_id: string;
+  new_id: string;
+  updated: { kind: EntityReference["from_kind"]; id: string; name: string; fields: string[] }[];
+}
+
+/** 改 id 并同步改写所有按 id 引用它的地方(POST /api/entities/:kind/:id/rename) */
+export function useRenameEntity(kind: EntityKind) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ oldId, newId }: { oldId: string; newId: string }) =>
+      api.post<RenameResult>(`/api/entities/${kind}/${encodeURIComponent(oldId)}/rename`, { new_id: newId }),
+    // 引用方可能是任意类型(Profile / 策略组 / 通知设置...),整体失效
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["entities"] });
+      void qc.invalidateQueries({ queryKey: ["providers"] });
+      void qc.invalidateQueries({ queryKey: ["dashboard"] });
+      void qc.invalidateQueries({ queryKey: ["notification"] });
+    },
+  });
+}
+
 // 与 backend/src/refs/entity-references.ts 的 EntityReference 保持同步
 export interface EntityReference {
   from_kind: "profiles" | "providers" | "groups" | "generals" | "rules" | "modules" | "notification";

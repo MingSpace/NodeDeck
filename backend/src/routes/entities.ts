@@ -26,6 +26,8 @@ import {
   type EntityReference,
 } from "../refs/entity-references.js";
 import { logger } from "../logger.js";
+import { idSchema } from "../schemas/common.js";
+import { isRenameableKind, renameEntity, RenameError } from "../refs/rename-entity.js";
 
 interface EntityKindDef {
   repo: Repo<ZodTypeAny, { id: string } & Record<string, unknown>>;
@@ -171,6 +173,30 @@ entitiesRouter.post("/:kind", async (c) => {
   maybeAutoRefreshProvider(kind, true, saved.data);
   maybeAutoFetchModule(kind, saved.data);
   return c.json(saved.data, 201);
+});
+
+// 改 id(文件主键)并同步改写所有按 id 引用它的地方。PUT 不允许改 id(会留下悬空引用),要改走这里。
+entitiesRouter.post("/:kind/:id/rename", async (c) => {
+  const kind = c.req.param("kind");
+  if (!KINDS[kind]) return c.json({ error: "unknown entity kind" }, 404);
+  if (!isRenameableKind(kind)) {
+    // 前端 api client 优先展示 error 字段,所以直接放中文原因
+    const message =
+      kind === "profiles" ? "Profile 的 id 写在各设备的订阅链接里,改了会让所有订阅失效,不支持改名" : "该类型不支持改 id";
+    return c.json({ error: message }, 400);
+  }
+  const body = (await c.req.json().catch(() => null)) as { new_id?: unknown } | null;
+  const parsed = idSchema.safeParse(typeof body?.new_id === "string" ? body.new_id.trim() : body?.new_id);
+  if (!parsed.success) {
+    return c.json({ error: "新 id 只能包含字母、数字、下划线、短横线,长度 1~64" }, 400);
+  }
+  try {
+    const result = await renameEntity(kind, c.req.param("id"), parsed.data);
+    return c.json(result);
+  } catch (err) {
+    if (err instanceof RenameError) return c.json({ error: err.message }, err.status);
+    throw err;
+  }
 });
 
 entitiesRouter.delete("/:kind/:id", async (c) => {

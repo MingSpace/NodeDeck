@@ -13,6 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { YamlEditor } from "./yaml-editor";
 import {
   useSaveEntity,
+  useRenameEntity,
+  RENAMEABLE_KINDS,
   ENTITY_KIND_LABELS,
   entityDisplayName,
   withKindLabel,
@@ -92,10 +94,14 @@ export function EntityVisualDialog<T extends { id: string }>({
   const [mode, setMode] = useState<Mode>("visual");
   const [error, setError] = useState<string | null>(null);
   const save = useSaveEntity<T>(kind);
-  // 编辑现有条目时记录原始 id;保存前若发现 id 被改过则拒绝。
-  // 这样避免后端按新 id 写文件、留下旧文件,造成 Profile 引用悬空。
+  const rename = useRenameEntity(kind);
+  // 编辑现有条目时记录原始 id。id 被改过:支持改名的类型走 rename 接口(后端同步改写所有引用);
+  // 不支持的(Profile)拒绝,避免后端按新 id 写文件、留下旧文件,造成引用悬空。
   const isEdit = !!entity;
   const originalId = entity?.id ?? null;
+  const canRename = RENAMEABLE_KINDS.includes(kind);
+  const pendingId = mode === "visual" ? data?.id?.trim() : undefined;
+  const idChanged = isEdit && !!originalId && !!pendingId && pendingId !== originalId;
 
   useEffect(() => {
     if (!open) return;
@@ -158,6 +164,25 @@ export function EntityVisualDialog<T extends { id: string }>({
     }
     // 保存前同样归一化,避免用户在 yaml 模式直接保存 `proxies:` 空标量时被后端 zod 拒收
     target = normalizeFromTemplate(target, templateValue);
+    target = { ...target, id: String(target.id).trim() };
+    if (isEdit && originalId && target.id !== originalId && canRename) {
+      try {
+        // 先按原 id 保存内容改动,再改名;改名失败时内容改动已落盘,只是 id 没变
+        await save.mutateAsync({ ...target, id: originalId });
+        const res = await rename.mutateAsync({ oldId: originalId, newId: target.id });
+        toast({
+          title: "已保存并改名",
+          description:
+            `${originalId} → ${res.new_id}` +
+            (res.updated.length > 0 ? `,同步更新了 ${res.updated.map((u) => u.name).join("、")} 里的引用` : ""),
+          variant: "success",
+        });
+        onOpenChange(false);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+      return;
+    }
     if (isEdit && originalId && target.id !== originalId) {
       setError(
         `id 不可修改(原 id:${originalId},现 id:${target.id})。\n` +
@@ -210,12 +235,19 @@ export function EntityVisualDialog<T extends { id: string }>({
             {error}
           </div>
         )}
+        {idChanged && canRename && !error && (
+          <div className="rounded-md bg-amber-500/10 p-2 text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+            保存时会把 id 从 <code className="font-mono">{originalId}</code> 改为{" "}
+            <code className="font-mono">{pendingId}</code>,所有按 id 引用它的地方(Profile、策略组等)会自动同步。
+            {kind === "modules" && " 已经装到设备上的模块链接会失效(链接里含 id),需要重新复制安装。"}
+          </div>
+        )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             取消
           </Button>
-          <Button onClick={onSave} disabled={save.isPending}>
-            {save.isPending ? "保存中..." : "保存"}
+          <Button onClick={onSave} disabled={save.isPending || rename.isPending}>
+            {save.isPending || rename.isPending ? "保存中..." : idChanged && canRename ? "保存并改名" : "保存"}
           </Button>
         </DialogFooter>
       </DialogContent>

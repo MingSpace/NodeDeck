@@ -20,7 +20,13 @@ vi.mock("../../src/refs/entity-references.js", async (importOriginal) => {
   return { ...actual, findEntityReferences: vi.fn() };
 });
 
+vi.mock("../../src/refs/rename-entity.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../src/refs/rename-entity.js")>();
+  return { ...actual, renameEntity: vi.fn() };
+});
+
 import { providerRepo, rulesetRepo, proxyGroupRepo, profileRepo } from "../../src/storage/repos.js";
+import { renameEntity, RenameError } from "../../src/refs/rename-entity.js";
 import { refreshProvider } from "../../src/providers/load.js";
 import { findEntityReferences, type EntityReference } from "../../src/refs/entity-references.js";
 import { entitiesRouter } from "../../src/routes/entities.js";
@@ -488,5 +494,34 @@ describe("GET /api/entities/:kind/:id/references", () => {
   it("unknown kind → 404", async () => {
     const res = await buildApp().request("/api/entities/bogus/x/references");
     expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /:kind/:id/rename", () => {
+  const app = new Hono();
+  app.route("/api/entities", entitiesRouter);
+  const mockedRename = renameEntity as unknown as ReturnType<typeof vi.fn>;
+  const post = (path: string, body: unknown) =>
+    app.request(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+  it("refuses profiles (id is baked into subscription URLs)", async () => {
+    const res = await post("/api/entities/profiles/p/rename", { new_id: "p2" });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("订阅链接");
+    expect(mockedRename).not.toHaveBeenCalled();
+  });
+
+  it("validates the new id, trims it, and passes RenameError status through", async () => {
+    expect((await post("/api/entities/modules/m/rename", { new_id: "bad id!" })).status).toBe(400);
+
+    mockedRename.mockResolvedValueOnce({ kind: "modules", old_id: "m", new_id: "rewrite-google", updated: [] });
+    const ok = await post("/api/entities/modules/m/rename", { new_id: "  rewrite-google " });
+    expect(ok.status).toBe(200);
+    expect(mockedRename).toHaveBeenLastCalledWith("modules", "m", "rewrite-google");
+
+    mockedRename.mockRejectedValueOnce(new RenameError(409, "id「x」已被占用"));
+    const taken = await post("/api/entities/modules/m/rename", { new_id: "x" });
+    expect(taken.status).toBe(409);
+    expect(((await taken.json()) as { error: string }).error).toBe("id「x」已被占用");
   });
 });
