@@ -10,7 +10,8 @@ import { EmptyState } from "@/components/empty-state";
 import { DeleteEntityDialog, type DeleteTarget } from "@/components/delete-entity-dialog";
 import { ProfileCard } from "./profile-card";
 import { AirportCard } from "./airport-card";
-import type { AirportItem, Profile, ProfileHealth } from "./types";
+import { PoolPanel, PullsPanel } from "./usage-panels";
+import type { AirportItem, PoolSummary, Profile, ProfileHealth, PullSummary } from "./types";
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -32,6 +33,16 @@ export function DashboardPage() {
   });
   const airportById = new Map((airports.data?.items ?? []).map((a) => [a.id, a]));
   const healthById = new Map((health.data?.items ?? []).map((h) => [h.id, h]));
+  const pulls = useQuery<PullSummary>({
+    queryKey: ["dashboard", "pulls"],
+    queryFn: () => api.get("/api/dashboard/pulls"),
+    refetchInterval: 60_000,
+  });
+  const pool = useQuery<PoolSummary>({
+    queryKey: ["dashboard", "pool"],
+    queryFn: () => api.get("/api/dashboard/pool"),
+    refetchInterval: 60_000,
+  });
 
   const onCreateProfile = async () => {
     setCreating(true);
@@ -117,12 +128,24 @@ export function DashboardPage() {
               profile={p}
               updatedAt={profileList.data?.meta?.[p.id]?.updated_at}
               health={healthById.get(p.id)}
+              pulls={pulls.data?.profiles[p.id]}
               airportById={airportById}
               onDelete={() => setDeleteTarget({ id: p.id, name: p.name })}
             />
           ))}
         </div>
       </section>
+
+      {/* 没有 Profile 时没人能拉订阅,也就没什么可统计的,整块不显示 */}
+      {!!profileList.data?.items.length && (
+        <section className="mb-10">
+          <h2 className="mb-3 text-lg font-semibold">使用情况</h2>
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+            <PullsPanel data={pulls.data} profiles={profileList.data.items} />
+            <PoolPanel data={pool.data} />
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="mb-3">

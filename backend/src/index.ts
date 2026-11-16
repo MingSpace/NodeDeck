@@ -15,6 +15,7 @@ import { mountApiRoutes } from "./routes/api.js";
 import { mountSubRoute } from "./routes/sub.js";
 import { notifySubError } from "./notifications/service.js";
 import { ensureSessionSecret } from "./auth/secret.js";
+import { flushPullStats, initPullStats } from "./stats/pull-stats.js";
 import {
   providerRepo,
   profileRepo,
@@ -45,6 +46,9 @@ async function bootstrap() {
 
   // 注意要在 ensureDataDirs 之后调用,首次运行时需要写 data/secret.key
   ensureSessionSecret();
+
+  // 订阅拉取统计:先读回磁盘上的计数,之后每分钟落盘一次
+  await initPullStats();
 
   const app = new Hono();
 
@@ -119,7 +123,7 @@ function installShutdownHooks(): void {
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.once(signal, () => {
       void Promise.race([
-        flushLogStore(),
+        Promise.all([flushLogStore(), flushPullStats()]),
         new Promise((resolve) => setTimeout(resolve, FLUSH_TIMEOUT_MS)),
       ]).finally(() => process.exit(0));
     });

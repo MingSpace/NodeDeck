@@ -2,12 +2,14 @@
 // - 每次从 seed/ 复制一份全新数据到临时目录,不碰 backend/data
 // - 后端 8081 + 前端 5174(常驻 dev 是 8080 / 5173),本机回环请求免登录(DEV_AUTH_BYPASS)
 // - 顺带起假订阅服务(18090),seed 里的节点源都指向它,不连任何真实机场
+// - 拉取统计按启动时间现算(fake-stats.mjs),仪表盘的「使用情况」一打开就有数据
 import { spawn } from "node:child_process";
 import { cpSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { startFakeSub } from "./fake-sub.mjs";
+import { writeFakeStats } from "./fake-stats.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "../..");
@@ -18,6 +20,7 @@ const FAKE_SUB_PORT = 18090;
 
 rmSync(dataDir, { recursive: true, force: true });
 cpSync(join(here, "seed"), dataDir, { recursive: true });
+writeFakeStats(dataDir);
 console.log(`[dev-verify] data: ${dataDir}`);
 
 await startFakeSub(FAKE_SUB_PORT);

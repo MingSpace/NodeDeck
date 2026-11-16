@@ -43,8 +43,9 @@ export function startWatcher(): void {
   watcher = chokidar.watch(env.DATA_DIR, {
     persistent: true,
     ignoreInitial: true,
-    // logs/ 是高频追加写的 NDJSON,交给 chokidar 只会白白触发 awaitWriteFinish 轮询。
-    ignored: [/node_modules/, /\.git/, /\/cache\//, /\/logs\//],
+    // logs/ 是高频追加写的 NDJSON、stats/ 是每分钟落盘的统计,都是程序自读自写,
+    // 交给 chokidar 只会白白触发 awaitWriteFinish 轮询。
+    ignored: [/node_modules/, /\.git/, /\/cache\//, /\/logs\//, /\/stats\//],
     awaitWriteFinish: { stabilityThreshold: 250, pollInterval: 100 },
   });
 

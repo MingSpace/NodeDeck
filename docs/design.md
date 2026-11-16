@@ -34,6 +34,7 @@ data/
   secret.key               # Session 签名密钥(首启生成,0600)
   cache/<provider>.json    # 订阅源 fetch 缓存(节点 + Subscription-UserInfo)
   logs/YYYY-MM-DD.log      # 进程日志(NDJSON,按本地日期切分,保留天数见 config.yaml 的 logs.retention_days)
+  stats/pulls.json         # 订阅拉取统计(按天的拉取次数 + 最近拉过的客户端,保留 90 天;程序每分钟落盘一次)
 ```
 
 > 注: 手动添加节点 / 从其它客户端导入的节点 一律走 `type: inline` Provider —

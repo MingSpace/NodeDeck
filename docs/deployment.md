@@ -163,11 +163,11 @@ Caddy 会自动申请 Let's Encrypt 证书。
 cd data
 # config.yaml 的 password_hash、secret.key、egress_ed25519(SSH 出口私钥)都是敏感信息
 git init
-git add . ':!cache' ':!logs' ':!config.yaml' ':!secret.key' ':!egress_ed25519'
+git add . ':!cache' ':!logs' ':!stats' ':!config.yaml' ':!secret.key' ':!egress_ed25519'
 git commit -m "config snapshot"
 ```
 
-> `data/cache/` 是订阅源缓存、`data/logs/` 是进程日志,都不需要备份。`data/egresses/` 里用密码登录的出口带明文密码,别推到公开仓库。
+> `data/cache/` 是订阅源缓存、`data/logs/` 是进程日志、`data/stats/` 是仪表盘的拉取统计,都不需要备份。`data/egresses/` 里用密码登录的出口带明文密码,别推到公开仓库。
 
 ---
 

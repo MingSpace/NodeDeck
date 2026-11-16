@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import { Copy, Edit, MoreHorizontal, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { UpdatedAt } from "@/components/refreshed-at";
+import { UpdatedAt, RefreshedAt } from "@/components/refreshed-at";
 import { toast } from "@/components/ui/toast";
 import { ProfilePipeline, type PipelineStage } from "@/components/profile-pipeline";
 import {
@@ -12,18 +12,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { api } from "@/lib/api";
-import type { AirportItem, Profile, ProfileHealth } from "./types";
+import type { AirportItem, Profile, ProfileHealth, ProfilePulls } from "./types";
 
 export function ProfileCard({
   profile,
   updatedAt,
   health,
+  pulls,
   airportById,
   onDelete,
 }: {
   profile: Profile;
   updatedAt?: number;
   health?: ProfileHealth;
+  pulls?: ProfilePulls;
   airportById: Map<string, AirportItem>;
   onDelete: () => void;
 }) {
@@ -41,6 +43,11 @@ export function ProfileCard({
               {profile.name}
             </Link>
             <UpdatedAt ts={updatedAt} className="text-xs text-muted-foreground" />
+            {pulls?.last_pull_at !== undefined && (
+              <span className="text-xs text-muted-foreground">
+                近 7 天拉取 {pulls.last7} 次 · 上次 <RefreshedAt ts={pulls.last_pull_at} />
+              </span>
+            )}
           </div>
           {profile.description && <p className="mt-1 text-sm text-muted-foreground">{profile.description}</p>}
         </div>

@@ -6,6 +6,7 @@ import { resolveProfile } from "../generators/profile-resolver.js";
 import { generateClashConfig } from "../generators/clash.js";
 import { generateSurgeConfig } from "../generators/surge.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
+import { summarizePulls } from "../stats/pull-stats.js";
 import type { Node } from "../schemas/node.js";
 import type { Profile } from "../schemas/profile.js";
 
@@ -82,6 +83,32 @@ dashboardRouter.get("/profiles", async (c) => {
     ),
   );
   return c.json({ items });
+});
+
+/** 订阅拉取统计:近 30 天每日次数(分 Clash / Surge)、各 Profile 近 7 天次数、最近 7 天拉过的设备 */
+dashboardRouter.get("/pulls", (c) => c.json(summarizePulls(30)));
+
+/**
+ * 节点池构成:按地区 / 协议计数,给仪表盘画分布条。
+ * 走 SWR,和 /profiles 一样不在这里同步等网络;没识别出地区的节点归到 region 为空的一桶。
+ */
+dashboardRouter.get("/pool", async (c) => {
+  const pool = await buildNodePool({ staleWhileRevalidate: true });
+  const regions = new Map<string, number>();
+  const types = new Map<string, number>();
+  for (const n of pool.nodes) {
+    const r = n.region ?? "";
+    regions.set(r, (regions.get(r) ?? 0) + 1);
+    types.set(n.type, (types.get(n.type) ?? 0) + 1);
+  }
+  const sorted = (m: Map<string, number>) =>
+    [...m.entries()].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count);
+  return c.json({
+    total: pool.nodes.length,
+    regions: sorted(regions),
+    types: sorted(types),
+    revalidating: pool.revalidating.length > 0,
+  });
 });
 
 dashboardRouter.get("/summary", async (c) => {

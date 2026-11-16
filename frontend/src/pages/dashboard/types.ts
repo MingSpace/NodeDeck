@@ -37,3 +37,34 @@ export interface ProfileHealth {
   warnings: string[];
   revalidating: boolean;
 }
+
+// 与 backend/src/stats/pull-stats.ts PullSummary 保持同步
+export interface PullSummary {
+  days: { date: string; clash: number; surge: number }[];
+  today: number;
+  since?: string;
+  rejected: number;
+  profiles: Record<string, ProfilePulls>;
+  devices: {
+    ip: string;
+    client: string;
+    user_agent: string;
+    profile_id: string;
+    target: "clash" | "surge";
+    last_seen: number;
+    count: number;
+  }[];
+}
+
+export interface ProfilePulls {
+  last7: number;
+  last_pull_at?: number;
+}
+
+// 与 backend/src/routes/dashboard.ts 的 /pool 响应保持同步
+export interface PoolSummary {
+  total: number;
+  regions: { key: string; count: number }[];
+  types: { key: string; count: number }[];
+  revalidating: boolean;
+}

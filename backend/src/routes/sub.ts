@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { getConnInfo } from "@hono/node-server/conninfo";
 import { profileRepo, providerRepo } from "../storage/repos.js";
 import { resolveProfile } from "../generators/profile-resolver.js";
 import { generateClashConfig, generateProxyProviderYaml } from "../generators/clash.js";
@@ -16,6 +17,7 @@ import { refreshIntervalToSeconds } from "../schemas/common.js";
 import { logger } from "../logger.js";
 import { getClientIp } from "../auth/middleware.js";
 import { notifySubWarnings } from "../notifications/service.js";
+import { recordPull, recordRejected } from "../stats/pull-stats.js";
 
 export function mountSubRoute(app: Hono): void {
   app.get("/sub", async (c) => handleSub(c));
@@ -68,10 +70,14 @@ async function handleSubInner(
   const profile = entry.data;
   if (profile.token !== args.t) {
     logger.warn({ profileId: profile.id, target: args.target, ip }, "Sub request: token mismatch");
+    recordRejected();
     return c.text("invalid token", 401);
   }
 
   const resolved = await resolveProfile(profile);
+  // 只统计 token 校验通过的拉取;生成抛错走 onError 返回 500,不计数
+  const userAgent = c.req.header("user-agent");
+  const statsIp = ip !== "unknown" ? ip : socketAddress(c);
 
   // Build managed-config URL (Surge only)
   const cfg = await loadConfig();
@@ -125,6 +131,7 @@ async function handleSubInner(
       warnings: resolved.warnings,
     });
     logSubGenerated(profile.id, "clash", resolved.nodes.length, resolved.warnings, useProxyProviders, text.length, ip);
+    recordPull({ profileId: profile.id, target: "clash", ip: statsIp, userAgent });
     c.header("Content-Type", "text/yaml; charset=utf-8");
     c.header("Content-Disposition", buildContentDisposition(profile.name, "yaml", profile.id));
     c.header("Profile-Update-Interval", intervalHours);
@@ -146,10 +153,23 @@ async function handleSubInner(
       warnings: resolved.warnings,
     });
     logSubGenerated(profile.id, "surge", resolved.nodes.length, resolved.warnings, false, text.length, ip);
+    recordPull({ profileId: profile.id, target: "surge", ip: statsIp, userAgent });
     c.header("Content-Type", "text/plain; charset=utf-8");
     c.header("Content-Disposition", buildContentDisposition(profile.name, "conf", profile.id));
     c.header("Profile-Update-Interval", intervalHours);
     return c.body(text);
+  }
+}
+
+/**
+ * 没经过反代(没有 X-Forwarded-For / X-Real-IP)时取 TCP 对端地址,只给拉取统计区分设备用;
+ * getClientIp 本身不改,它还管着限流和日志。测试里的 app.request 没有 socket,取不到就算 unknown。
+ */
+function socketAddress(c: import("hono").Context): string {
+  try {
+    return getConnInfo(c).remote.address?.replace(/^::ffff:/, "") ?? "unknown";
+  } catch {
+    return "unknown";
   }
 }
 
