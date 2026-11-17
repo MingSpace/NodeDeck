@@ -49,7 +49,7 @@ function UsedBy({ profiles }: { profiles: { id: string; name: string }[] }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
       <Layers className="h-3 w-3 shrink-0" />
-      <span className="shrink-0">并入订阅</span>
+      <span className="shrink-0">已并入订阅</span>
       {profiles.map((p) => (
         <Link
           key={p.id}
