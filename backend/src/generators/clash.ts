@@ -54,6 +54,10 @@ export interface ClashGenerateInput {
   // general.hosts + provider.hosts 合并后的结果(由 profile-resolver 计算)。
   hosts?: Record<string, string | string[]>;
   warnings: string[];
+  // 按设计跳过的 Surge 专属能力(DEVICE: 策略、SUBNET 等规则类型、内置 SYSTEM):Clash 端注定做不到,
+  // 用户也无从修复,所以不进 warnings(不计入仪表盘 / 预览警告数,不触发 sub_warnings 推送),
+  // 只以 `# NOTE:` 写进产物头部留痕。调用方想单独拿到这些条目可传入数组,不传就只写头部。
+  notes?: string[];
   // providers 元数据,两个用途:
   // 1. 同名节点改名时计算来源前缀 `【标识】`(见 node-naming.ts buildProviderLabels)
   // 2. proxy-providers 模式合成 mihomo 拉取 URL(配合 baseUrl + profileToken,
@@ -71,6 +75,7 @@ export interface ClashGenerateInput {
 
 export function generateClashConfig(input: ClashGenerateInput): string {
   const { profile, general } = input;
+  const notes = input.notes ?? [];
   const filteredRaw = applyNodeFilter(input.nodes, profile.node_filter);
   // 排在 uniquify 之前:组 selector 动态追加成员时遍历的就是已排序节点池,组成员自动跟着聚类
   const filtered = profile.node_filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
@@ -147,7 +152,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     // Clash 不识别 Surge 子类型,这里统一降级到合法 REJECT。
     const rawPolicy = rs.surge_reject_options?.type ?? r.policy;
     if (isSurgeDevicePolicy(rawPolicy)) {
-      input.warnings.push(
+      notes.push(
         `Ruleset "${rs.id}" 的策略 "${rawPolicy}" 是 Surge 专属设备策略(Surge Ponte),Clash 无等价物,该规则已跳过`,
       );
       continue;
@@ -199,7 +204,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
         // isSurgeDevicePolicy 同一思路:宁可少一条规则,也不能让整份配置加载失败。
         const { type } = parseInlineRuleLine(item);
         if (isSurgeOnlyRuleType(type)) {
-          input.warnings.push(
+          notes.push(
             `Ruleset "${rs.id}" 的 "${item.trim()}" 是 Surge 专属规则类型 ${type},mihomo 无等价关键字,该行已跳过`,
           );
           continue;
@@ -215,13 +220,13 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     } else if (rs.type === "surge_internal") {
       // Surge 内置 ruleset 在 Clash 端没有等价语义:
       // - LAN 全是 Clash 也支持的 DOMAIN-SUFFIX/IP-CIDR → 内联展开,功能等价
-      // - SYSTEM 含 USER-AGENT 等 Clash 不支持的规则 → 跳过 + warning,避免半残转换
+      // - SYSTEM 含 USER-AGENT 等 Clash 不支持的规则 → 跳过 + note,避免半残转换
       if (rs.surge_internal_name === "LAN") {
         for (const item of SURGE_INTERNAL_LAN_RULES) {
           rules.push(buildExpandedRuleLine({ item, policy, flags: inlineFlags }));
         }
       } else if (rs.surge_internal_name === "SYSTEM") {
-        input.warnings.push(
+        notes.push(
           `Surge 内置 ruleset SYSTEM("${rs.id}") 含 USER-AGENT/PROCESS-NAME 规则,Clash 无等价物,已跳过`,
         );
       } else {
@@ -231,7 +236,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
   }
   if (input.geoipFallback) {
     if (isSurgeDevicePolicy(input.geoipFallback.policy)) {
-      input.warnings.push(
+      notes.push(
         `GEOIP CN 兜底规则的策略 "${input.geoipFallback.policy}" 是 Surge 专属设备策略,Clash 无等价物,该规则已跳过`,
       );
     } else {
@@ -333,6 +338,7 @@ export function generateClashConfig(input: ClashGenerateInput): string {
     `# Profile: ${profile.id}`,
     `# Generated at: ${new Date().toISOString()}`,
     ...input.warnings.map((w) => `# WARN: ${w}`),
+    ...notes.map((n) => `# NOTE: ${n}`),
     "",
   ].join("\n");
 

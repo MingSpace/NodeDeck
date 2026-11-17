@@ -42,7 +42,8 @@ dashboardRouter.get("/airports", async (c) => {
 
 /**
  * 仪表板 Profile 卡片上的流水线:每个 Profile 最终出几个节点、生成时有哪些警告。
- * 两端各生成一遍收集 warnings(有的只在一端出现,如 Clash 跳过 DEVICE: 策略),
+ * 两端各生成一遍收集 warnings(有的只在一端出现,如 Clash 忽略组级 underlying_proxy;
+ * Clash 按设计跳过的 DEVICE: / SUBNET / SYSTEM 走 notes,不算警告),
  * 与编辑器实时预览同一套管线;走 SWR,没有 cache 的节点源不在这里同步等网络。
  */
 async function profileHealth(profile: Profile) {

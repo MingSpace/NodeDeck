@@ -115,8 +115,9 @@ describe("generateClashConfig", () => {
     });
   });
 
-  it("handles Surge internal ruleset: LAN expanded inline, SYSTEM skipped with warning", () => {
+  it("handles Surge internal ruleset: LAN expanded inline, SYSTEM skipped with note", () => {
     const warnings: string[] = [];
+    const notes: string[] = [];
     const out = generateClashConfig({
       profile: baseProfile(),
       nodes: [],
@@ -155,6 +156,7 @@ describe("generateClashConfig", () => {
       ],
       finalRule: { policy: "DIRECT" },
       warnings,
+      notes,
     });
     const parsed = yaml.load(out) as Record<string, unknown>;
     const rules = parsed.rules as string[];
@@ -164,8 +166,10 @@ describe("generateClashConfig", () => {
     expect(rules).toContain("IP-CIDR6,fe80::/10,DIRECT");
     // SYSTEM 不应出现在 rules 中
     expect(rules.some((r) => r.includes("SYSTEM"))).toBe(false);
-    // warning 必须提示 SYSTEM 被跳过
-    expect(out).toMatch(/# WARN:.*SYSTEM/);
+    // 按设计跳过:进 notes 并写 # NOTE: 留痕,不算 warning
+    expect(out).toMatch(/# NOTE:.*SYSTEM/);
+    expect(notes.some((n) => n.includes("SYSTEM"))).toBe(true);
+    expect(warnings).toHaveLength(0);
   });
 
   // 两端同名的 timeout 不是一回事:Surge 是候选延迟阈值(秒),mihomo 是健康检查请求自身的超时
@@ -243,6 +247,7 @@ describe("generateClashConfig", () => {
   // policy not found 导致整份配置加载失败,所以这类规则在 Clash 端整条跳过。
   it("skips rules whose policy is a Surge device policy", () => {
     const warnings: string[] = [];
+    const notes: string[] = [];
     const out = generateClashConfig({
       profile: baseProfile(),
       nodes: [],
@@ -282,12 +287,14 @@ describe("generateClashConfig", () => {
       geoipFallback: { policy: "DEVICE:MS-MACMINI" },
       finalRule: { policy: "DIRECT" },
       warnings,
+      notes,
     });
     const rules = (yaml.load(out) as Record<string, unknown>).rules as string[];
     expect(rules.some((r) => r.includes("DEVICE:"))).toBe(false);
     expect(rules).toContain("DOMAIN-SUFFIX,example.com,DIRECT");
     expect(rules).toContain("MATCH,DIRECT");
-    expect(warnings.filter((w) => w.includes("DEVICE:MS-MACMINI"))).toHaveLength(2);
+    expect(notes.filter((n) => n.includes("DEVICE:MS-MACMINI"))).toHaveLength(2);
+    expect(warnings).toHaveLength(0);
   });
 
   // SUBNET / PROTOCOL / CELLULAR-* 匹配的是客户端自身所处的网络环境,mihomo 规则表里
@@ -295,6 +302,7 @@ describe("generateClashConfig", () => {
   // 同一个 payload 里的普通规则必须照常保留 —— 跳过是按行的,不是整条 ruleset。
   it("skips Surge-only rule types per line when expanding inline payload", () => {
     const warnings: string[] = [];
+    const notes: string[] = [];
     const out = generateClashConfig({
       profile: baseProfile(),
       nodes: [],
@@ -325,6 +333,7 @@ describe("generateClashConfig", () => {
       ],
       finalRule: { policy: "DIRECT" },
       warnings,
+      notes,
     });
     const rules = (yaml.load(out) as Record<string, unknown>).rules as string[];
     for (const t of ["SUBNET", "PROTOCOL", "CELLULAR-RADIO", "HOSTNAME-TYPE"]) {
@@ -333,7 +342,8 @@ describe("generateClashConfig", () => {
     // 同一 ruleset 里的合法规则不受影响
     expect(rules).toContain("DOMAIN-SUFFIX,example.com,DIRECT");
     expect(rules).toContain("MATCH,DIRECT");
-    expect(warnings.filter((w) => w.includes("Surge 专属规则类型"))).toHaveLength(5);
+    expect(notes.filter((n) => n.includes("Surge 专属规则类型"))).toHaveLength(5);
+    expect(warnings).toHaveLength(0);
   });
 
   it("removes dangling node refs from group.proxies after node_filter and emits warning", () => {
