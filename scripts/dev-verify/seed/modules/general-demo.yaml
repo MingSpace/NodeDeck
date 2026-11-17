@@ -1,0 +1,7 @@
+# 只有 [General] 段的本地模块(假数据);和 local-demo 来回打开,可验证编辑弹窗默认落在有内容的段
+id: general-demo
+name: General 示例模块
+description: 只改 General
+source: local
+content_sections:
+  general: always-real-ip = %APPEND% *.example.com

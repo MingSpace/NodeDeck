@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import yaml from "js-yaml";
 import {
   Dialog,
@@ -103,20 +103,38 @@ export function EntityVisualDialog<T extends { id: string }>({
   const pendingId = mode === "visual" ? data?.id?.trim() : undefined;
   const idChanged = isEdit && !!originalId && !!pendingId && pendingId !== originalId;
 
-  useEffect(() => {
-    if (!open) return;
-    let initial: T;
-    if (entity) {
-      initial = JSON.parse(JSON.stringify(entity)) as T;
-    } else {
-      initial = { id: defaultId ?? "new-id", ...(templateValue ?? {}) } as T;
+  // 打开 / 换条目时在 render 阶段就同步初始化,不放进 useEffect:effect 要等首帧提交后才跑,
+  // 表单会先拿上一个条目的 data 挂载一次。表单里的非受控状态(如模块编辑页段落 Tabs 的
+  // defaultValue)只在挂载时读一次,于是会停在上一个条目算出来的值上 —— 打开 A 再打开 B,
+  // B 落在 A 有内容的段。React 文档「Adjusting some state when a prop changes」的写法。
+  const [loadedFor, setLoadedFor] = useState<{
+    open: boolean;
+    entity: T | null | undefined;
+    defaultId: string | undefined;
+    templateValue: Partial<T> | undefined;
+  } | null>(null);
+  if (
+    !loadedFor ||
+    loadedFor.open !== open ||
+    loadedFor.entity !== entity ||
+    loadedFor.defaultId !== defaultId ||
+    loadedFor.templateValue !== templateValue
+  ) {
+    setLoadedFor({ open, entity, defaultId, templateValue });
+    if (open) {
+      let initial: T;
+      if (entity) {
+        initial = JSON.parse(JSON.stringify(entity)) as T;
+      } else {
+        initial = { id: defaultId ?? "new-id", ...(templateValue ?? {}) } as T;
+      }
+      initial = normalizeFromTemplate(initial, templateValue);
+      setData(initial);
+      setYamlText(yaml.dump(initial, { sortKeys: false, lineWidth: 200 }));
+      setMode("visual");
+      setError(null);
     }
-    initial = normalizeFromTemplate(initial, templateValue);
-    setData(initial);
-    setYamlText(yaml.dump(initial, { sortKeys: false, lineWidth: 200 }));
-    setMode("visual");
-    setError(null);
-  }, [entity, defaultId, templateValue, open]);
+  }
 
   const update = (patch: Partial<T>) => {
     setData((prev) => (prev ? ({ ...prev, ...patch } as T) : prev));
