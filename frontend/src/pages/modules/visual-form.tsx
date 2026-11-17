@@ -1,5 +1,6 @@
 import { Cloud, FilePen, Puzzle } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { AutoGrowTextarea } from "@/components/ui/auto-grow-textarea";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { YamlEditor } from "@/components/yaml-editor";
@@ -86,7 +87,9 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
       </div>
 
       <Field label="描述">
-        <Input
+        {/* 生成 #!desc= 时换行会被压成空格(backend surge-modules/sgmodule.ts metaValue),所以回车不换行 */}
+        <AutoGrowTextarea
+          singleParagraph
           value={data.description ?? ""}
           onChange={(e) => update({ description: e.target.value || undefined })}
         />
