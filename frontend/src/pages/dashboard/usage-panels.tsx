@@ -1,8 +1,8 @@
 import { Card } from "@/components/ui/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { RefreshedAt } from "@/components/refreshed-at";
 import { cn } from "@/lib/utils";
 import type { PoolSummary, Profile, PullSummary } from "./types";
+import { PullClientList } from "./client-list";
 
 // Surge / Clash 用同一色相的深浅两档:只区分来源,不和状态色(绿 / 黄 / 红)抢语义
 const TARGET_COLOR = {
@@ -22,7 +22,6 @@ export function PullsPanel({ data, profiles }: { data?: PullSummary; profiles: P
   const total = days.reduce((s, d) => s + d.clash + d.surge, 0);
   const devices = data?.devices ?? [];
   const profileName = new Map(profiles.map((p) => [p.id, p.name]));
-  const showProfile = profiles.length > 1;
   // 统计是上线后才开始攒的:起始日落在窗口里时标出来,免得前面一排空柱被当成「没人用」
   const since = data?.since && days.length > 0 && data.since > days[0].date ? data.since : undefined;
   const sinceIndex = since ? days.findIndex((d) => d.date === since) : -1;
@@ -91,26 +90,11 @@ export function PullsPanel({ data, profiles }: { data?: PullSummary; profiles: P
         </p>
       ) : (
         devices.length > 0 && (
-          <ul className="mt-4 divide-y border-t text-xs">
-            {devices.slice(0, 5).map((d) => (
-              <li key={`${d.ip}|${d.client}`} className="flex items-center gap-3 py-2">
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", TARGET_COLOR[d.target])} aria-hidden />
-                <span className="min-w-0 flex-1 truncate" title={d.user_agent || undefined}>
-                  <span className="font-medium text-foreground">{d.client}</span>
-                  <span className="text-muted-foreground">
-                    {" "}
-                    {d.ip}
-                    {showProfile && ` · ${profileName.get(d.profile_id) ?? d.profile_id}`}
-                  </span>
-                </span>
-                <span className="shrink-0 text-muted-foreground tabular-nums">{d.count} 次</span>
-                <RefreshedAt ts={d.last_seen} className="w-16 shrink-0 text-right text-muted-foreground" />
-              </li>
-            ))}
-            {devices.length > 5 && (
-              <li className="pt-2 text-muted-foreground">另有 {devices.length - 5} 个客户端</li>
-            )}
-          </ul>
+          <PullClientList
+            clients={devices}
+            profileName={(id) => profileName.get(id) ?? id}
+            targetColor={TARGET_COLOR}
+          />
         )
       )}
 

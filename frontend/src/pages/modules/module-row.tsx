@@ -1,4 +1,5 @@
-import { CircleAlert, Cloud, Copy, Download, FilePen, Globe, LoaderCircle, Lock, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CircleAlert, Cloud, Copy, Download, FilePen, Globe, Layers, LoaderCircle, Lock, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -9,10 +10,12 @@ import { LOCAL_SECTION_LABELS, type SurgeModuleData } from "./visual-form";
 interface Props {
   module: SurgeModuleData;
   status?: ModuleStatus;
+  /** 把这个模块并进 Surge 订阅的 Profile;undefined = 列表还在加载 */
+  usedBy?: { id: string; name: string }[];
 }
 
 /** 列表行附加信息:来源 + 内容概况 / 远程拉取状态,以及设备安装用的链接 */
-export function ModuleRow({ module: m, status }: Props) {
+export function ModuleRow({ module: m, status, usedBy }: Props) {
   const remote = (m.source ?? "local") === "remote";
   return (
     <div className="space-y-1.5">
@@ -28,7 +31,35 @@ export function ModuleRow({ module: m, status }: Props) {
         </span>
         {remote ? <RemoteSummary module={m} status={status} /> : <LocalSummary module={m} />}
       </div>
+      {usedBy && <UsedBy profiles={usedBy} />}
       {status && <LinkActions module={m} status={status} />}
+    </div>
+  );
+}
+
+function UsedBy({ profiles }: { profiles: { id: string; name: string }[] }) {
+  if (profiles.length === 0) {
+    return (
+      <div className="flex items-center gap-1.5 text-muted-foreground/70">
+        <Layers className="h-3 w-3 shrink-0" />
+        没有订阅引用,只能用下面的链接单独安装
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1">
+      <Layers className="h-3 w-3 shrink-0" />
+      <span className="shrink-0">并入订阅</span>
+      {profiles.map((p) => (
+        <Link
+          key={p.id}
+          to={`/profiles/${encodeURIComponent(p.id)}`}
+          title={`打开 Profile「${p.name}」`}
+          className="rounded bg-secondary px-1.5 py-px text-[11px] font-medium text-secondary-foreground underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {p.name}
+        </Link>
+      ))}
     </div>
   );
 }

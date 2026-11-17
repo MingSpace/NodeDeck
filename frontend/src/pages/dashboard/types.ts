@@ -45,15 +45,24 @@ export interface PullSummary {
   since?: string;
   rejected: number;
   profiles: Record<string, ProfilePulls>;
-  devices: {
-    ip: string;
-    client: string;
-    user_agent: string;
-    profile_id: string;
-    target: "clash" | "surge";
-    last_seen: number;
-    count: number;
-  }[];
+  devices: PullClient[];
+}
+
+// 与 backend/src/stats/pull-stats.ts 的 devices 项 + backend/src/stats/user-agent.ts 保持同步
+export interface PullClient {
+  ip: string;
+  client: string;
+  user_agent: string;
+  profile_id: string;
+  target: "clash" | "surge";
+  first_seen: number;
+  last_seen: number;
+  count: number;
+  version?: string;
+  components: string[];
+  os?: string;
+  device?: string;
+  ip_scope: "loopback" | "private" | "public" | "unknown";
 }
 
 export interface ProfilePulls {

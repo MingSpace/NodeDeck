@@ -2,6 +2,7 @@ import { z } from "zod";
 import { readJson, writeJson } from "../storage/yaml-io.js";
 import { dataPath } from "../storage/paths.js";
 import { logger } from "../logger.js";
+import { classifyIp, describeUserAgent, type IpScope, type UserAgentDetail } from "./user-agent.js";
 
 /**
  * 订阅拉取统计:按天汇总每个 Profile 被 Clash / Surge 拉了几次,外加最近拉过的客户端(IP + 客户端类型)。
@@ -150,7 +151,7 @@ export function recordPull(args: {
   s.devices[key] = {
     ip: args.ip,
     client,
-    user_agent: (args.userAgent ?? "").slice(0, 120),
+    user_agent: (args.userAgent ?? "").slice(0, 240),
     profile_id: args.profileId,
     target: args.target,
     first_seen: prev?.first_seen ?? now,
@@ -205,7 +206,7 @@ export interface PullSummary {
   rejected: number;
   profiles: Record<string, { last7: number; last_pull_at?: number }>;
   /** 最近 7 天拉过的设备,最近的在前 */
-  devices: Omit<Device, "first_seen">[];
+  devices: (Device & UserAgentDetail & { ip_scope: IpScope })[];
 }
 
 export function summarizePulls(windowDays = 30, now = Date.now(), s: PullStats = current()): PullSummary {
@@ -241,7 +242,7 @@ export function summarizePulls(windowDays = 30, now = Date.now(), s: PullStats =
   const devices = Object.values(s.devices)
     .filter((d) => d.last_seen >= deviceCutoff)
     .sort((a, b) => b.last_seen - a.last_seen)
-    .map(({ first_seen: _omit, ...rest }) => rest);
+    .map((d) => ({ ...d, ...describeUserAgent(d.user_agent), ip_scope: classifyIp(d.ip) }));
 
   const recorded = Object.keys(s.days).sort();
   return {
