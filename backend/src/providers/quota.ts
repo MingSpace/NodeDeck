@@ -6,6 +6,8 @@ import type { InfoNodeQuota } from "../parsers/info-node-extract.js";
 export interface QuotaSources {
   userinfo?: UserInfo;
   info_quota?: InfoNodeQuota;
+  /** 这份流量数据是什么时候拉到的;用来判断它是不是上个周期的旧数 */
+  fetched_at?: number;
 }
 
 export type QuotaReason = "expired" | "manual_exhausted" | "traffic_exhausted";
@@ -24,6 +26,11 @@ export interface ProviderQuotaStatus {
   expire_source?: "upstream" | "manual" | "info_node";
   next_reset_at?: number;
   reset_source?: "manual" | "info_node";
+  /**
+   * 上次拉取之后已经过了一个重置日:traffic 是上个周期的旧数,不再据此判「流量用完」。
+   * 典型是手动刷新的源(订阅链接要去机场网页临时开放,不能自动拉),重置后不必等用户手动刷新就放回订阅。
+   */
+  traffic_reset_pending?: boolean;
 }
 
 /** "YYYY-MM-DD" → 进程本地时区当天零点(ms)。schema 已保证格式与日期合法。 */
@@ -55,6 +62,8 @@ export function nextResetAt(resetDay: number, now = Date.now()): number {
  * - 流量:上游 userinfo > 信息节点;**离线源(inline)的信息节点流量不用**——那是导入时的快照,早已过时
  * - 重置日:手填 quota.reset_day > 信息节点倒计时(同样只认在线源)
  * - 离线源没有实时流量,用完只能靠 quota.exhausted_until 手动标记,到日子自动恢复
+ * - 流量用完但上次拉取之后已过重置日(traffic_reset_pending):视为已重置、放回订阅,不等重新拉取。
+ *   到期不走这条,过期的源照旧排除
  */
 export function evaluateProviderQuota(
   provider: Provider,
@@ -92,6 +101,18 @@ export function evaluateProviderQuota(
     status.reset_source = "info_node";
   }
 
+  // 上次拉取之后是否跨过了重置日。手填 reset_day:从拉取时刻算的下一个重置日已经到了;
+  // 信息节点倒计时:拉取时还在未来的 reset_at 现在已过(过了之后上面就不再给 next_reset_at)。
+  const fetchedAt = sources?.fetched_at;
+  if (status.traffic && fetchedAt !== undefined) {
+    if (quota?.reset_day) {
+      status.traffic_reset_pending = nextResetAt(quota.reset_day, fetchedAt) <= now;
+    } else if (live && info?.reset_at !== undefined) {
+      status.traffic_reset_pending = info.reset_at > fetchedAt && info.reset_at <= now;
+    }
+    if (!status.traffic_reset_pending) delete status.traffic_reset_pending;
+  }
+
   const manualUntil = quota?.exhausted_until ? parseLocalDate(quota.exhausted_until) : undefined;
 
   if (status.expire_at !== undefined && status.expire_at <= now) {
@@ -99,7 +120,7 @@ export function evaluateProviderQuota(
   } else if (manualUntil !== undefined && manualUntil > now) {
     status.reason = "manual_exhausted";
     status.restore_at = manualUntil;
-  } else if (status.traffic && status.traffic.used >= status.traffic.total) {
+  } else if (status.traffic && status.traffic.used >= status.traffic.total && !status.traffic_reset_pending) {
     status.reason = "traffic_exhausted";
     status.restore_at = status.next_reset_at;
   }

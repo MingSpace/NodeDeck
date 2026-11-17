@@ -27,6 +27,8 @@ export interface ProviderQuotaStatus {
   expire_source?: "upstream" | "manual" | "info_node";
   next_reset_at?: number;
   reset_source?: "manual" | "info_node";
+  /** 上次拉取之后已过重置日:traffic 是上个周期的旧数,已不再据此排除 */
+  traffic_reset_pending?: boolean;
 }
 
 const REASON_LABEL: Record<NonNullable<ProviderQuotaStatus["reason"]>, string> = {

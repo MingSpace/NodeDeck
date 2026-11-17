@@ -27,7 +27,8 @@ export function AirportCard({ airport }: { airport: AirportItem }) {
   const daysLeft = expireSec > 0 ? Math.ceil((expireSec - nowSec) / 86400) : null;
 
   const expireWarn = daysLeft !== null && daysLeft <= 7;
-  const trafficWarn = totalBytes > 0 && remainPercent <= 10;
+  const trafficStale = !!airport.traffic_reset_pending;
+  const trafficWarn = !trafficStale && totalBytes > 0 && remainPercent <= 10;
 
   const statusBadge = (() => {
     if (airport.status === "ok") return <Badge variant="success">健康</Badge>;
@@ -104,10 +105,21 @@ export function AirportCard({ airport }: { airport: AirportItem }) {
               </div>
               <div className="h-2 bg-secondary rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${trafficWarn ? "bg-amber-500" : "bg-emerald-500"}`}
+                  className={cn(
+                    "h-full",
+                    trafficStale ? "bg-muted-foreground/30" : trafficWarn ? "bg-amber-500" : "bg-emerald-500",
+                  )}
                   style={{ width: `${Math.min(usedPercent, 100)}%` }}
                 />
               </div>
+              {trafficStale && (
+                <div
+                  className="mt-1 text-xs text-muted-foreground"
+                  title="上次拉取之后已经过了重置日,上面是上个周期的用量;已按重置处理、照常输出节点,下次拉取后更新"
+                >
+                  已过重置日 · 流量待刷新
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-xs text-muted-foreground">无流量限额信息</div>

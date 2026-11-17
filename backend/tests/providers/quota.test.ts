@@ -156,6 +156,72 @@ describe("evaluateProviderQuota - 订阅信息节点", () => {
   });
 });
 
+describe("evaluateProviderQuota - 上次拉取之后过了重置日", () => {
+  // 手动刷新的源:用完后一直不拉,cache 里永远是上个周期的 used >= total
+  const fetchedBefore = new Date(2026, 9, 10, 12).getTime(); // 10/10,在 10/18 重置之前
+
+  it("手填 reset_day 已过 → 不再按旧流量排除,标 traffic_reset_pending", () => {
+    const s = evaluateProviderQuota(
+      provider({ reset_day: 18 }, "http"),
+      { userinfo: userinfo(200, 200), fetched_at: fetchedBefore },
+      NOW,
+    );
+    expect(s.traffic_reset_pending).toBe(true);
+    expect(s.reason).toBeUndefined();
+    expect(s.excluded).toBe(false);
+    // 流量数字原样保留,只是不再据此判用完
+    expect(s.traffic).toEqual({ used: 200 * GB, total: 200 * GB });
+  });
+
+  it("重置日还没到 → 照旧排除", () => {
+    const s = evaluateProviderQuota(
+      provider({ reset_day: 20 }, "http"),
+      { userinfo: userinfo(200, 200), fetched_at: fetchedBefore },
+      NOW,
+    );
+    expect(s.traffic_reset_pending).toBeUndefined();
+    expect(s.reason).toBe("traffic_exhausted");
+    expect(s.excluded).toBe(true);
+  });
+
+  it("重置之后拉到的数据仍是用完 → 照旧排除(机场还没重置)", () => {
+    const s = evaluateProviderQuota(
+      provider({ reset_day: 18 }, "http"),
+      { userinfo: userinfo(200, 200), fetched_at: new Date(2026, 9, 18, 9).getTime() },
+      NOW,
+    );
+    expect(s.traffic_reset_pending).toBeUndefined();
+    expect(s.excluded).toBe(true);
+  });
+
+  it("信息节点倒计时在拉取后到点 → 同样放回", () => {
+    const info = { traffic: { used: 150 * GB, total: 150 * GB }, reset_at: new Date(2026, 9, 15).getTime() };
+    const s = evaluateProviderQuota(provider(undefined, "http"), { info_quota: info, fetched_at: fetchedBefore }, NOW);
+    expect(s.traffic_reset_pending).toBe(true);
+    expect(s.excluded).toBe(false);
+  });
+
+  it("不知道重置日 → 无从推断,照旧排除", () => {
+    const s = evaluateProviderQuota(
+      provider(undefined, "http"),
+      { userinfo: userinfo(200, 200), fetched_at: fetchedBefore },
+      NOW,
+    );
+    expect(s.excluded).toBe(true);
+  });
+
+  it("已到期的源不受影响,照旧排除", () => {
+    const pastSec = Math.floor(NOW / 1000) - 60;
+    const s = evaluateProviderQuota(
+      provider({ reset_day: 18 }, "http"),
+      { userinfo: userinfo(200, 200, pastSec), fetched_at: fetchedBefore },
+      NOW,
+    );
+    expect(s.reason).toBe("expired");
+    expect(s.excluded).toBe(true);
+  });
+});
+
 describe("describeQuotaExclusion", () => {
   it("带恢复日期", () => {
     const s = evaluateProviderQuota(provider({ exhausted_until: "2026-11-02" }), undefined, NOW);

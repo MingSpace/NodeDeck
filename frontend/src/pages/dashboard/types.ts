@@ -17,6 +17,8 @@ export interface AirportItem {
   offline?: boolean;
   userinfo?: { upload: number; download: number; total: number; expire: number };
   raw_userinfo_header?: string;
+  /** 上次拉取之后已过重置日,userinfo 的流量是上个周期的旧数 */
+  traffic_reset_pending?: boolean;
 }
 
 export interface Profile {

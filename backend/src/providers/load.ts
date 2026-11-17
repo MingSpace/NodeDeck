@@ -192,7 +192,8 @@ function effectiveRefreshMinutes(provider: Provider, cached: ProviderCache, minu
   const upstreamBlocked =
     quota.excluded &&
     (quota.reason === "traffic_exhausted" || (quota.reason === "expired" && quota.expire_source !== "manual"));
-  return upstreamBlocked ? QUOTA_RECHECK_MINUTES : minutes;
+  // 过了重置日、靠推断放回订阅的源,也按 1 小时重拉,尽快换上真实流量(万一机场还没重置,重拉后会再排除)
+  return upstreamBlocked || quota.traffic_reset_pending ? QUOTA_RECHECK_MINUTES : minutes;
 }
 
 /**

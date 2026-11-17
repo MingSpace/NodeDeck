@@ -49,9 +49,12 @@ export function TrafficMeter({
   const now = Date.now();
   const ratio = Math.min(1, t.used / t.total);
   const pct = Math.round(ratio * 100);
-  const pace = cyclePace(status, now);
-  const exhausted = ratio >= 1 || status.reason === "traffic_exhausted" || status.reason === "manual_exhausted";
-  const warn = exhausted || ratio >= 0.9 || pace?.runOutAt !== undefined;
+  const stale = !!status.traffic_reset_pending;
+  // 旧周期的数字做不了速度推算,也不该再按它标黄
+  const pace = stale ? undefined : cyclePace(status, now);
+  const exhausted =
+    !stale && (ratio >= 1 || status.reason === "traffic_exhausted" || status.reason === "manual_exhausted");
+  const warn = !stale && (exhausted || ratio >= 0.9 || pace?.runOutAt !== undefined);
 
   const resetText =
     status.next_reset_at !== undefined
@@ -62,9 +65,11 @@ export function TrafficMeter({
     <div
       className="min-w-0"
       title={
-        pace
-          ? `已用 ${pct}%,本周期已过 ${Math.round(pace.elapsed * 100)}%(竖线位置)`
-          : `已用 ${pct}%`
+        stale
+          ? "上次拉取之后已经过了重置日,这里是上个周期的用量;已按重置处理、照常输出节点,下次拉取后更新"
+          : pace
+            ? `已用 ${pct}%,本周期已过 ${Math.round(pace.elapsed * 100)}%(竖线位置)`
+            : `已用 ${pct}%`
       }
     >
       <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums">
@@ -80,7 +85,10 @@ export function TrafficMeter({
       </div>
       <div className="relative mt-1.5 h-1.5 rounded-full bg-secondary">
         <div
-          className={cn("h-full rounded-full", warn ? "bg-amber-500" : "bg-emerald-500")}
+          className={cn(
+            "h-full rounded-full",
+            stale ? "bg-muted-foreground/30" : warn ? "bg-amber-500" : "bg-emerald-500",
+          )}
           style={{ width: `${ratio * 100}%` }}
         />
         {pace && !exhausted && (
@@ -92,7 +100,12 @@ export function TrafficMeter({
         )}
       </div>
       <div className="mt-1 truncate text-xs text-muted-foreground">
-        {pace?.runOutAt !== undefined ? (
+        {stale ? (
+          <span>
+            已过重置日 · 流量待刷新
+            {resetText && <span> · 下次 {toShortDate(status.next_reset_at!)} 重置</span>}
+          </span>
+        ) : pace?.runOutAt !== undefined ? (
           <span className="text-amber-600 dark:text-amber-400">
             照此速度约 {toShortDate(pace.runOutAt)} 用完
             {resetText && <span className="text-muted-foreground"> · {toShortDate(status.next_reset_at!)} 重置</span>}

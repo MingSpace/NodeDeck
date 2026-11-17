@@ -31,6 +31,8 @@ dashboardRouter.get("/airports", async (c) => {
         retry_failures: s.retry_failures,
         offline: s.offline,
         userinfo: cache?.userinfo,
+        // 上次拉取之后过了重置日:userinfo 是上个周期的旧数(判定见 providers/quota.ts)
+        traffic_reset_pending: s.quota.traffic_reset_pending,
         raw_userinfo_header: cache?.raw_userinfo_header,
       };
     }),
