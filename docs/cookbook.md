@@ -9,12 +9,11 @@
 1. [混合多机场](#1-混合多机场)
 2. [四种规则形态](#2-四种规则形态)
 3. [链式代理三段式](#3-链式代理三段式)
-4. [Clash proxy-providers 模式](#4-clash-proxy-providers-模式)
-5. [Surge 模块](#5-surge-模块)
-6. [Profile 拼装与订阅 URL](#6-profile-拼装与订阅-url)
-7. [嵌套引用其它策略组 (nested_groups)](#7-嵌套引用其它策略组-nested_groups)
-8. [Telegram MTProto 入站代理 (Surge)](#8-telegram-mtproto-入站代理-surge)
-9. [收不到境外 App 推送:让 APNs 走代理 (Surge iOS)](#9-收不到境外-app-推送让-apns-走代理-surge-ios)
+4. [Surge 模块](#4-surge-模块)
+5. [Profile 拼装与订阅 URL](#5-profile-拼装与订阅-url)
+6. [嵌套引用其它策略组 (nested_groups)](#6-嵌套引用其它策略组-nested_groups)
+7. [Telegram MTProto 入站代理](#7-telegram-mtproto-入站代理)
+8. [收不到境外 App 推送:让 APNs 走代理 (Surge iOS)](#8-收不到境外-app-推送让-apns-走代理-surge-ios)
 
 ---
 
@@ -34,8 +33,6 @@ refresh:
   interval: 12h        # never / 4h / 12h / 24h / 1week / on_request
 enabled: true
 tags: [primary]
-clash_proxy_provider:
-  enabled: false       # 见第 4 节
 ```
 
 `refresh.interval` 取值含义:
@@ -82,7 +79,7 @@ content: |
 
 > 旧版本曾用 `data/manual-nodes.yaml` 维护手输节点,现已下线 — 改用 inline Provider 后,手动 / 导入节点与机场订阅一样具备启用/禁用/删除等一等公民操作。
 
-**节点名同名怎么办?** 两家机场都叫 "🇭🇰 香港 01" 时,NodeDeck 自动给**所有撞名节点**加来源前缀,如 `【K】🇭🇰 香港 01` / `【奶】🇭🇰 香港 01`,一眼看出节点来自哪家。不撞名的节点不受影响;撞名但查不到来源(或加前缀后仍同名,如同一机场内重名)时回退追加 ` #2`/` #3` 后缀,保证生成的 yaml/conf 不会因 key 重复加载报错。策略组(group.proxies)中对原名的显式引用会**原位展开为全部同名节点的新名**(组里写了 "🇭🇰 香港 01" → 改名后 `【K】` / `【奶】` 两个节点都在组里,不会丢);链式代理 `chain_via` 只能指向单个节点,仍指向第一个同名节点的新名。重命名信息会作为 `# WARN:` 注释附在订阅文件头部。
+**节点名同名怎么办?** 两家机场都叫 "🇭🇰 香港 01" 时,NodeDeck 自动给**所有撞名节点**加来源前缀,如 `【K】🇭🇰 香港 01` / `【奶】🇭🇰 香港 01`,一眼看出节点来自哪家。不撞名的节点不受影响;撞名但查不到来源(或加前缀后仍同名,如同一机场内重名)时回退追加 ` #2`/` #3` 后缀,保证生成的 conf 不会因策略重名加载报错。策略组(group.proxies)中对原名的显式引用会**原位展开为全部同名节点的新名**(组里写了 "🇭🇰 香港 01" → 改名后 `【K】` / `【奶】` 两个节点都在组里,不会丢);链式代理 `chain_via` 只能指向单个节点,仍指向第一个同名节点的新名。重命名信息会作为 `# WARN:` 注释附在订阅文件头部。
 
 **机场多了,想让所有节点都带前缀?** Profile 编辑器 → 节点筛选里打开「全部节点加来源前缀」(`node_filter.source_prefix: always`),不撞名的节点也会加上 `【标识】`,且不再为此写 `# WARN:`。标识的取法:
 
@@ -90,7 +87,7 @@ content: |
 - 没填 → 从显示名自动取 1 个字:中日韩名取首字(`奶昔云` → `奶`),拉丁名取首字母大写(`kona` → `K`),emoji 与标点跳过
 - 同一 Profile 里两个机场首字撞了 → **双方都**扩到 2 个字(`Kona` / `Kuro` → `Ko` / `Ku`,`奶昔` / `奶牛` → `奶昔` / `奶牛`;多词名取词首,`Just My Socks` → `JM`),仍撞再加数字
 
-加前缀不影响已有配置:策略组 / 链式 / 隐藏节点 selector 的正则同时对「带前缀的名字」和「原名」匹配(`^🇭🇰` 照常命中,`^【奶】` 也能用来圈某个机场),`include_nodes` 和链式规则的出口 `via` 写原名也认。**唯一例外是交给客户端自己匹配的正则**:Surge 组的 `policy-regex-filter`、Clash 组的 `filter` / `exclude-filter` 是客户端拿最终节点名去匹配的,打开后像 `^🇭🇰` 这种锚定开头的写法会失效,要改成不锚定(`🇭🇰`)或把前缀算进去。
+加前缀不影响已有配置:策略组 / 链式 / 隐藏节点 selector 的正则同时对「带前缀的名字」和「原名」匹配(`^🇭🇰` 照常命中,`^【奶】` 也能用来圈某个机场),`include_nodes` 和链式规则的出口 `via` 写原名也认。**唯一例外是交给客户端自己匹配的正则**:Surge 组的 `policy-regex-filter` 是客户端拿最终节点名去匹配的,打开后像 `^🇭🇰` 这种锚定开头的写法会失效,要改成不锚定(`🇭🇰`)或把前缀算进去。
 
 ### 1.1 inline provider — 单节点 / local node list
 
@@ -164,7 +161,7 @@ user_agents:              # 默认列表,写出来只为说明;不写就是它
 - 会和真节点共享去重身份(`type|server|port|secret`),被 `dedupeNodes` 的 `keep-first` 策略**把真节点挤掉**,客户端只剩不可用的伪节点
 - 节点池数字虚高 1~5 条(对应 Subscription-UserInfo 的字段数);"全部节点"与"按 Provider 分组"两个 Tab 数字对不上
 
-NodeDeck 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers/info-node-filter.ts`),所有下游消费(主订阅生成 / Profile 预览 / 策略组节点选择 / proxy-providers 子路由 / 节点池 dashboard)**自动拿到干净的节点池,用户无需配置**。
+NodeDeck 在 parser 出口默认识别并丢弃这类节点(`backend/src/parsers/info-node-filter.ts`),所有下游消费(主订阅生成 / Profile 预览 / 策略组节点选择 / 节点池 dashboard)**自动拿到干净的节点池,用户无需配置**。
 
 识别算法:`<LEAD> <KEYWORD> <SEPARATOR>`
 
@@ -266,6 +263,27 @@ fetch_via: [egress-office, egress-tunnel]   # 实际顺序:公司路由器 → �
 - 还被节点源用着的出口不能删,先在节点源里移除
 - 连不进去的机器(家里内网、没公网 IP)只能由它主动建反向隧道再登记为代理出口,见 `docs/deployment.md`「借其它机器的出口拉订阅」
 
+### 1.5 策略组按机场取节点:selector 是动态匹配的
+
+```yaml
+# data/groups/proxys.yaml
+id: Proxys
+name: Proxys
+type: url-test
+proxies: []
+nested_groups: []                          # 不嵌套引用其它组,详见第 6 节
+selector:
+  from_providers: [airport-a, airport-b]   # 这俩机场都用作来源
+  exclude_type: []
+interval: 300
+```
+
+上面 group 范本里 `proxies: []` 一直留空,`selector.from_providers` 配好两家机场就行。每次客户端拉订阅 (`/sub`) 时,后端都会**实时**从节点池按 `from_providers` / `include_regex` / `exclude_regex` / `exclude_type` 重新过滤,把命中节点写进该组的成员列表。
+
+- **不需要"重新勾选"**:机场后续新增节点(或改名/下线),只要符合 selector 条件,下次拉订阅就自动生效,无需到 Web UI 重新勾选。这跟传统的"先全选 3 个节点保存→机场加到 4 个→回来再勾一次"完全不一样
+- **`from_providers` 留空 = 全部来源(含未来新增机场)**:`from_providers: []`(或不写)语义就是"不限定来源,所有 Provider 都用作节点来源"。所以**后续新增的机场会自动带进这个组,无需回来勾选**。Web UI 的 from_providers 区把这个状态做成了「全部来源(含未来新增机场)」开关(默认高亮);只有当你想把某个组**收窄到特定机场**时,才点掉它去勾选具体机场
+- 只有需要**固定 fallback / url-test 优先顺序**(比如想让香港节点排前面、日本节点排后面)时,才在 Web UI「候选节点与已锁定列表」段点 <kbd>📌</kbd> 把节点"锁定"到 `proxies` 显式数组里。锁定的节点严格按数组顺序输出,后续新增的同类节点会按节点池顺序追加在锁定段之后
+
 
 ## 2. 四种规则形态
 
@@ -278,23 +296,18 @@ fetch_via: [egress-office, egress-tunnel]   # 实际顺序:公司路由器 → �
 id: cn-direct
 name: 国内直连
 type: remote_url
-url: https://ruleset.skk.moe/Clash/non_ip/cn.txt
-behavior: classical    # domain / ipcidr / classical
-format: text           # yaml / text / mrs
-clash_format: rule_provider  # rule_provider / inline
+url: https://ruleset.skk.moe/List/non_ip/domestic.conf
 surge_format: rule_set       # rule_set / inline_ruleset / domain_set
 update_interval: 86400
 surge_flags:
   no_resolve: true
 ```
 
-→ Clash 输出 `rule-providers:` 段 + `RULE-SET,cn-direct,DIRECT,no-resolve`
 → Surge 输出 `RULE-SET,https://...,DIRECT,no-resolve`
 
 ### 2.1a 远程 DOMAIN-SET (Surge 风格的纯域名表)
 
 Surge `[Rule]` 里的 `DOMAIN-SET,<url>,POLICY` 文件每行一个域名,首字母 `.` 表示包含子域名。
-mihomo 的 `DomainTrie` 同时支持 `.example.com` 与 `+.example.com` 前缀,所以同一份 list 可以两端共用。
 
 ```yaml
 # data/rules/cn-domains.yaml
@@ -302,17 +315,13 @@ id: cn-domains
 name: 国内域名集
 type: remote_url
 url: https://ruleset.skk.moe/List/domainset/cdn.conf  # 文件每行一个域名,无规则前缀
-behavior: domain               # mihomo 用 trie 高效匹配
-format: text
-clash_format: rule_provider
 surge_format: domain_set       # 走 DOMAIN-SET,而非 RULE-SET
 update_interval: 86400
 ```
 
-→ Clash 输出 `rule-providers.cn-domains: { behavior: domain, format: text, ... }` + `RULE-SET,cn-domains,DIRECT`
 → Surge 输出 `DOMAIN-SET,https://...,DIRECT`
 
-> Web UI 一键导入 Surge `.conf` 时,`DOMAIN-SET` 行会被自动识别为这种形态; URL 后缀 `.list/.conf` 会推断为 `format: text`,`.yaml/.yml` 为 `yaml`,`.mrs` 为 `mrs`。
+> Web UI 一键导入 Surge `.conf` 时,`DOMAIN-SET` 行会被自动识别为这种形态。
 
 ### 2.2 inline payload (自己写规则)
 
@@ -326,16 +335,14 @@ payload:
   - DOMAIN-KEYWORD,intranet
   - IP-CIDR,10.0.0.0/8,no-resolve
   - PROCESS-NAME,Telegram
-behavior: classical
-clash_format: inline           # 直接展开到 rules: 段
 surge_format: inline_ruleset   # 在 conf 中生成 [Ruleset my-private] 段
 ```
 
-→ Clash 把 `payload` 直接展开到 `rules:` 段。Surge 在 `surge_format: inline_ruleset` 下**不在 `[Rule]` 内联展开**,而是输出一条 `RULE-SET,my-private,<policy>` 引用 + 在文件末尾生成 `[Ruleset my-private]` 段承载规则内容(Mac 5.3.1+ 支持);若把 `surge_format` 设为其它值(如缺省),Surge 端才会把每行直接展开进 `[Rule]`。
+→ Surge 在 `surge_format: inline_ruleset` 下**不在 `[Rule]` 内联展开**,而是输出一条 `RULE-SET,my-private,<policy>` 引用 + 在文件末尾生成 `[Ruleset my-private]` 段承载规则内容(Mac 5.3.1+ 支持);若把 `surge_format` 设为其它值(如缺省),才会把每行直接展开进 `[Rule]`。
 
-**域名与 IP 混写时的 `no-resolve`**: IP 类规则(`IP-CIDR` / `IP-CIDR6` / `IP-SUFFIX` / `IP-ASN` / `GEOIP`)一旦排在域名规则之前,客户端为了拿到目标 IP 会被迫提前触发一次本地 DNS 解析(Surge 会直接给出「这可能会触发不必要的 DNS 请求」的告警)。两种写法都可以避免:
+**域名与 IP 混写时的 `no-resolve`**: IP 类规则(`IP-CIDR` / `IP-CIDR6` / `IP-ASN` / `GEOIP`)一旦排在域名规则之前,客户端为了拿到目标 IP 会被迫提前触发一次本地 DNS 解析(Surge 会直接给出「这可能会触发不必要的 DNS 请求」的告警)。两种写法都可以避免:
 
-- **行内写**: 像上面示例那样在该行末尾加 `no-resolve`。展开进 `[Rule]` / `rules:` 时它会被自动排到策略之后 —— `IP-CIDR,10.0.0.0/8,DIRECT,no-resolve`,而不是顶掉策略的位置
+- **行内写**: 像上面示例那样在该行末尾加 `no-resolve`。展开进 `[Rule]` 时它会被自动排到策略之后 —— `IP-CIDR,10.0.0.0/8,DIRECT,no-resolve`,而不是顶掉策略的位置
 - **开关写**: 打开规则集的 `surge_flags.no_resolve`。展开时按每行的规则类型分发,只有 IP 类行会带上 `no-resolve`;同理 `extended_matching` 只会落到域名类行(`DOMAIN` / `DOMAIN-SUFFIX` / `DOMAIN-KEYWORD` / `DOMAIN-WILDCARD` / `URL-REGEX`)。所以混合列表开一个开关就够,不会给不适用的行挂上无效修饰符
 
 如果整个规则集是通过 `RULE-SET` / `DOMAIN-SET` 引用出去的(`type: remote_url`,或 `surge_format: inline_ruleset`),`no-resolve` 会落在引用行上,按 Surge 手册的定义强制作用于集合内每条子规则。
@@ -347,14 +354,14 @@ surge_format: inline_ruleset   # 在 conf 中生成 [Ruleset my-private] 段
 id: geosite-google
 name: GEOSITE google
 type: geosite
-geosite_category: google     # 不填则回退到 id (这里是 geosite-google)
-# Surge 没有原生 GEOSITE,可选 fallback:
+# Surge 没有原生 GEOSITE,需要给出替代来源:
 url: https://ruleset.skk.moe/List/domainset/google.conf  # 走 DOMAIN-SET
 # 或 payload 写一些 DOMAIN-SUFFIX 行作为内联备选
 ```
 
-→ Clash: `GEOSITE,google,Proxys`
 → Surge: 优先 `payload` → 其次 `DOMAIN-SET,url` → 都没就 warning
+
+> `type: geosite` 保留是为了兼容已有数据;旧 yaml 里的 `geosite_category` 读入时会被忽略。
 
 ### 2.4 GEOIP
 
@@ -368,7 +375,7 @@ surge_flags:
   no_resolve: true
 ```
 
-→ 两端都输出 `GEOIP,CN,DIRECT,no-resolve`。
+→ Surge 输出 `GEOIP,CN,DIRECT,no-resolve`。
 
 > **小贴士**: 一般不需要单独写 `geoip-cn.yaml`,Profile 的 `rule_modules` 直接用 `{ geoip_cn: true, policy: DIRECT }` 即可,效果一样。
 
@@ -400,7 +407,7 @@ chain_rules:
     via: WARP
 ```
 
-→ 命中节点会被加上 `chain_via: WARP`,Clash 输出 `dialer-proxy: WARP`,Surge 输出 `underlying-proxy=WARP`。
+→ 命中节点会被加上 `chain_via: WARP`,Surge 输出 `underlying-proxy=WARP`。
 
 ### 3.3 按策略组 / 点名节点分别挂不同的链
 
@@ -433,12 +440,12 @@ chain_rules:
 另外两个常用开关:
 
 - `enabled: false` — 临时停用某条规则而不删配置
-- `mode: fill` — 只给"还没有 `chain_via`"的节点补前置,机场原文自带 `dialer-proxy` 的节点保持不动
+- `mode: fill` — 只给"还没有 `chain_via`"的节点补前置,机场原文自带前置(Clash YAML 的 `dialer-proxy` / Surge 的 `underlying-proxy`)的节点保持不动
   (默认 `override` 是命中即覆盖)
 
 ### 3.4 一个节点只能有一条链
 
-`dialer-proxy` / `underlying-proxy` 都是每节点单值,所以同一节点落在多条规则范围内时**只有最靠前的生效**。
+`underlying-proxy` 是每节点单值,所以同一节点落在多条规则范围内时**只有最靠前的生效**。
 UI 顶部会提示 `N 个节点命中多条规则`,被完全抢走的规则打上「被遮蔽」标记,拖动卡片即可改优先级。
 
 多跳(`A → B → C`)靠"前置自己也挂了链"实现:给 `Landing-A` 写一条 `via: Relay-B`,再给 `Relay-B`
@@ -457,7 +464,7 @@ hidden_nodes:
 
 命中的节点:
 
-- **照常写进** Clash `proxies:` / Surge `[Proxy]` —— 所以 `chain_via` 指得到,链式照常工作
+- **照常写进** Surge `[Proxy]` —— 所以 `chain_via` 指得到,链式照常工作
 - **不再被任何策略组的 selector 动态匹配收纳** —— 地区组、自动测速组里都看不到它们
 - **组的 `proxies` 显式点名仍然保留** —— 这是有意的:你专门建一个组把落地节点列进去,
   客户端从那个组选中它 = 走完整的链;而"顺手被自动组捞进来直连"的路被堵掉了
@@ -474,12 +481,8 @@ proxies: ["JP 落地-01", "JP 落地-02"]   # 显式点名,不受 hidden_nodes �
 唯一的差别是:**所有条件留空 = 不隐藏任何节点**(链式规则留空是"匹配全部")。
 Profile 编辑器 →「链式代理」tab 顶部有可视化配置区,能实时看到命中了哪些节点。
 
-两个失效场景要留意:
-
-- 开了 `clash_options.use_proxy_providers` 且隐藏节点来自 proxy-provider 机场时,组是靠
-  `use: [机场]` 引用的、成员由客户端展开 —— 隐藏挡不住,生成时会给一条 warning
-- Surge 组手动开了 `include_all_proxies=true`(或配了 `policy_regex_filter`)时,成员同样由
-  客户端从 `[Proxy]` 段展开,隐藏节点会重新出现
+一个失效场景要留意:Surge 组手动开了 `include_all_proxies=true`(或配了 `policy_regex_filter`)时,
+成员由客户端从 `[Proxy]` 段展开,隐藏节点会重新出现。
 
 ### 3.6 优先走落地,落地挂了自动回退直连
 
@@ -534,83 +537,7 @@ chain_rules:
 
 ---
 
-## 4. Clash proxy-providers 模式
-
-让 mihomo 客户端自己去拉每家机场,主订阅文件极小。
-
-### 4.1 启用 provider 的 proxy-provider 输出
-
-```yaml
-# data/providers/airport-a.yaml
-clash_proxy_provider:
-  enabled: true
-  health_check_url: http://www.gstatic.com/generate_204
-  health_check_interval: 300
-```
-
-### 4.2 启用 Profile 的 proxy-providers 模式
-
-```yaml
-# data/profiles/home.yaml(节选)
-clash_options:
-  use_proxy_providers: true
-  flag: mihomo
-  group_style: flow
-```
-
-### 4.3 在 group 里指定哪些 provider 提供节点
-
-```yaml
-# data/groups/proxys.yaml
-id: Proxys
-name: Proxys
-type: url-test
-proxies: []
-nested_groups: []                          # 不嵌套引用其它组,详见第 7 节
-selector:
-  from_providers: [airport-a, airport-b]   # 这俩机场都用作来源
-  exclude_type: []
-url: http://cp.cloudflare.com/generate_204
-interval: 300
-```
-
-→ 主订阅 yaml 里:
-
-```yaml
-proxy-providers:
-  airport-a:
-    type: http
-    url: https://your-host/sub/provider/airport-a/clash.yaml?profile=home&t=XXXX
-    interval: 43200          # 由该 provider 的 refresh.interval 换算(此处 12h → 43200s;on_request 才是 3600)
-    health-check:
-      enable: true
-      url: http://www.gstatic.com/generate_204
-      interval: 300
-  airport-b: { ... }
-
-proxy-groups:
-  - name: Proxys
-    type: url-test
-    proxies: []
-    use: [airport-a, airport-b]
-```
-
-mihomo 启动后会自己去拉两个 provider URL,健康检查独立运行。
-
-> **selector 是动态匹配的,不需要"重新勾选"**
->
-> 上面 group 范本里 `proxies: []` 一直留空,`selector.from_providers` 配好两家机场就行。每次客户端拉订阅 (`/sub`) 时,后端都会**实时**从节点池按 `from_providers` / `include_regex` / `exclude_regex` / `exclude_type` 重新过滤,把命中节点写到 yaml。
->
-> 这意味着:**机场后续新增节点(或改名/下线),只要符合 selector 条件,下次拉订阅就自动生效,无需到 Web UI 重新勾选**。这跟传统的"先全选 3 个节点保存→机场加到 4 个→回来再勾一次"完全不一样,普通模式下也是同样的动态语义(`use:` 段不存在,但 `proxies:` 段会被 selector 动态展开)。
->
-> **`from_providers` 留空 = 全部来源(含未来新增机场)**:`from_providers: []`(或不写)语义就是"不限定来源,所有 Provider 都用作节点来源"。所以**后续新增的机场会自动带进这个组,无需回来勾选**。Web UI 的 from_providers 区把这个状态做成了「全部来源(含未来新增机场)」开关(默认高亮);只有当你想把某个组**收窄到特定机场**时,才点掉它去勾选具体机场。
->
-> 只有需要**固定 fallback / url-test 优先顺序**(比如想让香港节点排前面、日本节点排后面)时,才在 Web UI「候选节点与已锁定列表」段点
-> <kbd>📌</kbd> 把节点"锁定"到 `proxies` 显式数组里。锁定的节点严格按数组顺序输出,后续新增的同类节点会按节点池顺序追加在锁定段之后。
-
----
-
-## 5. Surge 模块
+## 4. Surge 模块
 
 `data/modules/<id>.yaml` 里的每个模块有两种用法,可以同时用:
 
@@ -627,7 +554,7 @@ token 由服务端密钥 `data/secret.key` 按模块 id 算出(HMAC),每个模�
 确定不含敏感内容的模块,可以在编辑页打开「公开安装链接」(`public: true`),地址就不需要 `?t=`。
 **模块里有密码 / 私有 token(如 `external-controller-access`)时不要公开。**
 
-### 5.1 本地模块:在 NodeDeck 里按段编辑
+### 4.1 本地模块:在 NodeDeck 里按段编辑
 
 ```yaml
 # data/modules/google-cn.yaml
@@ -646,7 +573,7 @@ content_sections:
 
 各段一律按 **Surge 模块语法** 写(与 `.sgmodule` 文件里一模一样)。
 
-### 5.2 远程模块:引用别处维护的 .sgmodule
+### 4.2 远程模块:引用别处维护的 .sgmodule
 
 ```yaml
 # data/modules/my-rewrite.yaml
@@ -665,7 +592,7 @@ fetch_via: []            # 可选,服务器连不上上游时借出口拉,语义
   安装地址返回 502。
 - 安装地址原样转发上游内容(上游 URL 不出现在响应里)。
 
-### 5.3 并进 Profile 时怎么合并
+### 4.3 并进 Profile 时怎么合并
 
 目标是「并进 Profile」与「在设备上安装同一个模块」效果一致,按 Surge 模块语义合并:
 
@@ -680,7 +607,7 @@ fetch_via: []            # 可选,服务器连不上上游时借出口拉,语义
 
 ---
 
-## 6. Profile 拼装与订阅 URL
+## 5. Profile 拼装与订阅 URL
 
 ```yaml
 # data/profiles/home.yaml
@@ -729,19 +656,15 @@ userinfo:
 managed_config_url: auto   # auto = 用本服务的 sub URL 自填
 managed_config_interval: 86400
 managed_config_strict: false
-
-clash_options:
-  use_proxy_providers: false
-  flag: mihomo
-  group_style: flow
 ```
 
 **订阅 URL**:
 
 ```
-http://your-vps:8080/sub?profile=home&target=clash&t=V1StGXR8_Z5j
 http://your-vps:8080/sub?profile=home&target=surge&t=V1StGXR8_Z5j
 ```
+
+`target` 可省略(缺省即 `surge`),填其它值返回 400;等价写法 `http://your-vps:8080/sub/surge/home?t=V1StGXR8_Z5j`。旧的 Clash 订阅地址(`target=clash`、`/sub/clash/<profile>`、`/sub/provider/<id>/clash.yaml`)已失效。
 
 **响应头** (调试用):
 
@@ -750,19 +673,19 @@ http://your-vps:8080/sub?profile=home&target=surge&t=V1StGXR8_Z5j
 | `Subscription-UserInfo` | 聚合后的流量信息(upload/download/total/expire),**仅当 `userinfo.enabled: true` 时输出** |
 | `X-NodeDeck-Userinfo-<provider_id>` | 每机场原始 header 的透传,**仅当 `userinfo.enabled: true` 且 `expose_per_provider_headers: true`** |
 | `Profile-Update-Interval` | 客户端建议的轮询间隔(小时) |
-| `Content-Disposition` | `attachment; filename="<profile>.yaml/.conf"` |
+| `Content-Disposition` | `attachment; filename="<profile>.conf"` |
 
 输出文件头部的 `# WARN: ...` 注释会列出所有自动降级/重命名/校验事件,便于排查问题。
 
 ---
 
-## 7. 嵌套引用其它策略组 (nested_groups)
+## 6. 嵌套引用其它策略组 (nested_groups)
 
 场景: 主策略组 `Stream` 想引用 `Japan` 这个区域组作为一个 proxy 项(客户端展示成可点开的子选择器,选 Japan → 再选具体 JP 节点),同时还能再放几个独立节点 / `DIRECT` 等内置 policy。
 
 这跟"合并组内所有节点平铺到当前组"是**完全不同**的语义:嵌套引用让用户在客户端能感知到组的层级结构,平铺合并则把层级踩平。NodeDeck 用顶层字段 `nested_groups` 实现嵌套引用,UI 在 ProxyListEditor 快捷区有独立的「嵌套组」chip 行。
 
-### 7.1 yaml 写法
+### 6.1 yaml 写法
 
 ```yaml
 # data/groups/japan.yaml
@@ -773,7 +696,6 @@ proxies: []
 nested_groups: []
 selector:
   include_regex: "🇯🇵|JP|日本"
-url: http://cp.cloudflare.com/generate_204
 interval: 300
 ```
 
@@ -786,51 +708,35 @@ proxies: [DIRECT]           # 这里只放节点名 / 内置 policy
 nested_groups: [Japan]      # 把 Japan 组作为单个 proxy 项嵌套引用
 ```
 
-### 7.2 生成结果
-
-Clash 输出:
-
-```yaml
-proxy-groups:
-  - name: Japan
-    type: url-test
-    proxies: [🇯🇵 JP-01, 🇯🇵 JP-02, ...]
-  - name: Stream
-    type: select
-    proxies:
-      - Japan          # ← 嵌套引用(客户端可点进去再选 Japan 的成员)
-      - DIRECT         # ← 同级 proxy 项
-```
-
-Surge 输出:
+### 6.2 生成结果
 
 ```ini
 [Proxy Group]
-Japan = url-test, 🇯🇵 JP-01, 🇯🇵 JP-02, ..., url=...
+Japan = url-test, 🇯🇵 JP-01, 🇯🇵 JP-02, ...
 Stream = select, Japan, DIRECT
 ```
 
-mihomo / Surge 客户端加载后,Stream 的选择面板会显示两行:一个名叫 `Japan` 的"子选择器"(点进去能看到 Japan 组的所有节点) + 一个 `DIRECT` 直连项。
+Surge 加载后,Stream 的选择面板会显示两行:一个名叫 `Japan` 的"子选择器"(点进去能看到 Japan 组的所有节点) + 一个 `DIRECT` 直连项。
 
-### 7.3 跟其他类似字段的关系
+### 6.3 跟其他类似字段的关系
 
 | 字段 | 数据形态 | 语义 |
 |---|---|---|
 | `g.proxies: string[]` | 节点名 / 内置 policy (DIRECT/REJECT*),需要控顺序时也可放组 name | 显式锁定的成员,顺序决定 fallback / url-test 优先级 |
 | `g.nested_groups: string[]` | **其它组的 name** | 把其它组作为单个 proxy 项嵌套引用(客户端可点进去) |
 | `g.selector` | regex / from_providers / include_region / exclude_type | 动态筛选独立节点(从节点池里"挑出"满足条件的节点加进来) |
-| `g.include_other_group: string` | 单个组 name (Surge only) | Surge 原生 `include-other-group` 参数,把那个组的成员**平铺**展开到当前组(跟 nested_groups 的"嵌套引用"语义相反) |
-| `g.underlying_proxy: string` | 节点名 / 组 name (Surge only) | 组级链式:组内每个**代理成员**都经它出站(见 7.4) |
+| `g.include_other_group: string` | 单个组 name | Surge 原生 `include-other-group` 参数,把那个组的成员**平铺**展开到当前组(跟 nested_groups 的"嵌套引用"语义相反) |
+| `g.underlying_proxy: string` | 节点名 / 组 name | 组级链式:组内每个**代理成员**都经它出站(见 6.4) |
 
 > **老 yaml 自动迁移**: 在旧版本里这事是通过 `selector.include_other_group` 数组实现的(名字误导)。NodeDeck v2 起读取旧 yaml 时,schema transform 会把那个字段的值搬到顶层 `nested_groups`,首次保存后写回的就是新字段形态。无需手动改 yaml。
 
-> **例外:需要组排在内置 policy 之前时,组名要写进 `g.proxies`。** 成员入列顺序是「`proxies` → `include_other_group` → `nested_groups` → `selector`」,`nested_groups` 永远排在显式 `proxies` 之后,所以做不出 `代理组, DIRECT` 这种「组在前、DIRECT 兜底」的排列。典型场景见 [9.3](#93-策略组必须能回退直连)。
+> **例外:需要组排在内置 policy 之前时,组名要写进 `g.proxies`。** 成员入列顺序是「`proxies` → `nested_groups` → `selector`」,`nested_groups` 永远排在显式 `proxies` 之后,所以做不出 `代理组, DIRECT` 这种「组在前、DIRECT 兜底」的排列。典型场景见 [8.3](#83-策略组必须能回退直连)。
 
-### 7.4 让整组成员共用一个前置(`underlying_proxy`,仅 Surge)
+### 6.4 让整组成员共用一个前置(`underlying_proxy`)
 
-> 需 Surge iOS 5.22.0+ / Mac 6.9.0+。Clash 端无等价物,生成时忽略 + warning。
+> 需 Surge iOS 5.22.0+ / Mac 6.9.0+。
 
-平常"给节点挂前置"用的是 Profile 的 `chain_rules`(两端都生效)。如果你要的是"这个组里的**所有**成员都走同一个前置",Surge 有个更省事的组级参数:
+平常"给节点挂前置"用的是 Profile 的 `chain_rules`。如果你要的是"这个组里的**所有**成员都走同一个前置",Surge 有个更省事的组级参数:
 
 ```yaml
 # data/groups/landing.yaml —— 目前只能在策略组编辑器的「YAML 高级」tab 里填
@@ -852,13 +758,13 @@ underlying_proxy: 前置池
 
 ---
 
-## 8. Telegram MTProto 入站代理 (Surge)
+## 7. Telegram MTProto 入站代理
 
-> 需 Surge iOS 5.21.0+ / Mac 6.8.0+。仅 Surge 输出生效,Clash 端忽略。
+> 需 Surge iOS 5.21.0+ / Mac 6.8.0+。
 
 Surge 可以作为 Telegram 专用的 MTProto 入站代理:Telegram 客户端连到 Surge 的监听端口,DC 选路、出站策略全走 Surge 规则系统。相比 SOCKS5 接管,MTProto 模式避开了 Telegram 客户端的一堆老 bug(IPv6 地址塞进 IPv4 请求、切网后卡 "Updating" 等)。
 
-在 Web UI「Generals → Surge 专属 → MTProto (Telegram 代理)」里开启,或直接写 yaml:
+在 Web UI「Generals → 高级 → MTProto (Telegram 代理)」里开启,或直接写 yaml:
 
 ```yaml
 # data/general/<id>.yaml 里追加
@@ -893,7 +799,7 @@ Telegram 客户端填 `服务器 = 可达 interface 的地址 / 端口 = 5753 / 
 
 ---
 
-## 9. 收不到境外 App 推送:让 APNs 走代理 (Surge iOS)
+## 8. 收不到境外 App 推送:让 APNs 走代理 (Surge iOS)
 
 **症状**:开着代理、进 App 消息秒到,但锁屏和后台一条通知都不弹;国内 App 推送正常。Telegram / X / Instagram / YouTube 同时中招。
 
@@ -901,9 +807,9 @@ Telegram 客户端填 `服务器 = 可达 interface 的地址 / 端口 = 5753 / 
 
 修好它需要三步,缺一不可。
 
-### 9.1 让 Surge 接管 APNs 流量
+### 8.1 让 Surge 接管 APNs 流量
 
-Web UI「Generals → Surge 专属 → 隧道接管范围 (APNs 推送)」,或直接写 yaml:
+Web UI「Generals → 高级 → 隧道接管范围 (APNs 推送)」,或直接写 yaml:
 
 ```yaml
 # data/general/<id>.yaml
@@ -917,15 +823,14 @@ include_apns: true            # 让 Surge VIF 接管 APNs 流量
 >
 > 另一个手册没写的副作用(2026-09 实测,iOS 27):**Apple Watch 借 iPhone 上网的流量会被丢弃**,既不进 Surge 也不直连。表现是 Watch 查不了系统更新、打不开 App Store、下载不了 App,断开 iPhone 蓝牙让 Watch 走自己的 Wi-Fi 才恢复。这是 iOS kill-switch 的行为,改规则救不了。用 Apple Watch 的话,推送问题优先考虑网关层代理 APNs 或第三方 TG 客户端。
 
-### 9.2 给 Apple 推送域名配一条走代理的规则
+### 8.2 给 Apple 推送域名配一条走代理的规则
 
 ```yaml
 # data/ruleset/apns.yaml
 id: apns
 name: APNs Push
 type: inline_list
-behavior: classical
-policy: APNs                   # 指向 9.3 的策略组
+policy: APNs                   # 指向 8.3 的策略组
 payload:
   - DOMAIN-SUFFIX,push.apple.com
   - DOMAIN-SUFFIX,push-apple.com.akadns.net
@@ -933,7 +838,6 @@ payload:
   - IP-CIDR,17.252.0.0/16
   - IP-CIDR,17.57.144.0/22
   - IP-CIDR,17.188.128.0/18
-clash_format: inline
 surge_format: inline_ruleset
 surge_flags:
   no_resolve: true
@@ -946,7 +850,7 @@ surge_flags:
 - Apple 只公开 `17.0.0.0/8` 归属自己,上面这几段是社区整理的 push 子网,不保证覆盖全部。想彻底就用 `IP-CIDR,17.0.0.0/8`,代价是 iCloud / App Store / 系统更新全部一起进代理;
 - **千万不要对 `*.push.apple.com` 做 MITM** —— 检查 generals 的 `mitm.hostname` 别写成 `*.apple.com` 这类通配,对 APNs 解密会让所有推送彻底瘫痪。
 
-### 9.3 策略组必须能回退直连
+### 8.3 策略组必须能回退直连
 
 APNs 一旦走代理,节点挂掉的那一刻连微信、支付宝的推送也会一起没了,整台手机变成失联状态。所以这个组必须用 `fallback` 类型,并把 `DIRECT` 放在**成员列表最后**:
 
@@ -960,11 +864,11 @@ proxies:
   - DIRECT      # 兜底:代理全挂时退回直连,保住国内 App 推送
 ```
 
-> **成员顺序是这个配方的关键,而且写错不报错。** 别用 `selector` 圈节点再把 `DIRECT` 写进 `proxies` —— `resolveGroupMemberEntries` 的入列顺序是「显式 `proxies` → `include_other_group` → `nested_groups` → `selector` 动态匹配」,显式项永远在前,结果会是 `APNs = fallback,DIRECT,JP-01,JP-02`。`fallback` 取第一个可用成员,而 DIRECT 永远可用,于是 APNs 全程直连、推送照样收不到,且**不会有任何 warning**。要控顺序就全部走显式 `proxies`,把已有的自动选择组当成一个成员填进去。
+> **成员顺序是这个配方的关键,而且写错不报错。** 别用 `selector` 圈节点再把 `DIRECT` 写进 `proxies` —— `resolveGroupMemberEntries` 的入列顺序是「显式 `proxies` → `nested_groups` → `selector` 动态匹配」,显式项永远在前,结果会是 `APNs = fallback,DIRECT,JP-01,JP-02`。`fallback` 取第一个可用成员,而 DIRECT 永远可用,于是 APNs 全程直连、推送照样收不到,且**不会有任何 warning**。要控顺序就全部走显式 `proxies`,把已有的自动选择组当成一个成员填进去。
 
-> **这里把组名写进 `proxies` 是有意为之,不是笔误。** 一般情况下嵌套引用其它策略组应该走 `nested_groups`(见 [第 7 节](#7-嵌套引用其它策略组-nested_groups)),但 `nested_groups` 排在显式 `proxies` 之后,做不出「组在前、`DIRECT` 兜底」这个顺序。所以只要需要组排在内置 policy 之前,就只能写进 `proxies`。Web UI 的策略组编辑器会给这类行标一个蓝色「策略组」徽标,表示识别到了、属正常用法;只有既不是节点、也不是已知组名的引用才会标橘色「未知引用」。
+> **这里把组名写进 `proxies` 是有意为之,不是笔误。** 一般情况下嵌套引用其它策略组应该走 `nested_groups`(见 [第 6 节](#6-嵌套引用其它策略组-nested_groups)),但 `nested_groups` 排在显式 `proxies` 之后,做不出「组在前、`DIRECT` 兜底」这个顺序。所以只要需要组排在内置 policy 之前,就只能写进 `proxies`。Web UI 的策略组编辑器会给这类行标一个蓝色「策略组」徽标,表示识别到了、属正常用法;只有既不是节点、也不是已知组名的引用才会标橘色「未知引用」。
 
-### 9.4 客户端侧收尾(配置管不了的部分)
+### 8.4 客户端侧收尾(配置管不了的部分)
 
 - 改完在 iPhone 上重新加载配置,然后**开关一次飞行模式**,不然不生效;
 - 代理必须**常驻**。用快捷指令按 App 自动开关 VPN 的话,Telegram 几乎必然丢推送;

@@ -13,7 +13,6 @@ const TEMPLATE: Partial<ProxyGroupData> = {
   proxies: [],
   nested_groups: [],
   selector: { from_providers: [], exclude_type: [], include_region: [] },
-  url: "http://cp.cloudflare.com/generate_204",
   interval: 600,
   tolerance: 50,
   timeout: 5,
@@ -97,7 +96,7 @@ function GroupSummary({ group }: { group: ProxyGroupData }) {
       ) : (
         <span
           className="tabular-nums"
-          title="按当前节点池推演的成员数,与订阅实际输出同口径(profile 的 hidden_nodes / proxy-providers 可能再增减)"
+          title="按当前节点池推演的成员数,与订阅实际输出同口径(profile 的 hidden_nodes 可能再减少)"
         >
           共 {poolPending ? "…" : comp.total} 个成员
         </span>

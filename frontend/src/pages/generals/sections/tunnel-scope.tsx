@@ -41,7 +41,7 @@ export function TunnelScopeSection({ data, update }: Props) {
   return (
     <div className="space-y-3">
       <div className="text-xs text-muted-foreground">
-        仅 Surge iOS 生效 · 决定哪些系统级流量被 Surge 虚拟网卡接管
+        仅 iOS 生效 · 决定哪些系统级流量被 Surge 虚拟网卡接管
         <InfoHint>
           默认情况下部分请求不经过 Surge —— App 可以绑定物理网卡绕过 VIF,系统推送链路也走自己的直连通道。
           打开总开关后才能进一步接管局域网、APNs、蜂窝服务这几类流量。

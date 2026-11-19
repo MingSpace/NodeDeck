@@ -80,7 +80,8 @@ describe("importSurgeConf", () => {
     expect(r.general).toBeDefined();
     expect(r.general?.log_level).toBe("notify");
     expect(r.general?.ipv6).toBe(false);
-    expect(r.general?.allow_lan).toBe(true);
+    // schema 已不再有 allow_lan,导入时不再从 allow-lan 派生
+    expect(r.general).not.toHaveProperty("allow_lan");
     expect(r.general?.test_timeout).toBe(5);
     expect(r.general?.skip_proxy).toContain("127.0.0.0/8");
     expect(r.general?.exclude_simple_hostnames).toBe(true);
@@ -129,7 +130,8 @@ describe("importSurgeConf", () => {
     expect(proxysGroup?.type).toBe("url-test");
     expect(proxysGroup?.proxies).toContain("🇭🇰 HK-01");
     expect(proxysGroup?.proxies).toContain("🇯🇵 JP-01");
-    expect(proxysGroup?.url).toBe("http://cp.cloudflare.com/generate_204");
+    // 组行上的 legacy url= 不再导入(schema 已无组级 url)
+    expect(proxysGroup).not.toHaveProperty("url");
     expect(proxysGroup?.interval).toBe(600);
 
     // modules (URL Rewrite + Header Rewrite collected as one Imported Module)
@@ -196,9 +198,7 @@ show-error-page-for-reject = true
   });
 
   // Surge 内置 ruleset SYSTEM/LAN (manual.nssurge.com/rule/ruleset.html#internal-ruleset)
-  // 平台共有,导入时识别成 type=surge_internal,留给 generator 各自处理:
-  // - Surge generator: 直接 `RULE-SET,<SYSTEM|LAN>,POLICY`
-  // - Clash generator: LAN 展开为内联 IP-CIDR/DOMAIN-SUFFIX,SYSTEM 跳过 + warning
+  // 平台共有,导入时识别成 type=surge_internal,Surge generator 直接输出 `RULE-SET,<SYSTEM|LAN>,POLICY`
   it("recognizes RULE-SET,SYSTEM/LAN as type=surge_internal (preserve, don't drop)", () => {
     const text = `
 [Rule]
@@ -217,7 +217,6 @@ RULE-SET,UNKNOWN-NAME,DIRECT
       surge_internal_name: "SYSTEM",
       policy: "DIRECT",
       surge_format: "rule_set",
-      clash_format: "rule_provider",
       name: "SYSTEM",
     });
     expect(sys?.id).toMatch(/^imported-rule-system-[0-9a-z]{6}$/);
@@ -339,12 +338,9 @@ DIRECT-en0 = direct, interface=en0
     expect(parsed.success).toBe(true);
   });
 
-  // DOMAIN-SET 与 RULE-SET 共用前缀但语义不同 (Surge manual §4.3.5.1):
-  // - DOMAIN-SET 文件每行一个域名,mihomo 端用 behavior=domain + format=text 消费
-  //   (mihomo DomainTrie 同时支持 `.example.com` 与 `+.example.com` 前缀)
-  // - RULE-SET 文件含混合子规则,mihomo 端用 behavior=classical
-  // 同时根据 URL 后缀推断 mihomo format: .yaml/.yml→yaml, .mrs→mrs, 其余→text。
-  it("recognizes DOMAIN-SET vs RULE-SET and picks behavior/format/surge_format accordingly", () => {
+  // DOMAIN-SET 与 RULE-SET 共用前缀但语义不同 (Surge manual §4.3.5.1),
+  // 分别落到 surge_format=domain_set / rule_set,与 URL 后缀无关。
+  it("recognizes DOMAIN-SET vs RULE-SET and picks surge_format accordingly", () => {
     const text = `
 [Rule]
 RULE-SET,https://example.com/rules.list,Proxy,extended-matching
@@ -359,24 +355,18 @@ RULE-SET,FOO_BAR_NOT_INTERNAL,DIRECT
     const ruleSetText = r.ruleSets.find((rs) => rs.url === "https://example.com/rules.list");
     expect(ruleSetText).toMatchObject({
       type: "remote_url",
-      behavior: "classical",
-      format: "text",
       surge_format: "rule_set",
-      clash_format: "rule_provider",
       policy: "Proxy",
     });
     expect(ruleSetText?.surge_flags?.extended_matching).toBe(true);
 
     const ruleSetYaml = r.ruleSets.find((rs) => rs.url === "https://example.com/rules.yaml");
-    expect(ruleSetYaml).toMatchObject({ behavior: "classical", format: "yaml", surge_format: "rule_set" });
+    expect(ruleSetYaml).toMatchObject({ surge_format: "rule_set" });
 
     const domainSetText = r.ruleSets.find((rs) => rs.url === "https://example.com/domains.txt");
     expect(domainSetText).toMatchObject({
       type: "remote_url",
-      behavior: "domain",
-      format: "text",
       surge_format: "domain_set",
-      clash_format: "rule_provider",
       policy: "DIRECT",
     });
     expect(domainSetText?.surge_flags?.no_resolve).toBe(true);
@@ -384,6 +374,6 @@ RULE-SET,FOO_BAR_NOT_INTERNAL,DIRECT
     expect(domainSetText?.id).toMatch(/^imported-domainset-domains-[0-9a-z]{6}$/);
 
     const domainSetMrs = r.ruleSets.find((rs) => rs.url === "https://example.com/cn.mrs");
-    expect(domainSetMrs).toMatchObject({ behavior: "domain", format: "mrs", surge_format: "domain_set" });
+    expect(domainSetMrs).toMatchObject({ surge_format: "domain_set" });
   });
 });

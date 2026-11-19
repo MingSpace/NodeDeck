@@ -29,14 +29,14 @@ export function isHiddenSelectorEmpty(selector?: HiddenNodeSelectorLike): boolea
 }
 
 /**
- * 算出"仅供链式使用"的节点名集合:这些节点仍会写进 Clash `proxies:` / Surge `[Proxy]`
+ * 算出"仅供链式使用"的节点名集合:这些节点仍会写进 Surge `[Proxy]`
  * (所以 chain_via 指得到),但不参与任何策略组 selector 的动态匹配。
  *
  * 判定直接复用 chain/apply.ts 的 `matchesSelector` — 用户在链式规则作用域里学到的
  * 组合语义(`include_nodes` 与其余条件 AND、正则大小写不敏感、缺失属性按不匹配白名单处理)
  * 在这里完全一致,不用再学第二套。
  *
- * 调用时机:必须在节点改名之后(Clash 的 uniquify / Surge 的 escapeSurgeNames),
+ * 调用时机:必须在节点改名之后(uniquifyNodeNames / escapeSurgeNames),
  * 否则 `include_nodes` 里用户点名的名字与最终产物里的名字对不上。
  */
 export function resolveHiddenNodeNames(nodes: Node[], selector?: HiddenNodeSelectorLike): Set<string> {

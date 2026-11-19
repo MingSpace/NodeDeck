@@ -6,7 +6,7 @@ import { BasicSection } from "./sections/basic";
 import { DnsSection } from "./sections/dns";
 import { MitmSection } from "./sections/mitm";
 import { MtprotoSection } from "./sections/mtproto";
-import { HostsSection, HttpApiSection, SurgeOnlySection } from "./sections/misc";
+import { HostsSection, HttpApiSection, OtherOptionsSection } from "./sections/misc";
 import { SsidSection } from "./sections/ssid";
 import { TunnelScopeSection } from "./sections/tunnel-scope";
 
@@ -27,7 +27,7 @@ export function GeneralPresetVisualForm({ data, update }: Props) {
       <CollapsibleSection title="Hosts" icon={<ListTree className="h-4 w-4" />}>
         <HostsSection data={data} update={update} />
       </CollapsibleSection>
-      <CollapsibleSection title="Surge 专属" icon={<Zap className="h-4 w-4" />}>
+      <CollapsibleSection title="高级" icon={<Zap className="h-4 w-4" />}>
         <div className="space-y-2">
           <SubCollapsible title="隧道接管范围 (APNs 推送)" icon={<Network className="h-3.5 w-3.5" />}>
             <TunnelScopeSection data={data} update={update} />
@@ -45,13 +45,10 @@ export function GeneralPresetVisualForm({ data, update }: Props) {
             <SsidSection data={data} update={update} />
           </SubCollapsible>
           <SubCollapsible title="其他选项" icon={<Wrench className="h-3.5 w-3.5" />}>
-            <SurgeOnlySection data={data} update={update} />
+            <OtherOptionsSection data={data} update={update} />
           </SubCollapsible>
         </div>
       </CollapsibleSection>
-      <div className="text-xs text-muted-foreground border-t pt-2">
-        TUN / Sniffer / 其它 Clash 高阶字段请切到「YAML 高级」编辑
-      </div>
     </div>
   );
 }

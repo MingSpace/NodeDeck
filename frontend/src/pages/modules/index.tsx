@@ -27,7 +27,7 @@ export function ModulesPage() {
     <EntityListPage<SurgeModuleData>
       title="Surge 模块"
       icon={Puzzle}
-      emptyDescription="Surge 模块用来放 MITM、URL 重写、规则和脚本。可以被 Profile 引用并进 Surge 订阅,也可以用单独的链接装到设备上;内容可以在这里编辑,也可以引用远程 .sgmodule。Clash 订阅不受影响。"
+      emptyDescription="Surge 模块用来放 MITM、URL 重写、规则和脚本。可以被 Profile 引用并进 Surge 订阅,也可以用单独的链接装到设备上;内容可以在这里编辑,也可以引用远程 .sgmodule。"
       description="Profile 引用即并入订阅;每个模块另有公开链接,可在各设备上单独安装、各自开关"
       kind="modules"
       renderRow={(m) => (

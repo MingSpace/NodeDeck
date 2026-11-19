@@ -20,16 +20,6 @@ export function BasicSection({ data, update }: Props) {
         </LabeledField>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <LabeledField label="模式" raw="mode" hint="rule 按规则分流 / global 全局走代理 / direct 全部直连。">
-          <Select value={data.mode} onValueChange={(v) => update({ mode: v as GeneralPresetData["mode"] })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="rule">rule · 规则分流</SelectItem>
-              <SelectItem value="global">global · 全局代理</SelectItem>
-              <SelectItem value="direct">direct · 全部直连</SelectItem>
-            </SelectContent>
-          </Select>
-        </LabeledField>
         <LabeledField label="日志级别" raw="log-level" hint="日志详细程度。排查问题时可调高到 info / debug。">
           <Select value={data.log_level} onValueChange={(v) => update({ log_level: v as GeneralPresetData["log_level"] })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -42,29 +32,6 @@ export function BasicSection({ data, update }: Props) {
               <SelectItem value="verbose">verbose</SelectItem>
             </SelectContent>
           </Select>
-        </LabeledField>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <LabeledField label="HTTP 端口" raw="port" hint="Clash HTTP 代理入站端口。">
-          <Input
-            type="number"
-            value={data.port ?? ""}
-            onChange={(e) => update({ port: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-          />
-        </LabeledField>
-        <LabeledField label="SOCKS 端口" raw="socks-port" hint="Clash SOCKS5 代理入站端口。">
-          <Input
-            type="number"
-            value={data.socks_port ?? ""}
-            onChange={(e) => update({ socks_port: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-          />
-        </LabeledField>
-        <LabeledField label="混合端口" raw="mixed-port" hint="Clash 混合(HTTP + SOCKS)入站端口。">
-          <Input
-            type="number"
-            value={data.mixed_port ?? ""}
-            onChange={(e) => update({ mixed_port: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-          />
         </LabeledField>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -90,14 +57,6 @@ export function BasicSection({ data, update }: Props) {
           hint="启用 IPv6 协议栈支持。"
           checked={data.ipv6}
           onChange={(v) => update({ ipv6: v })}
-          className="px-2.5"
-        />
-        <ToggleRow
-          label="允许局域网代理"
-          raw="allow-lan"
-          hint="允许同一局域网内的其他设备连接本机的代理端口。"
-          checked={data.allow_lan}
-          onChange={(v) => update({ allow_lan: v })}
           className="px-2.5"
         />
       </div>

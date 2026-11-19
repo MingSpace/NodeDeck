@@ -5,9 +5,8 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
 
 // @business_rule: 节点字段太多(每协议各异),用 YAML 而不是字段表来呈现 ——
-// 1) 用户复制后可直接贴到 Clash proxies: 段验证;
-// 2) 嵌套结构(ws_opts / reality_opts / wg peers / plugin_opts)天然好读;
-// 3) 项目本来就以 YAML 为唯一真相,风格统一。
+// 1) 嵌套结构(ws_opts / reality_opts / wg peers / plugin_opts)天然好读;
+// 2) 项目本来就以 YAML 为唯一真相,风格统一。
 //
 // 渲染前剔除 undefined / 空对象 / 空数组,避免一堆 `field: ~` 占视觉。
 function cleanForYaml(node: Record<string, unknown>): Record<string, unknown> {

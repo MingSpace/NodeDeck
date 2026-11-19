@@ -255,7 +255,6 @@ describe("findEntityReferences: providers", () => {
       ],
       groups: [
         group({ id: "g-a", name: "A", selector: { from_providers: ["airport-a"] } }),
-        group({ id: "g-b", name: "B", use: ["airport-a"] }),
       ],
       providerIds: ["airport-a"],
     });
@@ -266,7 +265,6 @@ describe("findEntityReferences: providers", () => {
       "profiles/p1:chain_rules[0].selector.from_providers",
       "profiles/p1:hidden_nodes.from_providers",
       "groups/g-a:selector.from_providers",
-      "groups/g-b:use",
       "notification/notification:events.userinfo_alert.provider_ids",
     ]);
     expect(refs.every((r) => r.blocking)).toBe(true);

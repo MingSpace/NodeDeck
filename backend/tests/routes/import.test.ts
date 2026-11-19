@@ -262,9 +262,6 @@ describe("POST /api/import/commit (Surge)", () => {
       name: "user-edited",
       type: "remote_url" as const,
       url: "https://other.example.com/list.list", // 内容不同 → 不会被 dedupBy 识别为重复
-      behavior: "classical" as const,
-      format: "text" as const,
-      clash_format: "rule_provider" as const,
       surge_format: "rule_set" as const,
       update_interval: 86400,
     };
@@ -287,6 +284,59 @@ describe("POST /api/import/commit (Surge)", () => {
     expect(savedIds.every((id) => /^imported-rule-(cn|reject)-m[0-9a-z]{5}$/.test(id))).toBe(true);
     expect(body.stats.rules).toBe(2);
     expect(body.stats.rules_skipped).toBe(0);
+  });
+});
+
+describe("Clash 整包导入已移除", () => {
+  const SAMPLE_CLASH = `
+proxies:
+  - { name: HK, type: ss, server: hk.example.com, port: 8388, cipher: aes-128-gcm, password: pwd }
+proxy-groups:
+  - { name: Auto, type: select, proxies: [HK] }
+`;
+  for (const path of ["/api/import/preview", "/api/import/commit"]) {
+    for (const kind of [undefined, "clash"]) {
+      it(`${path} ${kind ? "kind=clash" : "自动识别出 Clash YAML"} → 400`, async () => {
+        const res = await buildApp().request(path, {
+          method: "POST",
+          body: JSON.stringify({ text: SAMPLE_CLASH, ...(kind ? { kind } : {}) }),
+          headers: { "Content-Type": "application/json" },
+        });
+        expect(res.status).toBe(400);
+        const body = (await res.json()) as { error: string };
+        expect(body.error).toBe("Clash 整包导入已移除，仅支持导入 Surge .conf");
+        expect(mocked.providerSave).not.toHaveBeenCalled();
+        expect(mocked.rulesetSave).not.toHaveBeenCalled();
+        expect(mocked.groupSave).not.toHaveBeenCalled();
+      });
+    }
+  }
+});
+
+describe("没有 [General] 段的 Surge .conf 也按 Surge 导入", () => {
+  const FRAGMENT = "[Proxy]\nHK = ss, 1.2.3.4, 8388, encrypt-method=aes-128-gcm, password=x\n\n[Rule]\nFINAL,DIRECT\n";
+
+  it("/api/import/preview 不带 kind → 200 且 kind=surge", async () => {
+    const res = await buildApp().request("/api/import/preview", {
+      method: "POST",
+      body: JSON.stringify({ text: FRAGMENT }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { kind: string; counts: { nodes: number } };
+    expect(body.kind).toBe("surge");
+    expect(body.counts.nodes).toBe(1);
+  });
+
+  it("显式传 surge 以外的 kind → 400", async () => {
+    const res = await buildApp().request("/api/import/preview", {
+      method: "POST",
+      body: JSON.stringify({ text: FRAGMENT, kind: "quanx" }),
+      headers: { "Content-Type": "application/json" },
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: string };
+    expect(body.error).toContain("仅支持导入 Surge .conf");
   });
 });
 

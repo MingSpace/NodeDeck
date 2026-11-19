@@ -89,7 +89,7 @@ export interface ChainPreviewResp {
 
 /** 与 backend/src/generators/flow-graph.ts 保持同步 */
 export type FlowMemberKind = "node" | "group" | "builtin" | "missing";
-export type FlowMemberOrigin = "explicit" | "other_group" | "nested" | "selector" | "fallback";
+export type FlowMemberOrigin = "explicit" | "nested" | "selector" | "fallback";
 
 export interface FlowMember {
   name: string;
@@ -107,11 +107,9 @@ export interface FlowNote {
 export interface FlowGroup {
   name: string;
   type: string;
-  clash_type: string;
   members: FlowMember[];
   selector_omitted: number;
   node_total: number;
-  url?: string;
   interval?: number;
   timeout?: number;
   tolerance?: number;
@@ -168,11 +166,6 @@ export interface Profile {
   managed_config_url: string;
   managed_config_interval: number;
   managed_config_strict: boolean;
-  clash_options: {
-    use_proxy_providers: boolean;
-    flag: "mihomo" | "stash";
-    group_style: "block" | "flow";
-  };
 }
 
 export interface NodePoolPreviewItem {

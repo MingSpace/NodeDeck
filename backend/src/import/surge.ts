@@ -121,10 +121,8 @@ function parseGeneralSection(text: string, fileName?: string): GeneralPreset | u
   return {
     id: generateImportedId(trimmedFile && trimmedFile.length > 0 ? trimmedFile : "surge"),
     name: `Imported from ${trimmedFile && trimmedFile.length > 0 ? trimmedFile : "Surge"}`,
-    mode: "rule",
     log_level: (kv.loglevel as GeneralPreset["log_level"]) ?? "notify",
     ipv6: kv.ipv6 === "true",
-    allow_lan: kv["allow-lan"] === "true" || kv["allow-wifi-access"] === "true",
     http_listen: kv["http-listen"],
     socks5_listen: kv["socks5-listen"],
     read_etc_hosts: kv["read-etc-hosts"] === "true",
@@ -152,7 +150,6 @@ function parseGeneralSection(text: string, fileName?: string): GeneralPreset | u
     include_cellular_services: optionalBool(kv["include-cellular-services"]),
     http_api: parseHttpApi(kv),
     dns: {
-      enable: true,
       server: kv["dns-server"]?.split(",").map((s) => s.trim()),
       encrypted_server: kv["encrypted-dns-server"]?.split(",").map((s) => s.trim()),
       hijack: kv["hijack-dns"]?.split(",").map((s) => s.trim()),
@@ -390,8 +387,6 @@ function parseRuleAndGroupSections(text: string): {
       const line = stripComment(raw).trim();
       if (!line) continue;
       // Surge 文档: RULE-SET (含子规则集) 与 DOMAIN-SET (纯域名表) 共用前缀,语义不同。
-      // mihomo 端 DomainTrie 同时支持 `.example.com` 与 `+.example.com` 前缀,
-      // 所以 Surge DOMAIN-SET 文件可直接通过 mihomo `behavior: domain` + `format: text` 消费。
       const setMatch = line.match(/^(RULE-SET|DOMAIN-SET)\s*,\s*([^,]+)\s*,\s*([A-Za-z0-9-_+]+)/i);
       if (!setMatch) continue;
       const setKind = setMatch[1].toUpperCase() as "RULE-SET" | "DOMAIN-SET";
@@ -399,8 +394,7 @@ function parseRuleAndGroupSections(text: string): {
       const policy = setMatch[3].trim();
       // Surge 内置 ruleset SYSTEM / LAN(`RULE-SET,SYSTEM,DIRECT` / `RULE-SET,LAN,DIRECT`):
       // 两个平台共有,文档见 manual.nssurge.com/rule/ruleset.html#internal-ruleset。
-      // 解析成 type=surge_internal 的 ruleset,留给 Surge generator 原样输出、Clash generator
-      // 自行处理(LAN 展开/SYSTEM 跳过)。
+      // 解析成 type=surge_internal 的 ruleset,由 Surge generator 原样输出。
       if (
         setKind === "RULE-SET"
         && !urlOrName.startsWith("http")
@@ -421,11 +415,8 @@ function parseRuleAndGroupSections(text: string): {
           name: urlOrName,
           type: "surge_internal",
           surge_internal_name: urlOrName,
-          behavior: "classical",
-          format: "text",
           policy,
           surge_flags: Object.keys(flags).length > 0 ? flags : undefined,
-          clash_format: "rule_provider",
           surge_format: "rule_set",
           update_interval: 86400,
         });
@@ -467,16 +458,11 @@ function parseRuleAndGroupSections(text: string): {
         name: deriveRuleName(url),
         type: "remote_url",
         url,
-        // RULE-SET 文件可含混合规则,mihomo 端只能用 behavior=classical;
-        // DOMAIN-SET 文件每行一个域名,mihomo 端用 behavior=domain。
-        behavior: setKind === "DOMAIN-SET" ? "domain" : "classical",
-        format: detectRulesetFormatFromUrl(url),
         policy: rejectType ? "REJECT" : policy,
         surge_flags: Object.keys(flags).length > 0 ? flags : undefined,
         surge_reject_options: rejectType
           ? { type: rejectType, notification_text: notificationText, notification_interval: notificationInterval }
           : undefined,
-        clash_format: "rule_provider",
         surge_format: setKind === "DOMAIN-SET" ? "domain_set" : "rule_set",
         update_interval: 86400,
       });
@@ -515,7 +501,6 @@ function parseRuleAndGroupSections(text: string): {
         // Surge 导入侧暂不主动识别嵌套组(.conf 里的组成员段不区分节点名/组名);
         // 留空数组让后续 schema parse 直通。用户想拆分可在 Web UI 编辑该组时手动操作。
         nested_groups: [],
-        url: params.url,
         interval: params.interval ? parseInt(params.interval, 10) : undefined,
         tolerance: params.tolerance ? parseInt(params.tolerance, 10) : undefined,
         timeout: params.timeout ? parseInt(params.timeout, 10) : undefined,
@@ -588,18 +573,5 @@ function deriveRuleName(url: string): string {
     return last.replace(/\.[^.]+$/, "");
   } catch {
     return "rule";
-  }
-}
-
-// 按 URL 后缀推断 mihomo `format` 字段。绝大多数 Surge 风格 list (.list/.conf)
-// 实际是 plain text,只有原生 mihomo 资源才用 .yaml/.yml/.mrs。
-function detectRulesetFormatFromUrl(url: string): "yaml" | "text" | "mrs" {
-  try {
-    const path = new URL(url).pathname.toLowerCase();
-    if (path.endsWith(".yaml") || path.endsWith(".yml")) return "yaml";
-    if (path.endsWith(".mrs")) return "mrs";
-    return "text";
-  } catch {
-    return "text";
   }
 }

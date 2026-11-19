@@ -1,11 +1,6 @@
 export interface GeneralPresetData {
   id: string;
   name: string;
-  port?: number;
-  socks_port?: number;
-  mixed_port?: number;
-  allow_lan: boolean;
-  mode: "rule" | "global" | "direct";
   log_level: "silent" | "warning" | "notify" | "info" | "debug" | "verbose";
   ipv6: boolean;
   http_listen?: string;
@@ -39,11 +34,6 @@ export interface GeneralPresetData {
     web_dashboard: boolean;
     tls: boolean;
   };
-  find_process_mode?: "strict" | "always" | "off";
-  external_controller?: string;
-  external_ui?: string;
-  secret?: string;
-  global_client_fingerprint?: string;
   hosts?: Record<string, string | string[]>;
   // Surge Subnet Settings(段名 `[SSID Setting]`);与 backend/src/schemas/general-preset.ts
   // 的 ssidRuleSchema 保持同步。match 存完整 subnet 表达式(SSID: / TYPE: / ... 或裸值)
@@ -57,34 +47,9 @@ export interface GeneralPresetData {
     encrypted_dns_server?: string[];
   }>;
   dns?: {
-    enable: boolean;
-    listen?: string;
-    ipv6?: boolean;
-    enhanced_mode?: "fake-ip" | "redir-host";
-    fake_ip_range?: string;
-    fake_ip_filter?: string[];
-    nameserver?: string[];
-    fallback?: string[];
-    nameserver_policy?: Record<string, string>;
-    proxy_server_nameserver?: string[];
     server?: string[];
     encrypted_server?: string[];
     hijack?: string[];
-  };
-  tun?: {
-    enable: boolean;
-    stack: "system" | "gvisor" | "mixed";
-    auto_route: boolean;
-    auto_detect_interface: boolean;
-    dns_hijack: string[];
-    mtu?: number;
-  };
-  sniffer?: {
-    enable: boolean;
-    sniff?: {
-      TLS?: { ports?: Array<number | string> };
-      HTTP?: { ports?: Array<number | string> };
-    };
   };
   mitm?: {
     enable: boolean;

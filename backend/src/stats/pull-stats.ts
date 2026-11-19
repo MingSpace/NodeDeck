@@ -5,11 +5,15 @@ import { logger } from "../logger.js";
 import { classifyIp, describeUserAgent, type IpScope, type UserAgentDetail } from "./user-agent.js";
 
 /**
- * 订阅拉取统计:按天汇总每个 Profile 被 Clash / Surge 拉了几次,外加最近拉过的客户端(IP + 客户端类型)。
+ * 订阅拉取统计:按天汇总每个 Profile 被拉了几次,外加最近拉过的客户端(IP + 客户端类型)。
  * 只存汇总数字,不存逐条请求;文件 data/stats/pulls.json,程序自读自写,不进 chokidar。
  *
  * 和其它实体不同,这里在内存里攒计数、每分钟落一次盘:每次拉取都写文件不值得,
  * 进程被 SIGKILL 时最多丢最后一分钟的计数,统计数据可以接受。正常退出由 flushPullStats 落盘。
+ *
+ * 只统计 Surge 拉取。旧版还分过 Clash 桶,历史文件必须照样能读:countSchema 里旧的 `clash` 键
+ * 被 zod strip 掉,device.target 用宽松的 string(收窄成枚举会让整份文件解析失败、统计清零),
+ * 汇总时再把 target === "clash" 的历史设备滤掉。
  */
 
 export const STATS_RETENTION_DAYS = 90;
@@ -21,7 +25,6 @@ const FLUSH_INTERVAL_MS = 60_000;
 const DAY_MS = 86_400_000;
 
 const countSchema = z.object({
-  clash: z.number().int().nonnegative().default(0),
   surge: z.number().int().nonnegative().default(0),
 });
 const daySchema = z.object({
@@ -34,7 +37,8 @@ const deviceSchema = z.object({
   client: z.string(),
   user_agent: z.string(),
   profile_id: z.string(),
-  target: z.enum(["clash", "surge"]),
+  /** 历史数据里可能是 "clash";不得收窄成枚举,理由见文件头 */
+  target: z.string().optional(),
   first_seen: z.number(),
   last_seen: z.number(),
   count: z.number().int().nonnegative(),
@@ -51,7 +55,7 @@ const statsSchema = z.object({
 export type PullStats = z.infer<typeof statsSchema>;
 type Device = z.infer<typeof deviceSchema>;
 
-// 顺序有讲究:具体的客户端排前面,泛泛的 clash / mihomo 兜底
+// 只是 UA 识别表,与输出格式无关。顺序有讲究:具体的客户端排前面,泛泛的 clash / mihomo 兜底
 const CLIENT_PATTERNS: Array<[RegExp, string]> = [
   [/surge.*(ios|iphone|ipad)/i, "Surge iOS"],
   [/surge.*(mac|darwin)/i, "Surge Mac"],
@@ -133,7 +137,6 @@ export async function initPullStats(): Promise<void> {
 
 export function recordPull(args: {
   profileId: string;
-  target: "clash" | "surge";
   ip: string;
   userAgent?: string;
   now?: number;
@@ -141,8 +144,8 @@ export function recordPull(args: {
   const now = args.now ?? Date.now();
   const s = current();
   const day = (s.days[dayKey(now)] ??= { profiles: {}, rejected: 0 });
-  const count = (day.profiles[args.profileId] ??= { clash: 0, surge: 0 });
-  count[args.target]++;
+  const count = (day.profiles[args.profileId] ??= { surge: 0 });
+  count.surge++;
   s.last_pulls[args.profileId] = now;
 
   const client = classifyClient(args.userAgent);
@@ -153,7 +156,7 @@ export function recordPull(args: {
     client,
     user_agent: (args.userAgent ?? "").slice(0, 240),
     profile_id: args.profileId,
-    target: args.target,
+    target: "surge",
     first_seen: prev?.first_seen ?? now,
     last_seen: now,
     count: (prev?.count ?? 0) + 1,
@@ -198,7 +201,7 @@ export function flushPullStats(): Promise<void> {
 
 export interface PullSummary {
   /** 最近 N 天,最早的在前,没有拉取的日子补 0 */
-  days: { date: string; clash: number; surge: number }[];
+  days: { date: string; count: number }[];
   today: number;
   /** 有记录的最早一天;仪表盘据此提示「从哪天开始统计」 */
   since?: string;
@@ -206,7 +209,7 @@ export interface PullSummary {
   rejected: number;
   profiles: Record<string, { last7: number; last_pull_at?: number }>;
   /** 最近 7 天拉过的设备,最近的在前 */
-  devices: (Device & UserAgentDetail & { ip_scope: IpScope })[];
+  devices: (Omit<Device, "target"> & UserAgentDetail & { ip_scope: IpScope })[];
 }
 
 export function summarizePulls(windowDays = 30, now = Date.now(), s: PullStats = current()): PullSummary {
@@ -215,14 +218,10 @@ export function summarizePulls(windowDays = 30, now = Date.now(), s: PullStats =
   for (let i = windowDays - 1; i >= 0; i--) {
     const date = dayKey(shiftDays(now, -i));
     const day = s.days[date];
-    let clash = 0;
-    let surge = 0;
-    for (const c of Object.values(day?.profiles ?? {})) {
-      clash += c.clash;
-      surge += c.surge;
-    }
+    let count = 0;
+    for (const c of Object.values(day?.profiles ?? {})) count += c.surge;
     rejected += day?.rejected ?? 0;
-    days.push({ date, clash, surge });
+    days.push({ date, count });
   }
   const last = days[days.length - 1];
 
@@ -231,7 +230,7 @@ export function summarizePulls(windowDays = 30, now = Date.now(), s: PullStats =
   for (const [date, day] of Object.entries(s.days)) {
     if (date < weekStart) continue;
     for (const [id, c] of Object.entries(day.profiles)) {
-      (profiles[id] ??= { last7: 0 }).last7 += c.clash + c.surge;
+      (profiles[id] ??= { last7: 0 }).last7 += c.surge;
     }
   }
   for (const [id, ts] of Object.entries(s.last_pulls)) {
@@ -240,14 +239,14 @@ export function summarizePulls(windowDays = 30, now = Date.now(), s: PullStats =
 
   const deviceCutoff = now - DEVICE_WINDOW_DAYS * DAY_MS;
   const devices = Object.values(s.devices)
-    .filter((d) => d.last_seen >= deviceCutoff)
+    .filter((d) => d.last_seen >= deviceCutoff && d.target !== "clash")
     .sort((a, b) => b.last_seen - a.last_seen)
-    .map((d) => ({ ...d, ...describeUserAgent(d.user_agent), ip_scope: classifyIp(d.ip) }));
+    .map(({ target: _target, ...d }) => ({ ...d, ...describeUserAgent(d.user_agent), ip_scope: classifyIp(d.ip) }));
 
   const recorded = Object.keys(s.days).sort();
   return {
     days,
-    today: last.clash + last.surge,
+    today: last.count,
     since: recorded[0],
     rejected,
     profiles,

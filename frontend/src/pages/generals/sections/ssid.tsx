@@ -81,7 +81,7 @@ export function SsidSection({ data, update }: Props) {
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        仅 Surge 生效 · 在匹配的网络下套用一组设置
+        在匹配的网络下套用一组设置
         <InfoHint>
           官方文档名 Subnet Settings,配置里的段名为兼容历史仍叫 [SSID Setting]。命中当前网络时套用挂起 / DNS
           覆盖 / TFO 等设置。它不负责选策略 —— 想按网络切代理请用 subnet 策略组或 SUBNET 规则。

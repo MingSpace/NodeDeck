@@ -53,7 +53,6 @@ function fakeProfile(overrides: Partial<Profile> = {}): Profile {
     managed_config_url: "auto",
     managed_config_interval: 86400,
     managed_config_strict: false,
-    clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
     ...overrides,
   };
 }
@@ -72,31 +71,29 @@ afterEach(() => {
 
 describe("POST /api/profiles/:id/preview", () => {
   it("合法 draft → 200,内容来自 draft 而非磁盘版(端到端可观测字段验证)", async () => {
-    // 磁盘版 flag=mihomo,draft 显式改为 stash;generator 据此输出 `# !flag: stash` 注释,
-    // 这是 profile 字段直接进入 generator 输出的可观测点,比断言"没有警告"更精确。
+    // 磁盘版 managed_config_interval=86400,draft 改为 3600;generator 把它写进
+    // `#!MANAGED-CONFIG ... interval=` 头,这是 profile 字段直接进入产物的可观测点。
     mockedProfileGet.mockResolvedValue({
       id: "home",
       path: "",
       mtimeMs: 0,
-      data: fakeProfile({
-        clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
-      }),
+      data: fakeProfile({ managed_config_interval: 86400 }),
     });
     mockedBuildNodePool.mockResolvedValue({ nodes: [], byProvider: new Map() });
     mockedLoadConfig.mockResolvedValue({});
 
-    const draft = fakeProfile({
-      clash_options: { use_proxy_providers: false, flag: "stash", group_style: "flow" },
-    });
-    const res = await postPreview(buildApp(), "home", { profile: draft, target: "clash" });
+    const draft = fakeProfile({ managed_config_interval: 3600 });
+    const res = await postPreview(buildApp(), "home", { profile: draft });
     expect(res.status).toBe(200);
-    const json = (await res.json()) as { target: string; text: string; warnings: string[]; node_count: number };
-    expect(json.target).toBe("clash");
+    const json = (await res.json()) as Record<string, unknown> & { text: string; warnings: string[]; node_count: number };
+    // 响应不再带 target 字段,只返回 Surge 文本
+    expect(json).not.toHaveProperty("target");
+    expect(Object.keys(json).sort()).toEqual(["node_count", "revalidating", "text", "warnings"]);
     expect(json.warnings).toEqual([]);
     expect(json.text).toContain("# Profile: home");
-    // 关键正向断言:输出里出现 draft 的 flag 而非磁盘版的
-    expect(json.text).toContain("# !flag: stash");
-    expect(json.text).not.toContain("# !flag: mihomo");
+    // 关键正向断言:输出里出现 draft 的值而非磁盘版的
+    expect(json.text).toMatch(/^#!MANAGED-CONFIG \S+ interval=3600 /m);
+    expect(json.text).not.toContain("interval=86400");
   });
 
   it("draft 缺必填字段 (name 空串) → best-effort 回退磁盘版,warnings 含字段名", async () => {
@@ -111,7 +108,7 @@ describe("POST /api/profiles/:id/preview", () => {
 
     // partial draft only — schema 校验失败,但 merged 后能走通(磁盘版兜底缺失字段)
     const partialDraft = { name: "" };
-    const res = await postPreview(buildApp(), "home", { profile: partialDraft, target: "clash" });
+    const res = await postPreview(buildApp(), "home", { profile: partialDraft });
     expect(res.status).toBe(200);
     const json = (await res.json()) as { warnings: string[]; text: string };
     expect(json.warnings.length).toBeGreaterThan(0);
@@ -130,7 +127,7 @@ describe("POST /api/profiles/:id/preview", () => {
 
     // 故意给个会让合并后仍然非法的 draft(token 类型错误)
     const brokenDraft = { token: 123 };
-    const res = await postPreview(buildApp(), "home", { profile: brokenDraft, target: "clash" });
+    const res = await postPreview(buildApp(), "home", { profile: brokenDraft });
     expect(res.status).toBe(200);
     const json = (await res.json()) as { warnings: string[] };
     expect(json.warnings.some((w) => w.includes("已回退到上次保存的版本"))).toBe(true);
@@ -171,14 +168,14 @@ describe("POST /api/profiles/:id/preview", () => {
     mockedLoadConfig.mockResolvedValue({});
 
     const draft = fakeProfile({ id: "home" });
-    const res = await postPreview(buildApp(), "home", { profile: draft, target: "clash" });
+    const res = await postPreview(buildApp(), "home", { profile: draft });
     expect(res.status).toBe(200);
     const json = (await res.json()) as { warnings: string[]; text: string };
     expect(json.warnings).toEqual([]);
     expect(json.text).toContain("# Profile: home");
   });
 
-  it("target=surge → 200,生成 .conf 格式", async () => {
+  it("生成 Surge .conf;请求里残留的 target 字段(含 clash)被忽略", async () => {
     mockedProfileGet.mockResolvedValue({
       id: "home",
       path: "",
@@ -186,44 +183,33 @@ describe("POST /api/profiles/:id/preview", () => {
       data: fakeProfile(),
     });
     mockedBuildNodePool.mockResolvedValue({ nodes: [], byProvider: new Map() });
-    mockedLoadConfig.mockResolvedValue({});
+    mockedLoadConfig.mockResolvedValue({ public_base_url: "https://sub.example.com" });
 
-    const res = await postPreview(buildApp(), "home", {
-      profile: fakeProfile(),
-      target: "surge",
-    });
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as { target: string; text: string };
-    expect(json.target).toBe("surge");
-    expect(json.text).toContain("# Profile: home");
+    for (const target of [undefined, "surge", "clash"]) {
+      const res = await postPreview(buildApp(), "home", { profile: fakeProfile(), ...(target ? { target } : {}) });
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as { text: string };
+      expect(json.text).toMatch(/^#!MANAGED-CONFIG https:\/\/sub\.example\.com\/sub\?profile=home&target=surge&t=GOODtoken123 /);
+      expect(json.text).toContain("[Proxy]");
+    }
+  });
+});
+
+describe("GET /api/profiles/:id/url", () => {
+  it("返回 Surge 订阅地址,query 里的 target 一律忽略", async () => {
+    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
+    mockedLoadConfig.mockResolvedValue({ public_base_url: "https://sub.example.com" });
+    for (const q of ["", "?target=clash", "?target=surge"]) {
+      const res = await buildApp().request(`/api/profiles/home/url${q}`);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ url: "https://sub.example.com/sub?profile=home&target=surge&t=GOODtoken123" });
+    }
   });
 
-  it("target 通过 query 传也能识别(向后兼容)", async () => {
-    mockedProfileGet.mockResolvedValue({
-      id: "home",
-      path: "",
-      mtimeMs: 0,
-      data: fakeProfile(),
-    });
-    mockedBuildNodePool.mockResolvedValue({ nodes: [], byProvider: new Map() });
-    mockedLoadConfig.mockResolvedValue({});
-
-    const res = await buildApp().request("/api/profiles/home/preview?target=surge", {
-      method: "POST",
-      body: JSON.stringify({ profile: fakeProfile() }),
-      headers: { "Content-Type": "application/json" },
-    });
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as { target: string };
-    expect(json.target).toBe("surge");
-  });
-
-  it("非法 target → 400", async () => {
-    const res = await postPreview(buildApp(), "home", {
-      profile: fakeProfile(),
-      target: "quanx",
-    });
-    expect(res.status).toBe(400);
+  it("profile 不存在 → 404", async () => {
+    mockedProfileGet.mockResolvedValue(null);
+    const res = await buildApp().request("/api/profiles/missing/url");
+    expect(res.status).toBe(404);
   });
 });
 
@@ -592,9 +578,6 @@ describe("POST /api/profiles/:id/flow-preview", () => {
         name: "AI 网站",
         type: "remote_url",
         url: "https://example.com/ai.list",
-        behavior: "classical",
-        format: "yaml",
-        clash_format: "rule_provider",
         surge_format: "rule_set",
         update_interval: 86400,
       },

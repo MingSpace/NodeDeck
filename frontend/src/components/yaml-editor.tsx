@@ -73,7 +73,7 @@ export function YamlEditor({
       return;
     }
 
-    // language 切换(Clash YAML <-> Surge .conf) 时整体文本会大改,
+    // language 切换(如 YAML <-> .conf) 时整体文本会大改,
     // diff 没意义,直接 reset baseline 并清掉残留装饰。
     if (prevLanguageRef.current !== language) {
       prevLanguageRef.current = language;

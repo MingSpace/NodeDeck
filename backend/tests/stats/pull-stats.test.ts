@@ -65,16 +65,16 @@ describe("classifyClient", () => {
 });
 
 describe("recordPull / summarizePulls", () => {
-  it("按天分 Clash / Surge 计数,空日子补 0", () => {
-    recordPull({ profileId: "home", target: "surge", ip: "1.1.1.1", userAgent: "Surge iOS/1", now: NOW });
-    recordPull({ profileId: "home", target: "clash", ip: "2.2.2.2", userAgent: "mihomo/1", now: NOW });
-    recordPull({ profileId: "work", target: "surge", ip: "1.1.1.1", userAgent: "Surge iOS/1", now: NOW - 2 * DAY });
+  it("按天计数,空日子补 0", () => {
+    recordPull({ profileId: "home", ip: "1.1.1.1", userAgent: "Surge iOS/1", now: NOW });
+    recordPull({ profileId: "home", ip: "2.2.2.2", userAgent: "Surge Mac/1", now: NOW });
+    recordPull({ profileId: "work", ip: "1.1.1.1", userAgent: "Surge iOS/1", now: NOW - 2 * DAY });
 
     const s = summarizePulls(7, NOW);
     expect(s.days).toHaveLength(7);
-    expect(s.days[6]).toEqual({ date: dayKey(NOW), clash: 1, surge: 1 });
-    expect(s.days[4]).toEqual({ date: dayKey(NOW - 2 * DAY), clash: 0, surge: 1 });
-    expect(s.days[5]).toEqual({ date: dayKey(NOW - DAY), clash: 0, surge: 0 });
+    expect(s.days[6]).toEqual({ date: dayKey(NOW), count: 2 });
+    expect(s.days[4]).toEqual({ date: dayKey(NOW - 2 * DAY), count: 1 });
+    expect(s.days[5]).toEqual({ date: dayKey(NOW - DAY), count: 0 });
     expect(s.today).toBe(2);
     expect(s.since).toBe(dayKey(NOW - 2 * DAY));
     expect(s.profiles.home).toEqual({ last7: 2, last_pull_at: NOW });
@@ -82,21 +82,22 @@ describe("recordPull / summarizePulls", () => {
   });
 
   it("同一 IP + 客户端算一台设备,累计次数;最近的排前面", () => {
-    recordPull({ profileId: "home", target: "surge", ip: "1.1.1.1", userAgent: "Surge iOS/1", now: NOW - 3000 });
-    recordPull({ profileId: "home", target: "clash", ip: "2.2.2.2", userAgent: "mihomo/1", now: NOW - 2000 });
-    recordPull({ profileId: "home", target: "surge", ip: "1.1.1.1", userAgent: "Surge iOS/2", now: NOW - 1000 });
+    recordPull({ profileId: "home", ip: "1.1.1.1", userAgent: "Surge iOS/1", now: NOW - 3000 });
+    recordPull({ profileId: "home", ip: "2.2.2.2", userAgent: "Surge Mac/1", now: NOW - 2000 });
+    recordPull({ profileId: "home", ip: "1.1.1.1", userAgent: "Surge iOS/2", now: NOW - 1000 });
 
     const { devices } = summarizePulls(30, NOW);
     expect(devices.map((d) => [d.ip, d.client, d.count])).toEqual([
       ["1.1.1.1", "Surge iOS", 2],
-      ["2.2.2.2", "mihomo", 1],
+      ["2.2.2.2", "Surge Mac", 1],
     ]);
     expect(devices[0].user_agent).toBe("Surge iOS/2");
+    expect(devices[0]).not.toHaveProperty("target");
   });
 
   it("设备只返回最近 7 天拉过的", () => {
-    recordPull({ profileId: "home", target: "surge", ip: "1.1.1.1", now: NOW - 8 * DAY });
-    recordPull({ profileId: "home", target: "surge", ip: "2.2.2.2", now: NOW - DAY });
+    recordPull({ profileId: "home", ip: "1.1.1.1", now: NOW - 8 * DAY });
+    recordPull({ profileId: "home", ip: "2.2.2.2", now: NOW - DAY });
     expect(summarizePulls(30, NOW).devices.map((d) => d.ip)).toEqual(["2.2.2.2"]);
   });
 
@@ -114,13 +115,13 @@ describe("prunePullStats", () => {
     const stats: PullStats = {
       version: 1,
       days: {
-        [dayKey(NOW - 100 * DAY)]: { profiles: { home: { clash: 1, surge: 0 } }, rejected: 0 },
-        [dayKey(NOW - 10 * DAY)]: { profiles: { home: { clash: 1, surge: 0 } }, rejected: 0 },
+        [dayKey(NOW - 100 * DAY)]: { profiles: { home: { surge: 1 } }, rejected: 0 },
+        [dayKey(NOW - 10 * DAY)]: { profiles: { home: { surge: 1 } }, rejected: 0 },
       },
       last_pulls: {},
       devices: {
-        old: { ip: "1.1.1.1", client: "Surge", user_agent: "", profile_id: "home", target: "surge", first_seen: 0, last_seen: NOW - 31 * DAY, count: 1 },
-        new: { ip: "2.2.2.2", client: "Surge", user_agent: "", profile_id: "home", target: "surge", first_seen: 0, last_seen: NOW - DAY, count: 1 },
+        old: { ip: "1.1.1.1", client: "Surge", user_agent: "", profile_id: "home", first_seen: 0, last_seen: NOW - 31 * DAY, count: 1 },
+        new: { ip: "2.2.2.2", client: "Surge", user_agent: "", profile_id: "home", first_seen: 0, last_seen: NOW - DAY, count: 1 },
       },
     };
     prunePullStats(stats, NOW);
@@ -136,14 +137,48 @@ describe("落盘", () => {
     await flushPullStats();
     expect(existsSync(file())).toBe(false);
 
-    recordPull({ profileId: "home", target: "clash", ip: "1.1.1.1", userAgent: "mihomo/1" });
+    recordPull({ profileId: "home", ip: "1.1.1.1", userAgent: "Surge iOS/1" });
     await flushPullStats();
     const saved = JSON.parse(readFileSync(file(), "utf8")) as PullStats;
-    expect(Object.values(saved.days)[0].profiles.home.clash).toBe(1);
+    expect(Object.values(saved.days)[0].profiles.home).toEqual({ surge: 1 });
 
     _resetPullStats();
     await initPullStats();
     expect(summarizePulls(1).today).toBe(1);
+  });
+
+  // 旧版分过 Clash 桶、设备上记了 target:"clash";这样的历史文件必须整份能读,不能"starting fresh"
+  it("含 Clash 拉取的历史文件照常加载:只计 Surge,Clash 设备不再返回", async () => {
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(join(DATA_DIR, "stats"), { recursive: true });
+    const now = Date.now();
+    writeFileSync(
+      file(),
+      JSON.stringify({
+        version: 1,
+        days: { [dayKey(now)]: { profiles: { home: { clash: 5, surge: 2 } }, rejected: 1 } },
+        last_pulls: { home: now },
+        devices: {
+          "1.1.1.1|Surge iOS": { ip: "1.1.1.1", client: "Surge iOS", user_agent: "Surge iOS/1", profile_id: "home", target: "surge", first_seen: now, last_seen: now, count: 2 },
+          "2.2.2.2|mihomo": { ip: "2.2.2.2", client: "mihomo", user_agent: "mihomo/1", profile_id: "home", target: "clash", first_seen: now, last_seen: now, count: 5 },
+          "3.3.3.3|Surge Mac": { ip: "3.3.3.3", client: "Surge Mac", user_agent: "Surge Mac/1", profile_id: "home", first_seen: now, last_seen: now, count: 1 },
+        },
+      }),
+    );
+    await initPullStats();
+    const s = summarizePulls(1);
+    expect(s.today).toBe(2);
+    expect(s.days[0].count).toBe(2);
+    expect(s.rejected).toBe(1);
+    expect(s.profiles.home.last7).toBe(2);
+    expect(s.devices.map((d) => d.ip).sort()).toEqual(["1.1.1.1", "3.3.3.3"]);
+    expect(s.devices.every((d) => !("target" in d))).toBe(true);
+
+    // 下一次拉取写进同一天,旧的 clash 计数不会被带回来
+    recordPull({ profileId: "home", ip: "1.1.1.1", userAgent: "Surge iOS/1" });
+    await flushPullStats();
+    const saved = JSON.parse(readFileSync(file(), "utf8")) as PullStats;
+    expect(saved.days[dayKey(now)].profiles.home).toEqual({ surge: 3 });
   });
 
   it("文件内容非法时从空的开始,不抛错", async () => {

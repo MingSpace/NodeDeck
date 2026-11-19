@@ -2,9 +2,9 @@
 
 ## Agent Role
 
-你是 **专精 TypeScript / Node.js 全栈 + 代理协议(Clash Mihomo / Surge)** 的工程师。
+你是 **专精 TypeScript / Node.js 全栈 + 代理协议(Surge;Clash (mihomo) YAML 仅作机场订阅的输入格式)** 的工程师。
 
-**目标客户端版本 = 两端当前的最新正式版**(mihomo Stable / Surge iOS 与 Mac 的 App Store 正式版),不锁死具体版本号。含义:
+**目标客户端版本 = Surge 当前的最新正式版**(iOS 与 Mac 的 App Store 正式版),不锁死具体版本号。含义:
 
 - 上游把某个写法标记为 deprecated / legacy / no-op 时,**以最新版行为为准**,不为兼容老版本保留失效输出(例:Surge 组行的 `url=` 已是 legacy 空操作,generator 不再输出)
 - 用到较新版本才有的特性时,在**代码注释 + `docs/protocol-mapping.md` 对应条目**里标注该特性的最低版本(如 `iOS 5.22.0+ / Mac 6.9.0+`),方便用户对照自己的客户端 —— 这类**特性级**版本标注要保留,被取消的只是"全局锁一个目标版本号"
@@ -12,14 +12,14 @@
 
 优先级:
 
-1. **正确性**: 生成的 clash yaml / surge .conf 必须能被对应客户端无错加载
+1. **正确性**: 生成的 surge .conf 必须能被 Surge 无错加载;机场订阅(Clash YAML / Surge / URI / base64)必须解析无误
 2. **协议保真**: 字段映射不可瞎猜键名,一律按 `Protocol Documentation Lookup` 章节办
 3. **类型安全**: 后端用 zod schema 校验所有外部输入(HTTP body / yaml 文件 / env);**前端目前不跑 zod**,校验只在后端一侧,前端靠"提交后读后端报错"兜底(见 `React` 小节)
 4. **改完不重启**: 任何配置变化必须在不重启容器的前提下生效(文件是唯一真相,chokidar invalidate)
 
 ## Project Overview
 
-NodeDeck = 个人自用的 Clash + Surge 订阅转换器 + Web 配置中心。完整设计文档见 `[docs/design.md](docs/design.md)`。
+NodeDeck = 个人自用的 Surge 订阅转换器 + Web 配置中心:机场订阅可以是 Clash (mihomo) YAML / Surge .conf / 节点 URI / base64 列表,输出只有 Surge 托管配置(Clash 输出已移除,旧的 Clash 订阅地址不再提供)。完整设计文档见 `[docs/design.md](docs/design.md)`。
 
 ## Tech Stack
 
@@ -72,7 +72,7 @@ pnpm dev:verify              # agent 验证 UI 用:临时数据 + 假订阅 + �
 # 校验
 pnpm typecheck               # 全 workspace 类型检查
 pnpm lint                    # eslint 扁平配置(eslint.config.js),--max-warnings 0
-pnpm test                    # backend vitest run(38 个文件 / 600+ 用例,约 3s)
+pnpm test                    # backend vitest run(56 个文件 / 870 个用例,约 3s)
 pnpm test:watch              # backend vitest watch
 
 # vitest 只装在 backend,root 没有 vitest bin —— `pnpm vitest ...` 会报
@@ -135,7 +135,7 @@ NodeDeck/
 │   │   ├── log-buffer.ts           # pino 行 → 结构化内存缓冲(Web UI 日志页 + SSE)
 │   │   ├── log-store.ts            # 按日 NDJSON 落盘 data/logs/,retention_days 热生效
 │   │   ├── routes/
-│   │   │   ├── sub.ts              # /sub、/sub/{clash,surge}/:profile、/sub/provider/:id/clash.yaml、/module/:id.sgmodule(默认 ?t=<模块 HMAC token>,public 模块免 token)
+│   │   │   ├── sub.ts              # /sub(target 可省,缺省 surge,其它值 400)、/sub/surge/:profile、/module/:id.sgmodule(默认 ?t=<模块 HMAC token>,public 模块免 token)
 │   │   │   ├── api.ts              # /api/health、/api/version + 各子路由装配 + session/IP 白名单挂载点
 │   │   │   ├── entities.ts         # 各实体 CRUD
 │   │   │   ├── profile-preview.ts  # Web UI 实时预览 + 链式诊断
@@ -143,10 +143,9 @@ NodeDeck/
 │   │   │   ├── egress-actions.ts   # /api/egresses:public-key(NodeDeck 的 SSH 公钥)/ test(经出口探测出口 IP)
 │   │   │   ├── module-actions.ts   # /api/modules:status(安装地址 + 远程缓存状态)/ :id/refresh / test-fetch
 │   │   │   └── dashboard.ts / logs.ts / notification.ts / config.ts / import.ts / auth.ts
-│   │   ├── parsers/                # clash / surge / v2ray / uri / dedup / normalize / info-node-filter
-│   │   ├── import/                 # 整包 clash / surge 导入 + extract-hosts + dedup-pool
-│   │   ├── generators/             # clash + surge 输出
-│   │   │   ├── clash.ts            # generateClashConfig + generateProxyProviderYaml
+│   │   ├── parsers/                # 机场订阅输入解析:clash(YAML)/ surge / v2ray / uri / dedup / normalize / info-node-filter
+│   │   ├── import/                 # 整包 surge .conf 导入(Clash YAML 探测到直接 400)+ extract-hosts + dedup-pool
+│   │   ├── generators/             # 只输出 surge
 │   │   │   ├── surge.ts
 │   │   │   ├── profile-resolver.ts # Profile → 解析后的资源(节点/组/规则/模块)
 │   │   │   ├── node-filter.ts      # include/exclude/rename
@@ -154,7 +153,7 @@ NodeDeck/
 │   │   │   ├── node-naming.ts      # uniquify(去重) + escapeSurgeNames(净化)
 │   │   │   ├── group-members.ts    # selector→节点池 + 组成员索引
 │   │   │   ├── group-refs.ts       # group.proxies 悬空引用清理
-│   │   │   ├── hosts.ts            # hosts 合并 + splitClashHosts
+│   │   │   ├── hosts.ts            # hosts 合并 + Surge [Host] 行
 │   │   │   ├── surge-module-merge.ts # Profile 引用的模块按 Surge 模块语义并入 .conf(%APPEND% / 行置顶 / {{{参数}}})
 │   │   │   └── protocol-mapping.ts # 字段映射表(权威源)
 │   │   ├── providers/              # fetcher / egress(SSH 出口)/ egress-key / fetch-proxy / scheduler(cron) / cache-store / pool / load
@@ -185,8 +184,8 @@ NodeDeck/
 ├── data/                           # 运行时持久化(开发也用,gitignored)
 ├── docs/
 │   ├── design.md                   # 完整设计(第 4 节 = 处理流水线)
-│   ├── protocol-mapping.md         # 字段对照表(权威)
-│   ├── cookbook.md                 # 用户向使用示例(规则形态/链式/proxy-providers)
+│   ├── protocol-mapping.md         # 内部模型 ↔ Surge 字段 + Clash YAML 输入解析映射(权威)
+│   ├── cookbook.md                 # 用户向使用示例(规则形态/链式/Surge 模块)
 │   ├── chain-proxy.md              # 链式代理用法
 │   └── deployment.md
 ├── AGENTS.md                       # 本文件
@@ -199,9 +198,9 @@ NodeDeck/
 ```
 Browser  ─┐
           │  HTTP
-Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
-                              │
-                              └──>  内存 LRU(chokidar invalidate)
+Surge 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
+                        │
+                        └──>  内存 LRU(chokidar invalidate)
 ```
 
 数据流: 任何写入路径 (API → 文件) → chokidar 触发 → 缓存失效 → 下次 `/sub` 请求重新解析。**永远不要在内存维护权威状态**;文件是唯一真相。
@@ -242,25 +241,25 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 ### Generator
 
 - **永远从 `protocol-mapping.ts` 查字段名**,不要在 generator 中硬编码字符串字面量
-- 每个协议在 `buildClashProxy` / `buildSurgeProxyLine` 的 switch 内部独立分支,新增协议时:同时在 `nodeTypeSchema` 加枚举 + `protocol-mapping.ts` 加 FIELD 表 + 两侧 generator 加 case
+- 每个协议在 `buildSurgeProxyLine` 的 switch 内部独立分支,新增协议时:同时在 `nodeTypeSchema` 加枚举 + `protocol-mapping.ts` 加 FIELD 表 + surge generator 加 case + 对应输入 parser(`parsers/clash.ts` / `surge.ts` / `uri.ts`)能读出来;Surge 不支持的协议(vless / ssr)在 switch 里整节点跳过 + warning
 - generator 输出必须 deterministic(无时间戳混入主体,只在顶部注释中)
-- generator 入口的固定 pipeline(`clash.ts` / `surge.ts` 两端必须一致,改顺序前要慎重):
+- generator 入口的固定 pipeline(`surge.ts`,改顺序前要慎重):
   1. `applyNodeFilter` — include/exclude/rename
   2. `sortNodesByRegion` — 仅当 `profile.node_filter.sort_by_region` 打开;必须在 uniquify **之前**,否则去重后缀会跟着顺序变动而抖
   3. `uniquifyNodeNames` — 撞名加来源前缀(`node_filter.source_prefix: always` 时全部加),回退 ` #2` 后缀;改名的节点记 `unprefixed_name`,selector 正则 / `include_nodes` / chain `via` 兼认原名
-  4. `escapeSurgeNames` — **仅 Surge** 净化 `=` `,` `"`
-  5. `resolveHiddenNodeNames` — `profile.hidden_nodes`(可选)命中的节点仍进 `proxies` / `[Proxy]`(所以 `chain_via` 指得到),但从两端 `resolveGroupMembers` 与 `buildGroupMemberIndex` 的 **selector 动态匹配**里剔除;`group.proxies` 显式点名保留。判定复用 `chain/apply.ts` 的 `matchesSelector`,但**全空 = 不隐藏**(与 chain selector 相反)
- 6. `applyChainRules` — 写 `chain_via`;selector 支持按策略组成员(`include_groups`)/ 点名节点(`include_nodes`)圈定,两者 OR、与其余条件 AND,所需的「组 name → 成员节点名」索引由 `generators/group-members.ts` 的 `buildGroupMemberIndex` 在入口现算(与写进产物的组成员同源)。每条规则有 `enabled` 与 `mode`(`override` / `fill`);**一个节点只能有一条链**(两端字段都是每节点单值),命中多条以最靠前为准
+  4. `escapeSurgeNames` — 净化 `=` `,` `"`
+  5. `resolveHiddenNodeNames` — `profile.hidden_nodes`(可选)命中的节点仍进 `[Proxy]`(所以 `chain_via` 指得到),但从 `resolveGroupMembers` 与 `buildGroupMemberIndex` 的 **selector 动态匹配**里剔除;`group.proxies` 显式点名保留。判定复用 `chain/apply.ts` 的 `matchesSelector`,但**全空 = 不隐藏**(与 chain selector 相反)
+ 6. `applyChainRules` — 写 `chain_via`;selector 支持按策略组成员(`include_groups`)/ 点名节点(`include_nodes`)圈定,两者 OR、与其余条件 AND,所需的「组 name → 成员节点名」索引由 `generators/group-members.ts` 的 `buildGroupMemberIndex` 在入口现算(与写进产物的组成员同源)。每条规则有 `enabled` 与 `mode`(`override` / `fill`);**一个节点只能有一条链**(Surge `underlying-proxy` 是每节点单值),命中多条以最靠前为准
   7. `validateChain` — node.chain_via 悬空引用降级 + 环检测
   8. `validateGroupRefs` — group.proxies 显式列表的悬空节点剔除;区分两类诊断 — `nodeDangling`(被 node_filter 过滤的节点,节点池全空时聚合为 1 条总览,否则 per-group 截断为"前 5 个 + 和另外 X 个")与 `notImported`(系统中存在该 group yaml 但当前 profile.proxy_groups 没引入,文案明确指引到 Profile 编辑器加进来);组名 / DIRECT / REJECT 等内置 policy 一律保留
-  9. 协议 builder 转字典/INI 行
-- ruleset 分发 **先按 `rs.type` 分大类**(remote_url / inline_list / geosite / geoip),再按 `clash_format` / `surge_format` 决定细节;不要再回到"先看 format 再看 type"的旧顺序
+  9. 协议 builder 转 INI 行
+- ruleset 分发 **先按 `rs.type` 分大类**(remote_url / inline_list / geosite / geoip / surge_internal),再按 `surge_format` 决定细节;不要再回到"先看 format 再看 type"的旧顺序
 
 ### Protocol Documentation Lookup (重要)
 
 字段映射 / 新协议 / 客户端行为 **不允许凭记忆或猜测**。触发场景:
 
-- 新增/修改一个协议字段(任意一侧 generator)
+- 新增/修改一个协议字段(generator 或输入 parser)
 - 客户端报"unknown field" / "invalid value" 类错误
 - 用户问"X 协议怎么写"/"Y 字段什么含义"
 - 添加新规则类型 / 策略组类型 / Surge 特殊段
@@ -270,26 +269,27 @@ Surge/Clash 客户端  ──>  Hono 进程  ──>  YAML 文件 (data/)
 
 1. **`docs/protocol-mapping.md`** — 项目内权威映射表
 2. **`backend/src/generators/protocol-mapping.ts`** — 代码版字段表
-3. **mihomo wiki** (Clash) — `https://wiki.metacubex.one/`,使用 `WebFetch` 拉取具体页面(如 `/config/proxies/<type>` `/config/proxy-providers` `/config/proxy-groups`)
-4. **Surge manual** — `https://manual.nssurge.com/`(可换算 `https://kb.nssurge.com/`),关注 `Proxy Protocol` `Policy Group` `Rule` `Module` 等小节
-5. **WebSearch** — 当上面都没明确说,搜 `mihomo <protocol> yaml example` / `surge <feature> conf`,优先取 issue / changelog / commit 原文,不轻信博客转载
+3. **Surge manual** — `https://manual.nssurge.com/`(可换算 `https://kb.nssurge.com/`),关注 `Proxy Protocol` `Policy Group` `Rule` `Module` 等小节
+4. **mihomo wiki** (Clash) — `https://wiki.metacubex.one/`,**只在改 Clash YAML 输入解析(`parsers/clash.ts`)时查**,用 `WebFetch` 拉具体页面(如 `/config/proxies/<type>`);NodeDeck 不再输出 Clash,别拿它决定输出字段
+5. **WebSearch** — 当上面都没明确说,搜 `surge <feature> conf`(改输入解析时才搜 `mihomo <protocol> yaml example`),优先取 issue / changelog / commit 原文,不轻信博客转载
 
 落地规则:
 
 - 上游确认的字段 → 同时更新 `protocol-mapping.ts`(代码) + `docs/protocol-mapping.md`(人类),两者必须同步,否则视为未完成
-- 文档查询时遇到的"客户端版本差异"(如 mihomo Alpha vs Stash;Surge iOS vs Mac)必须在注释里写明该特性的最低版本要求;目标基线本身是"最新正式版",见 `Agent Role`
+- 文档查询时遇到的"客户端版本差异"(如 Surge iOS vs Mac)必须在注释里写明该特性的最低版本要求;目标基线本身是"最新正式版",见 `Agent Role`
 - 不要写"按经验应该是 xxx"这类 fallback 代码;查不到就停下来问用户,不要瞎写然后由用户在客户端踩坑
 
 ## Testing Strategy
 
-测试只在 backend 一侧(前端无测试)。当前基线:38 个文件 / 600+ 用例,`pnpm test` 约 3 秒跑完。
+测试只在 backend 一侧(前端无测试)。当前基线:56 个文件 / 870 个用例,`pnpm test` 约 3 秒跑完。
 
-- **单元测试**(vitest): parsers / generators / chain / import / providers / notifications / auth / schemas / storage / userinfo
-- **协议矩阵 snapshot**: `tests/generators/protocol-matrix.test.ts` + `tests/generators/__fixtures__/protocol-matrix.ts`,每协议 × 两端各一份 snapshot;改字段映射后用 `pnpm -F backend exec vitest run -u` 更新,review diff 时逐条比对上游文档
+- **单元测试**(vitest): parsers / generators / chain / import / providers / notifications / auth / schemas / storage / userinfo / stats / refs / surge-modules
+- **协议矩阵 snapshot**: `tests/generators/protocol-matrix.test.ts` + `tests/generators/__fixtures__/protocol-matrix.ts`,每协议一份 Surge snapshot;改字段映射后用 `pnpm -F backend exec vitest run -u` 更新,review diff 时逐条比对上游文档
+- **Clash YAML 输入解析**: `tests/parsers/clash.test.ts`(机场 Clash YAML → 内部节点模型;ssr、未知 type 跳过、ws-opts、servername→sni 等都在这里)
 - **综合 fixture**: `tests/generators/fixture.test.ts`(全 Profile 端到端 snapshot,输入在 `__fixtures__/example-profile.input.ts`)
 - **/sub 集成测试**: `tests/routes/sub.test.ts` 用 `vi.mock` 隔离 storage,断言 status / Subscription-UserInfo / Profile-Update-Interval / Content-Disposition / body 形态
 - **Surge 输出离线校验**(macOS 开发机,能自动化): `surge-cli -c <生成的 .conf>`,详见下面小节 —— 改 generator 后先过这道,再去手工导入
-- **真实客户端验证**(手动,但必做): 任何涉及 generator / protocol-mapping 的改动,至少在 Clash Verge + Surge(最新版)各导入一次,看客户端日志无 error/warn。Clash 侧目前没接本机自动校验,仍然只能手工导入
+- **真实客户端验证**(手动,但必做): 任何涉及 generator / protocol-mapping 的改动,至少在 Surge(最新版)导入一次,看客户端日志无 error/warn
 - 覆盖率是**目标不是门槛**(CI 不卡):parsers + generators 尽量 ≥ 90%,其余按需;要看数据跑 `pnpm -F backend exec vitest run --coverage`
 
 ### Surge 侧本机校验与诊断(`surge-cli`)
@@ -310,7 +310,7 @@ $S -c /tmp/out.conf   # 合法 → 打印 OK、exit 0;有错 → 打印「第 N 
 
 实测能力边界(2026-08 / Surge Mac 6.9.0):
 
-- **能查出**: 段内语法错误、非法规则类型或参数(如 `GEOSITE,<不存在的分类>`)、**悬空策略引用**(`Rule #0 include an unknown policy name: X`)—— 正好是 `validateGroupRefs` / `downgradeClashPolicy` 要防的那类事故
+- **能查出**: 段内语法错误、非法规则类型或参数(如 `GEOSITE,<不存在的分类>`)、**悬空策略引用**(`Rule #0 include an unknown policy name: X`)—— 正好是 `validateGroupRefs` 要防的那类事故
 - **查不出**: 节点行里的未知参数(塞个 `bogus-field=1` 照样 OK)、组行的 legacy `url=` 也不报、**`[General]` 里的未知键**(`bogus-key-xyz = false` 照样 OK)、**规则里表达式的内容**(`SUBNET,BOGUSPREFIX:xxx` 照样 OK,只校验到 `SUBNET` 这个类型合法) → **`-c` 返回 OK 不代表键名对**,字段名仍然只认 `Protocol Documentation Lookup`
 - fail-fast: 只报第一个错,修完要重跑
 - 报错文案跟随系统语言(中文机器出中文),脚本里判 exit code,不要正则匹配文案
@@ -345,7 +345,7 @@ profile 已经装进 Surge 之后,这些只读命令不产生流量也不改状�
 - 改 generator 前先跑一遍 `pnpm test` 拿到干净基线(snapshot 更新流程见 `Testing Strategy`)
 - 引用类字段(节点/组/规则互指)一律走 generator 入口的 `validateChain` / `validateGroupRefs` 管线做悬空降级与环检测,不要旁路自己判
 - 在 schema 里新增「指向其它实体」的字段(按 id 或按 name)时,同步在 `refs/entity-references.ts` 加对应扫描分支 —— 漏了会让 `DELETE /api/entities/:kind/:id` 放过实际还在被引用的实体,也会让改 id(`POST /api/entities/:kind/:id/rename`,`refs/rename-entity.ts` 按这份索引的 field 路径改写引用)漏改、留下悬空引用
-- 涉及 Clash/Surge 字段或新特性时,先按 `Protocol Documentation Lookup` 查文档再动手
+- 涉及 Surge 字段、新特性或 Clash YAML 输入解析时,先按 `Protocol Documentation Lookup` 查文档再动手
 - 提交前 `pnpm typecheck && pnpm lint && pnpm test` 全绿
 
 ### Ask First
@@ -364,21 +364,22 @@ profile 已经装进 Surge 之后,这些只读命令不产生流量也不改状�
 - 在响应中泄露后端文件路径
 - 修改 `## User-Specified Content` 章节内容(用户自己维护)
 - 提交 `data/` 实际内容(只能提交 schema/示例)、`.env`、任何密钥
-- 给输出 yaml/conf 中插入"广告"或"打赏"链接
+- 给输出的 Surge .conf 中插入"广告"或"打赏"链接
 
 ## Critical Files
 
 - `[backend/src/generators/protocol-mapping.ts](backend/src/generators/protocol-mapping.ts)` - 字段映射权威源
-- `[backend/src/generators/clash.ts](backend/src/generators/clash.ts)` / `[surge.ts](backend/src/generators/surge.ts)` - 两端 generator 主入口
+- `[backend/src/generators/surge.ts](backend/src/generators/surge.ts)` - generator 主入口(唯一输出端)
+- `[backend/src/parsers/clash.ts](backend/src/parsers/clash.ts)` - 机场 Clash (mihomo) YAML 输入解析(线上节点源多数以 Clash YAML 拉回)
 - `[backend/src/generators/node-naming.ts](backend/src/generators/node-naming.ts)` - 节点名去重 + Surge 名称净化
 - `[backend/src/generators/profile-resolver.ts](backend/src/generators/profile-resolver.ts)` - Profile → 资源解析(含 providers 元数据)
 - `[backend/src/schemas/profile.ts](backend/src/schemas/profile.ts)` / `[provider.ts](backend/src/schemas/provider.ts)` / `[ruleset.ts](backend/src/schemas/ruleset.ts)` - 核心实体 schema
 - `[backend/src/chain/apply.ts](backend/src/chain/apply.ts)` - 链式代理应用 + 环检测 + 悬空降级 + 命中诊断(`analyzeChainRules` / `resolveChainPaths`,供 Web UI 实时反馈)
-- `[backend/src/generators/group-members.ts](backend/src/generators/group-members.ts)` - selector→节点池筛选 + 组成员索引(clash / surge / chain 三处共用,改这里会同时影响组成员与链式作用域)
+- `[backend/src/generators/group-members.ts](backend/src/generators/group-members.ts)` - selector→节点池筛选 + 组成员索引(surge / chain / flow-graph 共用,改这里会同时影响组成员与链式作用域)
 - `[backend/src/generators/hidden-nodes.ts](backend/src/generators/hidden-nodes.ts)` - `profile.hidden_nodes` 解析(「仅作链式落地、不可直接选择」的节点集合)
 - `[backend/src/generators/group-refs.ts](backend/src/generators/group-refs.ts)` - group.proxies 悬空节点引用清理
 - `[backend/src/refs/entity-references.ts](backend/src/refs/entity-references.ts)` - 「谁在引用我」反向索引(删除前的引用检查 + 改 id 时的引用改写),schema 新增跨实体引用字段时必须同步这里
-- `[backend/src/routes/sub.ts](backend/src/routes/sub.ts)` - 订阅入口(含 proxy-providers 子路由)
+- `[backend/src/routes/sub.ts](backend/src/routes/sub.ts)` - 订阅入口
 - `[backend/src/routes/profile-preview.ts](backend/src/routes/profile-preview.ts)` - Web UI 实时预览 + 链式/组引用诊断的唯一后端来源,改 generator 诊断输出时要同步看它
 - `[frontend/src/pages/profile-editor/](frontend/src/pages/profile-editor)` - Web UI 复杂度峰值
 - `[docs/protocol-mapping.md](docs/protocol-mapping.md)` - 与代码 mapping 对照,保持同步
@@ -389,25 +390,19 @@ profile 已经装进 Surge 之后,这些只读命令不产生流量也不改状�
 
 | 症状 | 原因 | 修法 |
 | --- | --- | --- |
-| Clash 加载报 `unknown field: ws-headers` | 用了 Surge 风格键名 | 查 protocol-mapping.ts,Clash 是 `ws-opts.headers` |
 | Surge 节点行被截断 | 密码含 `,` `"` 未引号包裹 | `buildSurgeProxyLine` 内部用 `escapeValue` 包密码;节点名含 `=` `,` `"` 由 `escapeSurgeNames` 自动净化 |
-| 多机场节点同名,Clash 加载 `duplicate key` | 老路径(uniquify 没接入) | 已由 `uniquifyNodeNames` 自动给撞名节点加来源前缀 `【name_prefix 或名称自动取的 1~2 字】`(查不到来源 / 前缀后仍撞名时回退 ` #2` 后缀);新增 generator 时务必走入口 pipeline 并传 providers,不要直接消费原始 nodes |
+| 多机场节点同名,客户端加载报策略重名 | 老路径(uniquify 没接入) | 已由 `uniquifyNodeNames` 自动给撞名节点加来源前缀 `【name_prefix 或名称自动取的 1~2 字】`(查不到来源 / 前缀后仍撞名时回退 ` #2` 后缀);新增输出路径时务必走 generator 入口 pipeline 并传 providers,不要直接消费原始 nodes |
 | 链式代理报环 / chain_via 指向不存在节点 | A→B→A 或 chain_via 写错 | 已由 `validateChain` 自动断环 + 悬空降级 + warning;响应文件头 `# WARN:` 注释里能看到具体节点 |
 | 客户端报 `proxy not found in group "X"` (节点名) | node_filter include/exclude 把节点过滤掉,但 group.proxies 显式还引用着该节点名 | 已由 `validateGroupRefs` 自动剔除 + nodeDangling warning;调整 node_filter 或在 group 编辑页删掉对应节点条目 |
-| 配了 `hidden_nodes` 但节点在客户端仍可直接选 | ① 某个 group 的 `proxies` 显式点名了它(设计如此,显式优先);② Clash `use_proxy_providers` 模式下组靠 `use:` 引用整个机场,成员由客户端展开;③ Surge 组开了 `include_all_proxies` / `policy_regex_filter` | ①按预期,不想要就从该组成员里删掉;②③ 属客户端侧展开,本地过滤不到 —— ② 生成时会给 warning |
+| 配了 `hidden_nodes` 但节点在客户端仍可直接选 | ① 某个 group 的 `proxies` 显式点名了它(设计如此,显式优先);② Surge 组开了 `include_all_proxies` / `policy_regex_filter` | ①按预期,不想要就从该组成员里删掉;② 属客户端侧展开,本地过滤不到 |
 | 客户端报 `proxy not found in group "X"` (其他组名,如 `Japan(DIP)`) | 该 group yaml 存在,但 profile.proxy_groups 没把它列出来 → 引用方剔除引用 | warning 会出 notImported 类型并明确指引;到 Profile 编辑器把该 group id 加入 proxy_groups 列表 |
-| `RULE-SET,<url>` 出现在 `GEOSITE` 行里(如 `GEOSITE,https://...`) | 误把 `rs.url` 当成 GEOSITE 分类 | 用 `geosite_category` 字段;同样 GEOIP 用 `geoip_country_code` |
-| Clash 报 `policy not found: REJECT-DROP` | Surge 专属 REJECT 子类型未降级 | 已由 `downgradeClashPolicy` + `REJECT_TYPE_MAP` 处理;新增 policy 类型时记得也加映射 |
-| Clash 报 `policy not found: DEVICE:<设备名>` | 规则策略用了 Surge Ponte 的设备策略,mihomo 没有等价物 | 已由 `clash.ts` 的 `isSurgeDevicePolicy` 整条跳过 + warning(Surge 端照常输出);想在 Clash 侧也生效只能改用普通策略组 |
 | Surge 提示「IP 规则被置于域名规则之前,可能触发不必要的 DNS 请求」 | IP 类规则(含 inline payload 里混写的 `IP-CIDR` 行)排在域名规则前面,客户端为拿目标 IP 被迫提前解析 | 打开该 ruleset 的 `surge_flags.no_resolve`;内联展开时由 `generators/rule-line.ts` 按行分发,只有 IP 类行会带 `no-resolve`,域名行不受影响,不需要为此拆规则集 |
 | Surge `RULE-SET,<id>,POLICY` 而 inline ruleset 段没出现 | `surge_format` 不是 `inline_ruleset` | inline list 想用引用形式必须显式 `surge_format: inline_ruleset`,否则就直接展开 |
-| 启用 `use_proxy_providers` 后 group 没节点 | `selector.from_providers` 没指定,且未启用任何 provider 的 `clash_proxy_provider` | 检查 provider yaml `clash_proxy_provider.enabled: true`;主订阅顶部应能看到 `proxy-providers:` 段 |
 | Subscription-UserInfo 显示 0 | Provider fetch 失败回退到旧缓存,但 header 没缓存 | cache JSON 里 `raw_userinfo_header` + `userinfo` 字段都要写;查 `providers/cache-store.ts` |
 | 能登录,但登录后所有 `/api/*` 全 403 | `ip_allowlist` 非空却匹配不上客户端 IP(`/api/auth/*` 不受白名单约束,所以只有登录是通的);常见来源:设置页点了「新增」没填就保存留下空条目、CIDR 写错、反代没透传 `X-Forwarded-For`/`X-Real-IP` 导致 IP 是 `unknown` | 后端日志搜 `Blocked by IP allowlist` 能看到被判定的 IP;空/非法条目已由 `schemas/config.ts` 清洗 + `PUT /api/config` 校验拦截,存量坏配置改 `data/config.yaml` 为 `ip_allowlist: []` 即热生效 |
 | 改 yaml 后没生效 | chokidar 没触发(挂载文件系统问题) | 重启容器或在 Web UI Admin 触发刷新;Docker on macOS 的 NFS 挂载已知有延迟 |
 | Hysteria2 obfs 不工作 | obfs-password 没设(salamander 必填) | schema 加联动校验;客户端日志会写明缺哪个字段 |
-| host 的 `server:` 在 Clash 不生效 | generals DNS 的 `proxy-server-nameserver` 为空,而 `proxy-server-nameserver-policy` 需它非空才生效 | 在 generals DNS 填 `proxy-server-nameserver`(通用 DoH);`server:` 由 `splitClashHosts` 投到 `dns.proxy-server-nameserver-policy`(`*.`→`+.`),`DOMAIN-SET:`/`RULE-SET:` 仍跳过 + warning(`backend/src/generators/hosts.ts`) |
-| provider / 机场 `[Host]`、`hosts:` 段没带进订阅 | ① provider `emit_hosts` 关了或该源被禁用;② 上游 host 的 key 与本源节点 server 域名无关,被有意过滤(本项目只带**节点域名相关**的 host) | 输出 hosts = `general.hosts` + 各启用源手动 `provider.hosts` + 各源自动解析的 `cache.extracted_hosts`,由 `mergeHostMaps` 去重合并;自动解析由 `deriveProviderHostOverrides`(`import/extract-hosts.ts`)在每次刷新时只挑两类:① Clash 顶层 `hosts:` / Surge `[Host]` 中命中本源节点 server 域名(精确 + 通配父域)的条目;② Surge `encrypted-dns-server`(机场自建 DoH)为每个域名型节点推导 `节点域名 = server:<DoH>`。无关条目丢弃、节点 server 为 IP 跳过;`profile-resolver` 按 `emit_hosts` 并入(编辑页「节点源 Host」区有只读预览,`GET /api/providers/:id/extracted-hosts`)。base64/uri 列表无 hosts 段、节点全 IP 解析为空都属正常 |
+| provider / 机场原文的 `[Host]`、`hosts:` 段没带进订阅的 `[Host]` | ① provider `emit_hosts` 关了或该源被禁用;② 上游 host 的 key 与本源节点 server 域名无关,被有意过滤(本项目只带**节点域名相关**的 host) | 输出 hosts = `general.hosts` + 各启用源手动 `provider.hosts` + 各源自动解析的 `cache.extracted_hosts`,由 `mergeHostMaps` 去重合并;自动解析由 `deriveProviderHostOverrides`(`import/extract-hosts.ts`)在每次刷新时只挑两类:① Clash 顶层 `hosts:` / Surge `[Host]` 中命中本源节点 server 域名(精确 + 通配父域)的条目;② Surge `encrypted-dns-server`(机场自建 DoH)为每个域名型节点推导 `节点域名 = server:<DoH>`。无关条目丢弃、节点 server 为 IP 跳过;`profile-resolver` 按 `emit_hosts` 并入(编辑页「节点源 Host」区有只读预览,`GET /api/providers/:id/extracted-hosts`)。base64/uri 列表无 hosts 段、节点全 IP 解析为空都属正常 |
 | `surge-cli -c` 报 OK,但导入客户端后某字段不生效 | Surge 对节点行的**未知参数是静默忽略**的,`-c` 只校验语法/规则/策略引用,不校验协议键名 | 别把 `-c` 当字段名的证据;按 `Protocol Documentation Lookup` 查上游文档确认键名,再用 `$S rule match` / `$S log memory` 看实际行为 |
 | 节点源报 `HTTP 403(上游拒绝了服务器的请求…)`,本地却能拉到 | 机场按来源 IP 拦截(境外服务器 / 机房 IP),换 UA 无效 | 在 `data/egresses/` 登记出口(SSH / 代理),节点源 `fetch_via` 按顺序选用(`providers/fetcher.ts` 逐条尝试;SSH 出口 `providers/egress.ts`;用法 cookbook 1.4,部署 deployment.md「借其它机器的出口拉订阅」)。走出口时整条请求用 npm 版 undici 的 `fetch`,直连仍用全局 `fetch` —— Node 20 内置 fetch 不认 npm undici 的 dispatcher |
 | 节点源一直「使用旧缓存」/「离线 · 沿用上次节点」,订阅里节点不更新 | 远程源拉取失败或拿到内容却解析不出节点(限流页、短时效订阅链接过期),`load.ts` 回退上次的节点写 stale;cache 的 `retry` 记连续失败次数,scheduler 按 `retryDelayMinutes` 退避(5 → 10 → 20 分钟,满 `OFFLINE_AFTER_FAILURES` 次转离线,回到节点源自己的周期) | 看列表卡片的错误原因;链接过期就换新链接保存(http 换 URL 会立刻重拉),否则手动点刷新。别为了「快点恢复」把退避改回每分钟重拉:一次刷新是「线路 × UA」十几个请求 |
@@ -416,11 +411,11 @@ profile 已经装进 Surge 之后,这些只读命令不产生流量也不改状�
 
 ## When You're Stuck
 
-1. 按 `Protocol Documentation Lookup` 的顺序查文档(项目映射表 → mihomo wiki → Surge manual → 上游 issue/changelog)
-2. Surge 侧先用 `surge-cli -c <conf>` 拿到精确的「行号 + 行内容 + 原因」(见 `Testing Strategy` 的 surge-cli 小节),再用真实 Surge / Clash Verge 客户端 import,看报错行号与日志 —— 客户端最权威
+1. 按 `Protocol Documentation Lookup` 的顺序查文档(项目映射表 → Surge manual → 上游 issue/changelog;改 Clash YAML 输入解析时再查 mihomo wiki)
+2. Surge 侧先用 `surge-cli -c <conf>` 拿到精确的「行号 + 行内容 + 原因」(见 `Testing Strategy` 的 surge-cli 小节),再用真实 Surge 客户端 import,看报错行号与日志 —— 客户端最权威
 3. 规则走向类问题(「为什么这条命中了那个策略」)用 `surge-cli rule match` / `rule explain`,不要靠读生成的 conf 猜顺序
 4. 在 `backend/tests/generators/__fixtures__/protocol-matrix.ts` 加一份最小 fixture 复现问题 → `pnpm -F backend exec vitest run -u` 锁定 baseline → 再修
-5. 仍然不确定 → 把"已查的链接 + 客户端报错原文 + 当前生成的 yaml/conf 片段"一并发给用户确认,不要瞎试
+5. 仍然不确定 → 把"已查的链接 + 客户端报错原文 + 当前生成的 Surge .conf 片段"一并发给用户确认,不要瞎试
 
 ## Git Workflow
 

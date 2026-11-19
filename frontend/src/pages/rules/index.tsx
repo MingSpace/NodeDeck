@@ -7,9 +7,6 @@ const TEMPLATE: Partial<RuleSetData> = {
   name: "新规则",
   type: "remote_url",
   url: "https://ruleset.skk.moe/List/non_ip/example.conf",
-  behavior: "classical",
-  format: "yaml",
-  clash_format: "rule_provider",
   surge_format: "rule_set",
   update_interval: 86400,
 };
@@ -24,7 +21,7 @@ export function RulesPage() {
       kind="rules"
       renderRow={(r) => (
         <span className="text-xs">
-          {r.type} · {r.behavior} · {r.url ?? "inline"}
+          {r.type} · {r.surge_format} · {r.url ?? "inline"}
         </span>
       )}
       template={TEMPLATE}

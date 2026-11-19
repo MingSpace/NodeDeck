@@ -1,22 +1,14 @@
 import type { Hono } from "hono";
 import { getConnInfo } from "@hono/node-server/conninfo";
-import { profileRepo, providerRepo, surgeModuleRepo } from "../storage/repos.js";
+import { profileRepo, surgeModuleRepo } from "../storage/repos.js";
 import { loadRemoteModule } from "../surge-modules/remote.js";
 import { renderLocalSgmodule } from "../surge-modules/sgmodule.js";
 import { verifyModuleToken } from "../surge-modules/links.js";
 import { resolveProfile } from "../generators/profile-resolver.js";
-import { generateClashConfig, generateProxyProviderYaml } from "../generators/clash.js";
 import { generateSurgeConfig } from "../generators/surge.js";
 import { aggregateUserInfo } from "../userinfo/aggregate.js";
-import { applyNodeFilter } from "../generators/node-filter.js";
-import { sortNodesByRegion } from "../generators/node-sort.js";
-import { applyChainRules } from "../chain/apply.js";
-import { buildGroupMemberIndex } from "../generators/group-members.js";
-import { resolveHiddenNodeNames } from "../generators/hidden-nodes.js";
-import { uniquifyNodeNames, buildProviderLabels } from "../generators/node-naming.js";
 import { env } from "../env.js";
 import { loadConfig } from "../storage/config-store.js";
-import { refreshIntervalToSeconds } from "../schemas/common.js";
 import { logger } from "../logger.js";
 import { getClientIp } from "../auth/middleware.js";
 import { notifySubWarnings } from "../notifications/service.js";
@@ -24,19 +16,11 @@ import { recordPull, recordRejected } from "../stats/pull-stats.js";
 
 export function mountSubRoute(app: Hono): void {
   app.get("/sub", async (c) => handleSub(c));
-  app.get("/sub/clash/:profile", async (c) => {
-    const profile = c.req.param("profile");
-    const t = c.req.query("t") ?? "";
-    return handleSubInner(c, { profile, target: "clash", t });
-  });
   app.get("/sub/surge/:profile", async (c) => {
     const profile = c.req.param("profile");
     const t = c.req.query("t") ?? "";
     return handleSubInner(c, { profile, target: "surge", t });
   });
-  // mihomo proxy-providers 拉取目标:把单个机场的节点切片输出为仅含 proxies: 段的 yaml。
-  // 校验通过 profile token 实现:必须带 ?profile=<pid>&t=<token>,且 provider 在该 profile 中。
-  app.get("/sub/provider/:id/clash.yaml", async (c) => handleProviderClashYaml(c));
   // 单个 Surge 模块,设备上「从 URL 安装模块」用。不挂在 /sub 下,地址短一些。
   // 默认要带 ?t=<模块 token>;模块开了 public 才允许不带(远程模块的上游 URL 不会出现在响应里)。
   app.get("/module/:file", async (c) => handleModuleFile(c));
@@ -72,7 +56,8 @@ async function handleModuleFile(c: import("hono").Context) {
 
 async function handleSub(c: import("hono").Context) {
   const profileId = c.req.query("profile") ?? "";
-  const target = c.req.query("target") ?? "";
+  // target 可省略,缺省即 surge;仍接受显式的 target=surge,保证旧链接 / managed-config URL 不变
+  const target = c.req.query("target") ?? "surge";
   const t = c.req.query("t") ?? "";
   return handleSubInner(c, { profile: profileId, target, t });
 }
@@ -82,19 +67,19 @@ async function handleSubInner(
   args: { profile: string; target: string; t: string },
 ) {
   const ip = getClientIp(c);
-  if (!args.profile || !args.target || !args.t) {
+  if (!args.profile || !args.t) {
     logger.info(
-      { profileId: args.profile || null, target: args.target || null, ip },
+      { profileId: args.profile || null, ip },
       "Sub request rejected: missing query parameters",
     );
-    return c.text("missing query parameters: profile, target, t", 400);
+    return c.text("missing query parameters: profile, t", 400);
   }
-  if (args.target !== "clash" && args.target !== "surge") {
+  if (args.target !== "surge") {
     logger.info(
       { profileId: args.profile, target: args.target, ip },
       "Sub request rejected: invalid target",
     );
-    return c.text("target must be 'clash' or 'surge'", 400);
+    return c.text("仅支持 target=surge（Clash 输出已移除）", 400);
   }
   const entry = await profileRepo.get(args.profile);
   if (!entry) {
@@ -108,12 +93,12 @@ async function handleSubInner(
     return c.text("invalid token", 401);
   }
 
-  const resolved = await resolveProfile(profile, { loadRemoteModules: args.target === "surge" });
+  const resolved = await resolveProfile(profile);
   // 只统计 token 校验通过的拉取;生成抛错走 onError 返回 500,不计数
   const userAgent = c.req.header("user-agent");
   const statsIp = ip !== "unknown" ? ip : socketAddress(c);
 
-  // Build managed-config URL (Surge only)
+  // Build managed-config URL
   const cfg = await loadConfig();
   const baseUrl = cfg.public_base_url ?? env.PUBLIC_BASE_URL ?? new URL(c.req.url).origin;
   let managedConfigUrl: string | undefined;
@@ -139,61 +124,31 @@ async function handleSubInner(
     }
   }
 
-  // mihomo / Surge 都支持 Profile-Update-Interval 单位 = 小时;
-  // 之前只有 clash 分支 hard-code 24,这里统一从 profile.managed_config_interval(秒)派生。
+  // Profile-Update-Interval 单位 = 小时,从 profile.managed_config_interval(秒)派生
   const intervalHours = String(Math.max(1, Math.round(profile.managed_config_interval / 3600)));
 
-  const useProxyProviders =
-    profile.clash_options.use_proxy_providers &&
-    resolved.providers.some((p) => p.clash_proxy_provider.enabled);
-
-  if (args.target === "clash") {
-    const text = generateClashConfig({
-      profile,
-      nodes: resolved.nodes,
-      providers: resolved.providers,
-      excludedProviderIds: resolved.excludedProviderIds,
-      baseUrl,
-      profileToken: profile.token,
-      groups: resolved.groups,
-      allKnownGroupNames: resolved.allKnownGroupNames,
-      rules: resolved.rules,
-      finalRule: resolved.finalRule,
-      geoipFallback: resolved.geoipFallback,
-      general: resolved.general,
-      hosts: resolved.hosts,
-      warnings: resolved.warnings,
-    });
-    logSubGenerated(profile.id, "clash", resolved.nodes.length, resolved.warnings, useProxyProviders, text.length, ip);
-    recordPull({ profileId: profile.id, target: "clash", ip: statsIp, userAgent });
-    c.header("Content-Type", "text/yaml; charset=utf-8");
-    c.header("Content-Disposition", buildContentDisposition(profile.name, "yaml", profile.id));
-    c.header("Profile-Update-Interval", intervalHours);
-    return c.body(text);
-  } else {
-    resolved.warnings.push(...resolved.surgeWarnings);
-    const text = generateSurgeConfig({
-      profile,
-      nodes: resolved.nodes,
-      providers: resolved.providers,
-      groups: resolved.groups,
-      allKnownGroupNames: resolved.allKnownGroupNames,
-      rules: resolved.rules,
-      finalRule: resolved.finalRule,
-      geoipFallback: resolved.geoipFallback,
-      general: resolved.general,
-      hosts: resolved.hosts,
-      surgeModules: resolved.surgeModules,
-      managed_config_url: managedConfigUrl,
-      warnings: resolved.warnings,
-    });
-    logSubGenerated(profile.id, "surge", resolved.nodes.length, resolved.warnings, false, text.length, ip);
-    recordPull({ profileId: profile.id, target: "surge", ip: statsIp, userAgent });
-    c.header("Content-Type", "text/plain; charset=utf-8");
-    c.header("Content-Disposition", buildContentDisposition(profile.name, "conf", profile.id));
-    c.header("Profile-Update-Interval", intervalHours);
-    return c.body(text);
-  }
+  resolved.warnings.push(...resolved.surgeWarnings);
+  const text = generateSurgeConfig({
+    profile,
+    nodes: resolved.nodes,
+    providers: resolved.providers,
+    groups: resolved.groups,
+    allKnownGroupNames: resolved.allKnownGroupNames,
+    rules: resolved.rules,
+    finalRule: resolved.finalRule,
+    geoipFallback: resolved.geoipFallback,
+    general: resolved.general,
+    hosts: resolved.hosts,
+    surgeModules: resolved.surgeModules,
+    managed_config_url: managedConfigUrl,
+    warnings: resolved.warnings,
+  });
+  logSubGenerated(profile.id, resolved.nodes.length, resolved.warnings, text.length, ip);
+  recordPull({ profileId: profile.id, ip: statsIp, userAgent });
+  c.header("Content-Type", "text/plain; charset=utf-8");
+  c.header("Content-Disposition", buildContentDisposition(profile.name, "conf", profile.id));
+  c.header("Profile-Update-Interval", intervalHours);
+  return c.body(text);
 }
 
 /**
@@ -215,20 +170,18 @@ function socketAddress(c: import("hono").Context): string {
  */
 function logSubGenerated(
   profileId: string,
-  target: "clash" | "surge",
   nodeCount: number,
   warnings: string[],
-  useProxyProviders: boolean,
   size: number,
   ip: string,
 ): void {
+  const target = "surge";
   logger.info(
     {
       profileId,
       target,
       nodeCount,
       warningCount: warnings.length,
-      useProxyProviders,
       size,
       ip,
     },
@@ -244,112 +197,6 @@ function logSubGenerated(
   }
 }
 
-async function handleProviderClashYaml(c: import("hono").Context) {
-  const ip = getClientIp(c);
-  const providerId = c.req.param("id");
-  const profileId = c.req.query("profile") ?? "";
-  const t = c.req.query("t") ?? "";
-  if (!providerId || !profileId || !t) {
-    logger.info(
-      { providerId: providerId || null, profileId: profileId || null, ip },
-      "Provider sub request rejected: missing query parameters",
-    );
-    return c.text("missing query parameters: profile, t", 400);
-  }
-  const profileEntry = await profileRepo.get(profileId);
-  if (!profileEntry) {
-    logger.info({ providerId, profileId, ip }, "Provider sub request: profile not found");
-    return c.text("profile not found", 404);
-  }
-  const profile = profileEntry.data;
-  if (profile.token !== t) {
-    logger.warn({ providerId, profileId, ip }, "Provider sub request: token mismatch");
-    return c.text("invalid token", 401);
-  }
-  if (!profile.providers.includes(providerId)) {
-    logger.info({ providerId, profileId, ip }, "Provider sub request: provider not part of profile");
-    return c.text("provider not part of this profile", 404);
-  }
-  const providerEntry = await providerRepo.get(providerId);
-  if (!providerEntry) {
-    logger.info({ providerId, profileId, ip }, "Provider sub request: provider not found");
-    return c.text("provider not found", 404);
-  }
-  const provider = providerEntry.data;
-  if (!provider.enabled) {
-    logger.info({ providerId, profileId, ip }, "Provider sub request: provider disabled");
-    return c.text("provider disabled", 404);
-  }
-  if (!provider.clash_proxy_provider.enabled) {
-    logger.info(
-      { providerId, profileId, ip },
-      "Provider sub request: clash_proxy_provider disabled",
-    );
-    return c.text("provider has clash_proxy_provider disabled", 404);
-  }
-
-  // 仅取该 provider 的节点(不混入其他机场,也不混入手动节点),
-  // 但仍走该 profile 的 node_filter 让用户能过滤/重命名。
-  // 真实下发:不传 staleWhileRevalidate,cache miss 时同步拉,保证客户端拿到完整节点。
-  const warnings: string[] = [];
-
-  // 这条路由输出的是**整个 profile 节点池的一个切片**,不是一份独立配置 —— 所以必须完整复刻
-  // 主 generator 的前半段流水线(filter → sort → uniquify → hidden → chain),最后才按
-  // source_provider_id 切出本机场的节点。理由有两个:
-  //
-  // 1. **命名必须与主订阅一致**。撞名改名(`【标识】xxx`)是按全量池算的,只看本机场算不出
-  //    同样的名字。而 chain_rules 的 via / include_nodes 用的是改名后的最终名,组成员列表里
-  //    写的也是最终名 —— 名字对不上,客户端就会报 proxy not found。
-  // 2. **组成员要按全量池算**。selector.include_groups 圈的是跨机场的组,只看本机场会少匹配。
-  //
-  // 唯一不复刻的是 validateChain:chain_via 可以指向主订阅里的节点或策略组,那些在本文件里
-  // 必然"不存在",按悬空清掉反而会误伤。引用合法性由主订阅那侧统一校验。
-  const resolved = await resolveProfile(profile, { staleWhileRevalidate: false, loadRemoteModules: false });
-  const poolFiltered = applyNodeFilter(resolved.nodes, profile.node_filter);
-  const poolSorted = profile.node_filter.sort_by_region ? sortNodesByRegion(poolFiltered) : poolFiltered;
-  // 改名 warning 覆盖全量池,对单机场产物是噪音,丢进单独的数组不并入响应头。
-  const uniqued = uniquifyNodeNames(poolSorted, [], {
-    providerLabels: buildProviderLabels(resolved.providers),
-    prefixAll: profile.node_filter.source_prefix === "always",
-  });
-  const hiddenNodes = resolveHiddenNodeNames(uniqued.nodes, profile.hidden_nodes);
-  const chained = applyChainRules(uniqued.nodes, profile, {
-    groupMembers: buildGroupMemberIndex(resolved.groups, uniqued.nodes, { hiddenNodes }),
-  });
-  const filtered = chained.filter((n) => n.source_provider_id === providerId);
-
-  const text = generateProxyProviderYaml(filtered, warnings, {
-    flag: profile.clash_options.flag,
-  });
-
-  logger.info(
-    {
-      providerId,
-      profileId,
-      nodeCount: filtered.length,
-      warningCount: warnings.length,
-      size: text.length,
-      ip,
-    },
-    "Provider sub yaml generated",
-  );
-  if (warnings.length > 0) {
-    logger.warn(
-      { providerId, profileId, count: warnings.length, warnings },
-      "Provider sub generator produced warnings",
-    );
-    void notifySubWarnings(profileId, `provider:${providerId}`, warnings);
-  }
-
-  c.header("Content-Type", "text/yaml; charset=utf-8");
-  c.header("Content-Disposition", buildContentDisposition(provider.name, "yaml", providerId));
-  c.header(
-    "Profile-Update-Interval",
-    String(Math.max(1, Math.round(refreshIntervalToSeconds(provider.refresh.interval) / 3600))),
-  );
-  return c.body(text);
-}
-
 function formatUserInfo(info: { upload: number; download: number; total: number; expire: number }): string {
   const parts: string[] = [];
   parts.push(`upload=${info.upload}`);
@@ -360,9 +207,9 @@ function formatUserInfo(info: { upload: number; download: number; total: number;
 }
 
 /**
- * 把 profile / provider 的展示名(displayName,可能含中文/空格/特殊字符)做成合法下载文件名,
+ * 把 profile 的展示名(displayName,可能含中文/空格/特殊字符)做成合法下载文件名,
  * 并按 RFC 6266 + RFC 5987 拼出 Content-Disposition 的值,同时给出 ASCII fallback,
- * 这样 Surge / Clash Verge / 浏览器都能拿到友好的文件名(中文也不丢)。
+ * 这样 Surge / 浏览器都能拿到友好的文件名(中文也不丢)。
  *
  * - `filename="..."` (ASCII fallback): 只保留 ASCII 可见字符,空了就回退到 fallbackBaseName(通常是 id)
  * - `filename*=UTF-8''...` (RFC 5987): 对净化后的完整 name 做 percent-encode,保留中文 / emoji

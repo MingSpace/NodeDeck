@@ -66,7 +66,7 @@ export function AdvancedPanel({ draft, onChange }: Props) {
         <Section
           icon={<Puzzle className="h-3.5 w-3.5" />}
           title="Surge 模块"
-          hint="Surge 专属:选中的模块会以 #!MODULE 或 [Module] 形式写入 .conf,用于注入脚本 / 重写 / MITM 等高级功能。仅影响 Surge 输出,Clash 侧忽略。"
+          hint="选中的模块会以 #!MODULE 或 [Module] 形式写入 .conf,用于注入脚本 / 重写 / MITM 等高级功能。"
           count={`${draft.surge_modules.length}/${modules.data?.items.length ?? 0}`}
         >
           <ChipPicker
@@ -163,45 +163,6 @@ export function AdvancedPanel({ draft, onChange }: Props) {
                 className="h-3.5 w-3.5"
               />
               暴露每机场 X-NodeDeck-Userinfo-* 响应头
-            </label>
-          </div>
-        </Section>
-
-        <Section icon={<SettingsIcon className="h-3.5 w-3.5" />} title="Clash 输出选项">
-          <div className="space-y-2">
-            <div>
-              <label className="mb-1 flex items-center gap-1.5 text-xs">
-                flag (客户端方言)
-                <InfoHint>选择 Clash 配置面向的客户端内核:mihomo(Clash Meta)或 stash。影响部分字段的方言写法。</InfoHint>
-              </label>
-              <Select
-                value={draft.clash_options.flag}
-                onValueChange={(v) =>
-                  onChange({ clash_options: { ...draft.clash_options, flag: v as "mihomo" | "stash" } })
-                }
-              >
-                <SelectTrigger className="h-7 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mihomo" className="text-xs">mihomo (Clash Meta)</SelectItem>
-                  <SelectItem value="stash" className="text-xs">stash</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <label className="flex items-center gap-2 text-xs cursor-pointer">
-              <input
-                type="checkbox"
-                checked={draft.clash_options.use_proxy_providers}
-                onChange={(e) =>
-                  onChange({
-                    clash_options: { ...draft.clash_options, use_proxy_providers: e.target.checked },
-                  })
-                }
-                className="h-3.5 w-3.5"
-              />
-              使用 proxy-providers (远程拉取)
-              <InfoHint>开启后节点以 proxy-providers 形式远程拉取,而非把节点明文写进配置;便于自动更新、减小配置体积。</InfoHint>
             </label>
           </div>
         </Section>

@@ -52,10 +52,9 @@ export function ProfileCard({
           {profile.description && <p className="mt-1 text-sm text-muted-foreground">{profile.description}</p>}
         </div>
         <div className="flex items-center gap-2">
-          {/* 手机上最常做的就是复制订阅链接,两个按钮各占一半宽 */}
-          <div className="grid flex-1 grid-cols-2 gap-2 sm:flex sm:flex-none">
-            <SubLinkButton profileId={profile.id} target="clash" />
-            <SubLinkButton profileId={profile.id} target="surge" />
+          {/* 手机上最常做的就是复制订阅链接,按钮占满剩余宽度 */}
+          <div className="grid flex-1 gap-2 sm:flex sm:flex-none">
+            <SubLinkButton profileId={profile.id} />
           </div>
           <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
             <Link to={editUrl}>
@@ -204,23 +203,22 @@ function buildStages(
   ];
 }
 
-function SubLinkButton({ profileId, target }: { profileId: string; target: "clash" | "surge" }) {
-  const label = target === "clash" ? "Clash" : "Surge";
+function SubLinkButton({ profileId }: { profileId: string }) {
   const onCopy = async () => {
     try {
       const data = await api.get<{ url: string }>(
-        `/api/profiles/${encodeURIComponent(profileId)}/url?target=${target}`,
+        `/api/profiles/${encodeURIComponent(profileId)}/url`,
       );
       await navigator.clipboard.writeText(data.url);
       // 链接里带着 token,提示里不回显完整地址,免得截图 / 共享屏幕时顺手泄露
       toast({
-        title: `已复制 ${label} 订阅链接`,
+        title: "已复制 Surge 订阅链接",
         description: "链接里带访问 token,不要发到公开的地方",
         variant: "success",
       });
     } catch (err) {
       toast({
-        title: `复制 ${label} 订阅链接失败`,
+        title: "复制 Surge 订阅链接失败",
         description: err instanceof Error ? err.message : String(err),
         variant: "error",
       });
@@ -229,7 +227,7 @@ function SubLinkButton({ profileId, target }: { profileId: string; target: "clas
   return (
     <Button size="sm" variant="secondary" onClick={() => void onCopy()}>
       <Copy className="h-3.5 w-3.5" />
-      复制 {label} 链接
+      复制 Surge 链接
     </Button>
   );
 }

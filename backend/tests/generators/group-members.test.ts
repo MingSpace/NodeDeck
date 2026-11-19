@@ -105,7 +105,7 @@ describe("buildGroupMemberIndex", () => {
   });
 
   it("drops hidden nodes from selector matches but keeps explicit ones", () => {
-    // 与两端 generator 的 resolveGroupMembers 同一套口径:隐藏只挡动态匹配。
+    // 与 Surge generator / resolveGroupMemberEntries 同一套口径:隐藏只挡动态匹配。
     const groups = [
       group("Auto", { selector: { include_region: ["JP"] } as ProxyGroup["selector"] }),
       group("Landing", { proxies: ["JP-01"] }),

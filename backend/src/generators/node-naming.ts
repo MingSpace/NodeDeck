@@ -114,7 +114,7 @@ export interface UniquifyOptions {
 
 /**
  * 在多机场节点池融合后,节点名很容易撞车(两家机场都叫 "🇭🇰 香港 01")。
- * Clash/Surge 都把节点名当作主键,重名会让客户端加载报错或行为未定义。
+ * Surge 把节点名当作主键,重名会让客户端加载报错或行为未定义。
  *
  * 策略:撞名的所有节点统一加来源前缀 `【标识】`(标识由 buildProviderLabels 给出),
  * 如 `【K】Hong Kong 01` / `【奶】Hong Kong 01`,让用户在客户端一眼看出节点来源;
@@ -125,7 +125,7 @@ export interface UniquifyOptions {
  * 引用语义:renameMap 记「原名 → 该原名下所有节点的最终名列表(按节点池顺序)」。
  * - group.proxies 对原名的显式引用 **原位展开为全部同名节点**(用户在组里点了
  *   "Hong Kong 01",改名后 【K】/【奶】 两个都应出现在组里,缺一个等于"吃节点")
- * - node.chain_via(Clash dialer-proxy 只能填单个名)与 group.include_other_group /
+ * - node.chain_via(underlying-proxy 只能填单个名)与 group.include_other_group /
  *   nested_groups / underlying_proxy(组名引用)是单值语义,取列表第一项,
  *   保持"原名指向第一个同名节点"
  *
@@ -240,9 +240,6 @@ export function uniquifyNodeNames(
  * 也不允许首尾有空格。这里把这些字符替换为 `_`,并同步改写所有引用(node.chain_via,
  * group.proxies / group.nested_groups 中的成员/嵌套组引用,以及 group 的
  * include_other_group 与 underlying_proxy 字段)。
- *
- * 注意:本函数只在 Surge generator 入口调用;Clash 不需要(Clash 的 name 是 yaml 字符串,
- * 任意字符都安全)。
  */
 export function escapeSurgeNames(
   nodes: Node[],

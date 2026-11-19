@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -18,7 +17,6 @@ import { api } from "@/lib/api";
 import { toast } from "@/components/ui/toast";
 
 interface PreviewResp {
-  kind: "surge" | "clash";
   counts: {
     nodes: number;
     rule_sets: number;
@@ -54,7 +52,6 @@ interface CommitResp {
 
 export function ImportPage() {
   const [text, setText] = useState("");
-  const [kind, setKind] = useState<"auto" | "surge" | "clash">("auto");
   const [preview, setPreview] = useState<PreviewResp | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -71,7 +68,6 @@ export function ImportPage() {
     mutationFn: async () =>
       api.post<PreviewResp>("/api/import/preview", {
         text,
-        kind: kind === "auto" ? undefined : kind,
         file_name: fileName || undefined,
       }),
     onSuccess: (data) => setPreview(data),
@@ -82,7 +78,6 @@ export function ImportPage() {
     mutationFn: async () =>
       api.post<CommitResp>("/api/import/commit", {
         text,
-        kind: preview?.kind ?? (kind === "auto" ? undefined : kind),
         file_name: fileName || undefined,
         options: opts,
       }),
@@ -127,7 +122,7 @@ export function ImportPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight">导入向导</h1>
         <p className="text-muted-foreground mt-1">
-          一键从现有 Surge 或 Clash 拆解并导入: 通用预设 / 节点 / 规则 / 策略组 / Surge 模块
+          一键从现有 Surge 配置拆解并导入: 通用预设 / 节点 / 规则 / 策略组 / Surge 模块
         </p>
       </div>
 
@@ -135,14 +130,14 @@ export function ImportPage() {
         <Card>
           <CardHeader>
             <CardTitle>1. 上传或粘贴配置</CardTitle>
-            <CardDescription>支持 Surge .conf 或 Clash YAML</CardDescription>
+            <CardDescription>支持 Surge .conf</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex items-center gap-3 flex-wrap">
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".conf,.yaml,.yml,.txt"
+                accept=".conf,.txt"
                 onChange={onFile}
                 className="hidden"
               />
@@ -163,21 +158,11 @@ export function ImportPage() {
                   {fileName}
                 </span>
               )}
-              <Select value={kind} onValueChange={(v) => setKind(v as typeof kind)}>
-                <SelectTrigger className="w-32 h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="auto">自动检测</SelectItem>
-                  <SelectItem value="surge">Surge</SelectItem>
-                  <SelectItem value="clash">Clash</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
             <YamlEditor
               value={text}
               onChange={setText}
-              language={kind === "surge" ? "ini" : "yaml"}
+              language="ini"
               height={460}
             />
           </CardContent>
@@ -208,10 +193,6 @@ export function ImportPage() {
             {preview && (
               <>
                 <div className="space-y-1.5 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">检测格式</span>
-                    <span className="font-medium uppercase">{preview.kind}</span>
-                  </div>
                   <Stat label="通用预设" count={preview.counts.has_general ? 1 : 0} />
                   <Stat label="节点(将打包为静态节点源)" count={preview.counts.nodes} />
                   <Stat label="规则模块 (RuleSet URL)" count={preview.counts.rule_sets} />
@@ -240,9 +221,7 @@ export function ImportPage() {
                   <ToggleRow label="节点(创建为静态节点源)" checked={opts.import_nodes} onChange={(v) => setOpts({ ...opts, import_nodes: v })} disabled={preview.counts.nodes === 0} />
                   <ToggleRow label="规则模块" checked={opts.import_rules} onChange={(v) => setOpts({ ...opts, import_rules: v })} disabled={preview.counts.rule_sets === 0} />
                   <ToggleRow label="策略组" checked={opts.import_groups} onChange={(v) => setOpts({ ...opts, import_groups: v })} disabled={preview.counts.proxy_groups === 0} />
-                  {preview.kind === "surge" && (
-                    <ToggleRow label="Surge 模块段" checked={opts.import_modules} onChange={(v) => setOpts({ ...opts, import_modules: v })} disabled={preview.counts.modules === 0} />
-                  )}
+                  <ToggleRow label="Surge 模块段" checked={opts.import_modules} onChange={(v) => setOpts({ ...opts, import_modules: v })} disabled={preview.counts.modules === 0} />
                 </div>
 
                 <Button onClick={() => commitMutation.mutate()} disabled={commitMutation.isPending} className="w-full">

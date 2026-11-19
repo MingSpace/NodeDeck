@@ -129,19 +129,18 @@ export function useNodePoolPreview(id: string, draft: Profile | null) {
 
 export function useGeneratedPreview(
   id: string,
-  target: "clash" | "surge",
   draft: Profile | null,
   enabled: boolean,
 ) {
   const debouncedDraft = useDebounced(draft, 500);
-  return useQuery<{ target: string; text: string; warnings: string[]; node_count: number; revalidating?: boolean }>({
+  return useQuery<{ text: string; warnings: string[]; node_count: number; revalidating?: boolean }>({
     // queryKey 直接用 debouncedDraft 对象,react-query 内部 hashFn 自己做 stable hash,
     // 不必每次 render 都 JSON.stringify 一遍。
-    queryKey: ["preview", id, target, debouncedDraft],
+    queryKey: ["preview", id, debouncedDraft],
     queryFn: ({ signal }) =>
       api.post(
         `/api/profiles/${id}/preview`,
-        { profile: debouncedDraft, target },
+        { profile: debouncedDraft },
         // 上一次请求未完成时,react-query 在 key 变化时自动 abort,省一次往返。
         { signal },
       ),

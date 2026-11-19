@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { generateClashConfig } from "../../src/generators/clash.js";
 import { generateSurgeConfig } from "../../src/generators/surge.js";
 import { emptyProfile, protocolFixtures } from "./__fixtures__/protocol-matrix.js";
 import type { Node } from "../../src/schemas/node.js";
@@ -18,16 +17,6 @@ function normalize(text: string): string {
 
 describe("protocol matrix snapshot", () => {
   for (const fx of protocolFixtures) {
-    it(`${fx.name} → clash`, () => {
-      const out = generateClashConfig({
-        profile: emptyProfile(),
-        nodes: [fx.node],
-        groups: [],
-        rules: [],
-        warnings: [],
-      });
-      expect(normalize(out)).toMatchSnapshot();
-    });
     it(`${fx.name} → surge`, () => {
       const out = generateSurgeConfig({
         profile: emptyProfile(),
@@ -41,7 +30,7 @@ describe("protocol matrix snapshot", () => {
     });
   }
 
-  it("chain_via 在两端正确转换为 dialer-proxy / underlying-proxy", () => {
+  it("chain_via 转换为 underlying-proxy", () => {
     const nodes: Node[] = [
       {
         name: "WARP",
@@ -65,13 +54,6 @@ describe("protocol matrix snapshot", () => {
         tags: [],
       },
     ];
-    const clash = generateClashConfig({
-      profile: emptyProfile(),
-      nodes,
-      groups: [],
-      rules: [],
-      warnings: [],
-    });
     const surge = generateSurgeConfig({
       profile: emptyProfile(),
       nodes,
@@ -80,31 +62,31 @@ describe("protocol matrix snapshot", () => {
       surgeModules: [],
       warnings: [],
     });
-    expect(clash).toMatch(/dialer-proxy: WARP/);
-    expect(surge).toMatch(/underlying-proxy=WARP/);
+    expect(surge).toMatch(/^🇭🇰 HK-Chain = trojan,[^\n]*underlying-proxy=WARP/m);
   });
 
-  it("重名节点(无 provider 信息)回退 #2 后缀,warning 一致", () => {
+  it("重名节点(无 provider 信息)回退 #2 后缀 + warning", () => {
     const nodes: Node[] = [
       { name: "🇭🇰 HK-01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", tags: [] },
       { name: "🇭🇰 HK-01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, tags: [] },
       { name: "🇭🇰 HK-01", type: "vmess", server: "c.example.com", port: 443, uuid: "11111111-2222-3333-4444-555555555555", tags: [] },
     ];
     const warnings: string[] = [];
-    const out = generateClashConfig({
+    const out = generateSurgeConfig({
       profile: emptyProfile(),
       nodes,
       groups: [],
       rules: [],
+      surgeModules: [],
       warnings,
     });
-    expect(out).toContain("🇭🇰 HK-01");
-    expect(out).toContain("🇭🇰 HK-01 #2");
-    expect(out).toContain("🇭🇰 HK-01 #3");
+    expect(out).toMatch(/^🇭🇰 HK-01 = ss,/m);
+    expect(out).toMatch(/^🇭🇰 HK-01 #2 = trojan,/m);
+    expect(out).toMatch(/^🇭🇰 HK-01 #3 = vmess,/m);
     expect(warnings.filter((w) => w.includes("renamed to")).length).toBe(2);
   });
 
-  it("跨 provider 重名 → 所有撞名节点加来源首字母前缀(两端一致)", () => {
+  it("跨 provider 重名 → 所有撞名节点加来源首字母前缀", () => {
     const providers = [makeProvider("kona", "Kona"), makeProvider("apex", "Apex")];
     const nodes: Node[] = [
       { name: "Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
@@ -112,19 +94,14 @@ describe("protocol matrix snapshot", () => {
       { name: "Tokyo 01", type: "ss", server: "c.example.com", port: 8388, cipher: "aes-128-gcm", password: "p3", source_provider_id: "kona", tags: [] },
     ];
     const warnings: string[] = [];
-    const clash = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], warnings });
-    expect(clash).toContain("【K】Hong Kong 01");
-    expect(clash).toContain("【A】Hong Kong 01");
-    expect(clash).not.toMatch(/name: Hong Kong 01\n/);
-    // 不撞名的节点不加前缀
-    expect(clash).toContain("name: Tokyo 01");
-    expect(clash).not.toContain("【K】Tokyo 01");
-    expect(warnings.filter((w) => w.includes("renamed to")).length).toBe(2);
-
-    const surge = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings: [] });
+    const surge = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings });
     expect(surge).toMatch(/^【K】Hong Kong 01 = ss,/m);
     expect(surge).toMatch(/^【A】Hong Kong 01 = trojan,/m);
+    expect(surge).not.toMatch(/^Hong Kong 01 = /m);
+    // 不撞名的节点不加前缀
     expect(surge).toMatch(/^Tokyo 01 = ss,/m);
+    expect(surge).not.toContain("【K】Tokyo 01");
+    expect(warnings.filter((w) => w.includes("renamed to")).length).toBe(2);
   });
 
   it("provider 填了 name_prefix → 前缀用它", () => {
@@ -133,9 +110,9 @@ describe("protocol matrix snapshot", () => {
       { name: "Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
       { name: "Hong Kong 01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, source_provider_id: "apex", tags: [] },
     ];
-    const out = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], warnings: [] });
-    expect(out).toContain("【主力】Hong Kong 01");
-    expect(out).toContain("【A】Hong Kong 01");
+    const out = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings: [] });
+    expect(out).toMatch(/^【主力】Hong Kong 01 = ss,/m);
+    expect(out).toMatch(/^【A】Hong Kong 01 = trojan,/m);
   });
 
   describe("source_prefix=always", () => {
@@ -153,13 +130,10 @@ describe("protocol matrix snapshot", () => {
 
     it("所有带来源的节点都加前缀,且不产生改名 warning", () => {
       const warnings: string[] = [];
-      const clash = generateClashConfig({ profile: alwaysProfile(), nodes, providers, groups: [], rules: [], warnings });
-      expect(clash).toContain("name: 【K】🇭🇰 Hong Kong 01");
-      expect(clash).toContain("name: 【奶】🇯🇵 Tokyo 01");
-      expect(warnings.filter((w) => w.includes("renamed to"))).toEqual([]);
-
-      const surge = generateSurgeConfig({ profile: alwaysProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings: [] });
+      const surge = generateSurgeConfig({ profile: alwaysProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings });
       expect(surge).toMatch(/^【K】🇭🇰 Hong Kong 01 = ss,/m);
+      expect(surge).toMatch(/^【奶】🇯🇵 Tokyo 01 = ss,/m);
+      expect(warnings.filter((w) => w.includes("renamed to"))).toEqual([]);
     });
 
     it("组 selector 的锚定正则按原名仍能命中,也能按前缀圈机场", () => {
@@ -188,9 +162,9 @@ describe("protocol matrix snapshot", () => {
         { id: "All", name: "All", type: "select", proxies: [], nested_groups: [], selector: {} },
       ];
       const warnings: string[] = [];
-      const clash = generateClashConfig({ profile, nodes, providers, groups, rules: [], warnings });
-      expect(clash).toContain("dialer-proxy: 【奶】Landing");
-      expect(clash).toContain("proxies: [【K】🇭🇰 Hong Kong 01, 【奶】🇯🇵 Tokyo 01]");
+      const surge = generateSurgeConfig({ profile, nodes, providers, groups, rules: [], surgeModules: [], warnings });
+      expect(surge).toMatch(/^【K】🇭🇰 Hong Kong 01 = ss,[^\n]*underlying-proxy=【奶】Landing/m);
+      expect(surge).toMatch(/^All = select,【K】🇭🇰 Hong Kong 01,【奶】🇯🇵 Tokyo 01$/m);
       expect(warnings.some((w) => w.includes("Landing"))).toBe(false);
     });
   });
@@ -201,9 +175,9 @@ describe("protocol matrix snapshot", () => {
       { name: "Hong Kong 01", type: "ss", server: "a.example.com", port: 8388, cipher: "aes-128-gcm", password: "p1", source_provider_id: "kona", tags: [] },
       { name: "Hong Kong 01", type: "trojan", server: "b.example.com", port: 443, password: "p2", tls: true, source_provider_id: "kona", tags: [] },
     ];
-    const out = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], warnings: [] });
-    expect(out).toContain("【K】Hong Kong 01");
-    expect(out).toContain("【K】Hong Kong 01 #2");
+    const out = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings: [] });
+    expect(out).toMatch(/^【K】Hong Kong 01 = ss,/m);
+    expect(out).toMatch(/^【K】Hong Kong 01 #2 = trojan,/m);
   });
 
   it("group.proxies 显式引用撞名原名 → 原位展开为全部同名节点的新名", () => {
@@ -216,13 +190,10 @@ describe("protocol matrix snapshot", () => {
       { id: "Manual", name: "Manual", type: "select", proxies: ["Hong Kong 01", "DIRECT"], nested_groups: [] },
     ];
     const warnings: string[] = [];
-    const clash = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups, rules: [], warnings });
-    expect(clash).toContain("proxies: [【K】Hong Kong 01, 【A】Hong Kong 01, DIRECT]");
+    const surge = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups, rules: [], surgeModules: [], warnings });
+    expect(surge).toMatch(/^Manual = select,【K】Hong Kong 01,【A】Hong Kong 01,DIRECT/m);
     // 引用被展开,不应触发悬空剔除 warning
     expect(warnings.some((w) => w.includes("not found") && w.includes("Hong Kong 01"))).toBe(false);
-
-    const surge = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups, rules: [], surgeModules: [], warnings: [] });
-    expect(surge).toMatch(/^Manual = select,【K】Hong Kong 01,【A】Hong Kong 01,DIRECT/m);
   });
 
   it("group.proxies 引用撞名原名(无 provider 标识,#2 兜底)→ 展开为 [原名, 原名 #2]", () => {
@@ -233,10 +204,6 @@ describe("protocol matrix snapshot", () => {
     const groups: ProxyGroup[] = [
       { id: "Manual", name: "Manual", type: "select", proxies: ["Hong Kong 01", "DIRECT"], nested_groups: [] },
     ];
-    const clash = generateClashConfig({ profile: emptyProfile(), nodes, groups, rules: [], warnings: [] });
-    // yaml 中 ` #` 开启注释,js-yaml 会给含 # 的名字加单引号
-    expect(clash).toContain("proxies: [Hong Kong 01, 'Hong Kong 01 #2', DIRECT]");
-
     const surge = generateSurgeConfig({ profile: emptyProfile(), nodes, groups, rules: [], surgeModules: [], warnings: [] });
     expect(surge).toMatch(/^Manual = select,Hong Kong 01,Hong Kong 01 #2,DIRECT/m);
   });
@@ -248,9 +215,9 @@ describe("protocol matrix snapshot", () => {
       { name: "Landing", type: "ss", server: "b.example.com", port: 8388, cipher: "aes-128-gcm", password: "p2", source_provider_id: "apex", tags: [] },
       { name: "Front", type: "trojan", server: "c.example.com", port: 443, password: "p3", tls: true, chain_via: "Landing", tags: [] },
     ];
-    const clash = generateClashConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], warnings: [] });
-    expect(clash).toContain("dialer-proxy: 【K】Landing");
-    expect(clash).not.toContain("dialer-proxy: 【A】Landing");
+    const surge = generateSurgeConfig({ profile: emptyProfile(), nodes, providers, groups: [], rules: [], surgeModules: [], warnings: [] });
+    expect(surge).toMatch(/^Front = trojan,[^\n]*underlying-proxy=【K】Landing/m);
+    expect(surge).not.toContain("underlying-proxy=【A】Landing");
   });
 
   it("chain_via 指向不存在节点 → 降级 + warning", () => {
@@ -267,14 +234,15 @@ describe("protocol matrix snapshot", () => {
       },
     ];
     const warnings: string[] = [];
-    const out = generateClashConfig({
+    const out = generateSurgeConfig({
       profile: emptyProfile(),
       nodes,
       groups: [],
       rules: [],
+      surgeModules: [],
       warnings,
     });
-    expect(out).not.toMatch(/dialer-proxy:/);
+    expect(out).not.toMatch(/underlying-proxy=/);
     expect(warnings.some((w) => w.includes("Chain dangling") && w.includes("GhostNode"))).toBe(true);
   });
 
@@ -414,13 +382,9 @@ describe("protocol matrix snapshot", () => {
     expect(surge).toContain("salamander-password=obfs-pw");
     expect(surge).not.toMatch(/[, ]obfs=/);
     expect(surge).not.toContain("obfs-password=");
-    // mihomo 端保持双键
-    const clash = generateClashConfig({ profile: emptyProfile(), nodes: [node], groups: [], rules: [], warnings: [] });
-    expect(clash).toContain("obfs: salamander");
-    expect(clash).toContain("obfs-password: obfs-pw");
   });
 
-  it("Surge hysteria2 gecko → 单键 gecko-password(iOS 5.20+/Mac 6.7+),mihomo 端保持双键", () => {
+  it("Surge hysteria2 gecko → 单键 gecko-password(iOS 5.20+/Mac 6.7+)", () => {
     const node: Node = {
       name: "HY2-Gecko",
       type: "hysteria2",
@@ -444,9 +408,6 @@ describe("protocol matrix snapshot", () => {
     expect(surge).toContain("gecko-password=gecko-pw");
     expect(surge).not.toContain("salamander-password=");
     expect(warnings).toHaveLength(0);
-    const clash = generateClashConfig({ profile: emptyProfile(), nodes: [node], groups: [], rules: [], warnings: [] });
-    expect(clash).toContain("obfs: gecko");
-    expect(clash).toContain("obfs-password: gecko-pw");
   });
 
   it("Surge hysteria2 未知 obfs 类型 → 跳过混淆参数 + warning", () => {
@@ -532,7 +493,7 @@ describe("protocol matrix snapshot", () => {
     expect(surge).not.toMatch(/TJ = trojan[^\n]*tls=/);
   });
 
-  it("shadow-tls: ss 走 plugin,其余 TLS 系走通用 shadow-tls-opts(mihomo 已通用化)", () => {
+  it("shadow-tls: ss 与其余 TLS 系协议都能叠 shadow-tls 参数", () => {
     const ssNode: Node = {
       name: "SS-STLS",
       type: "ss",
@@ -556,30 +517,15 @@ describe("protocol matrix snapshot", () => {
       tags: [],
     };
     const warnings: string[] = [];
-    const clash = generateClashConfig({
-      profile: emptyProfile(),
-      nodes: [ssNode, trojanNode],
-      groups: [],
-      rules: [],
-      warnings,
-    });
-    expect(clash).toContain("plugin: shadow-tls");
-    expect(clash).toContain("host: cloud.tencent.com");
-    expect(clash).toContain("version: 3");
-    // trojan 走通用 shadow-tls-opts(wiki.metacubex.one/config/proxies/tls):该写法没有 host 键,
-    // SNI 取节点通用的 sni,所以这里只有 password,且不再有丢弃 warning。
-    expect(clash).toContain("name: TJ-STLS");
-    expect(clash).toContain("shadow-tls-opts: {password: stls2}");
-    expect(warnings.some((w) => w.includes("TJ-STLS"))).toBe(false);
-
     const surge = generateSurgeConfig({
       profile: emptyProfile(),
       nodes: [ssNode, trojanNode],
       groups: [],
       rules: [],
       surgeModules: [],
-      warnings: [],
+      warnings,
     });
+    expect(warnings.some((w) => w.includes("STLS"))).toBe(false);
     // Surge 端任意 TCP 协议都可叠 shadow-tls
     expect(surge).toMatch(/^SS-STLS = ss,.*shadow-tls-password=stls.*shadow-tls-sni=cloud\.tencent\.com.*shadow-tls-version=3/m);
     expect(surge).toMatch(/^TJ-STLS = trojan,.*shadow-tls-password=stls2/m);
@@ -641,10 +587,6 @@ describe("protocol matrix snapshot", () => {
     expect(surge).toContain("secret = dd0123456789abcdef0123456789abcdef");
     expect(surge).toContain("ipv6 = true");
     expect(surge).toContain("dc-config-url = https://example.com/dc.json");
-    // Clash 端两者都应被忽略
-    const clash = generateClashConfig({ profile: emptyProfile(), nodes: [], groups: [], rules: [], general, warnings: [] });
-    expect(clash).not.toContain("mtproto");
-    expect(clash).not.toContain("block-quic");
   });
 
   it("[MTProto] secret 非法 → 跳过整段 + warning", () => {

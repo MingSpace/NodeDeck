@@ -20,7 +20,7 @@ function randomSecret(): string {
 
 /**
  * Surge [MTProto] 段:Surge 作为 Telegram MTProto 入站代理(iOS 5.21.0+ / Mac 6.8.0+)。
- * 仅 Surge 输出生效;secret 非法时 generator 会跳过该段并输出 WARN 注释。
+ * secret 非法时 generator 会跳过该段并输出 WARN 注释。
  */
 export function MtprotoSection({ data, update }: Props) {
   const [showSecret, setShowSecret] = useState(false);
@@ -45,7 +45,7 @@ export function MtprotoSection({ data, update }: Props) {
       <div className="flex items-start gap-1.5 text-xs text-muted-foreground">
 
         <span>
-          仅 Surge 生效(iOS 5.21+ / Mac 6.8+)· 把 Surge 当作 Telegram 专用 MTProto 入站代理
+          iOS 5.21+ / Mac 6.8+ · 把 Surge 当作 Telegram 专用 MTProto 入站代理
           <InfoHint>
             Telegram 客户端直连该端口,DC 选路与出站策略仍走 Surge 规则(可配合{" "}
             <code className="text-xs">PROTOCOL,MTProto</code> 规则匹配)。
@@ -118,7 +118,7 @@ export function MtprotoSection({ data, update }: Props) {
             </div>
             {secretInvalid && (
               <div className="text-xs text-destructive mt-1">
-                secret 必须是 32 位十六进制字符(可选 dd 前缀),否则 Surge 输出会跳过该段
+                secret 必须是 32 位十六进制字符(可选 dd 前缀),否则生成时会跳过该段
               </div>
             )}
           </LabeledField>

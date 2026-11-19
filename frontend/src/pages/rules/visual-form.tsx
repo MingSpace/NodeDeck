@@ -14,11 +14,8 @@ export interface RuleSetData {
   type: "remote_url" | "inline_list" | "geosite" | "geoip" | "surge_internal";
   url?: string;
   payload?: string[];
-  geosite_category?: string;
   geoip_country_code?: string;
   surge_internal_name?: "SYSTEM" | "LAN";
-  behavior: "domain" | "ipcidr" | "classical";
-  format: "yaml" | "text" | "mrs";
   surge_flags?: {
     no_resolve?: boolean;
     extended_matching?: boolean;
@@ -31,7 +28,6 @@ export interface RuleSetData {
     notification_text?: string;
     notification_interval?: number;
   };
-  clash_format: "rule_provider" | "inline";
   surge_format: "rule_set" | "inline_ruleset" | "domain_set";
   update_interval: number;
 }
@@ -62,10 +58,10 @@ export function RuleSetVisualForm({ data, update }: Props) {
         />
       </Field>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Field
           label="类型"
-          hint="规则集来源:remote_url 远程订阅链接;inline_list 手写规则;geosite / geoip 地理数据库分类;surge_internal Surge 内置集(SYSTEM / LAN)。"
+          hint="规则集来源:remote_url 远程订阅链接;inline_list 手写规则;geosite 用手写规则或 DOMAIN-SET 链接替代;geoip 国家代码;surge_internal Surge 内置集(SYSTEM / LAN)。"
         >
           <Select value={data.type} onValueChange={(v) => update({ type: v as RuleSetData["type"] })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
@@ -79,25 +75,15 @@ export function RuleSetVisualForm({ data, update }: Props) {
           </Select>
         </Field>
         <Field
-          label="behavior"
-          hint="规则集内容形态:domain 纯域名;ipcidr 纯 IP 网段;classical 混合(带 DOMAIN-SUFFIX / IP-CIDR 前缀的完整规则)。需与来源内容匹配。"
+          label="输出方式"
+          hint="RULE-SET:输出为 RULE-SET 远程引用(推荐)。inline ruleset:内联展开为多条规则。DOMAIN-SET:输出为纯域名集合文件(仅域名类可用,匹配更快)。"
         >
-          <Select value={data.behavior} onValueChange={(v) => update({ behavior: v as RuleSetData["behavior"] })}>
+          <Select value={data.surge_format} onValueChange={(v) => update({ surge_format: v as RuleSetData["surge_format"] })}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="domain">domain</SelectItem>
-              <SelectItem value="ipcidr">ipcidr</SelectItem>
-              <SelectItem value="classical">classical</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="format (Clash)">
-          <Select value={data.format} onValueChange={(v) => update({ format: v as RuleSetData["format"] })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="yaml">yaml</SelectItem>
-              <SelectItem value="text">text</SelectItem>
-              <SelectItem value="mrs">mrs</SelectItem>
+              <SelectItem value="rule_set">RULE-SET (推荐)</SelectItem>
+              <SelectItem value="inline_ruleset">inline ruleset</SelectItem>
+              <SelectItem value="domain_set">DOMAIN-SET</SelectItem>
             </SelectContent>
           </Select>
         </Field>
@@ -126,14 +112,7 @@ export function RuleSetVisualForm({ data, update }: Props) {
 
       {data.type === "geosite" && (
         <div className="space-y-3">
-          <Field label="GEOSITE 分类 (Clash, 不填回退到 ID)">
-            <Input
-              value={data.geosite_category ?? ""}
-              onChange={(e) => update({ geosite_category: e.target.value || undefined })}
-              placeholder="cn / google / youtube / netflix ..."
-            />
-          </Field>
-          <Field label="Surge fallback payload (Surge 无原生 GEOSITE,可手写 inline 规则备用)">
+          <Field label="inline 规则 (Surge 无原生 GEOSITE,手写规则替代)">
             <PayloadTextarea
               value={data.payload ?? []}
               onChange={(payload) => update({ payload })}
@@ -141,7 +120,7 @@ export function RuleSetVisualForm({ data, update }: Props) {
               placeholder="DOMAIN-SUFFIX,google.com"
             />
           </Field>
-          <Field label="Surge fallback URL (DOMAIN-SET 远程链接,二选一)">
+          <Field label="DOMAIN-SET 远程链接 (与 inline 规则二选一)">
             <Input
               value={data.url ?? ""}
               onChange={(e) => update({ url: e.target.value || undefined })}
@@ -175,39 +154,9 @@ export function RuleSetVisualForm({ data, update }: Props) {
               </SelectContent>
             </Select>
           </Field>
-          <p className="text-xs text-muted-foreground">
-            Clash 输出:LAN 自动展开为 DOMAIN-SUFFIX/IP-CIDR 内联规则;SYSTEM 含 USER-AGENT 等 Clash 不支持的规则,会被跳过 + warning。
-          </p>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-3">
-        <Field
-          label="Clash 输出方式"
-          hint="rule-provider:输出为独立的 rule-provider 引用,客户端远程拉取、可定时更新(推荐)。inline:把规则直接内联展开写进主配置。"
-        >
-          <Select value={data.clash_format} onValueChange={(v) => update({ clash_format: v as RuleSetData["clash_format"] })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="rule_provider">rule-provider (推荐)</SelectItem>
-              <SelectItem value="inline">inline</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field
-          label="Surge 输出方式"
-          hint="RULE-SET:输出为 RULE-SET 远程引用(推荐)。inline ruleset:内联展开为多条规则。DOMAIN-SET:输出为纯域名集合文件(仅域名类可用,匹配更快)。"
-        >
-          <Select value={data.surge_format} onValueChange={(v) => update({ surge_format: v as RuleSetData["surge_format"] })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="rule_set">RULE-SET (推荐)</SelectItem>
-              <SelectItem value="inline_ruleset">inline ruleset</SelectItem>
-              <SelectItem value="domain_set">DOMAIN-SET</SelectItem>
-            </SelectContent>
-          </Select>
-        </Field>
-      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Field label="默认策略 (policy, 可在 Profile 覆盖)">
@@ -228,38 +177,38 @@ export function RuleSetVisualForm({ data, update }: Props) {
 
       <FieldGroup
         icon={<Flag className="h-3.5 w-3.5" />}
-        title="Surge 规则修饰符"
-        hint="附加在规则末尾的可选修饰符,微调匹配 / 解析行为。除 no-resolve 外均为 Surge 专属。"
+        title="规则修饰符"
+        hint="附加在规则末尾的可选修饰符,微调匹配 / 解析行为。"
       >
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           <ToggleRow
             label="no-resolve"
-            hint="IP 类规则匹配时不触发 DNS 解析,避免为域名提前解析 IP。仅对 IP-CIDR / GEOIP 等 IP 规则有意义。Clash 与 Surge 均支持。"
+            hint="IP 类规则匹配时不触发 DNS 解析,避免为域名提前解析 IP。仅对 IP-CIDR / GEOIP 等 IP 规则有意义。"
             checked={flags.no_resolve ?? false}
             onChange={(v) => update({ surge_flags: { ...flags, no_resolve: v } })}
           />
           <ToggleRow
             label="extended-matching"
-            hint="启用扩展匹配(结合 SNI / Host),提升域名规则命中率。Surge 专属。"
+            hint="启用扩展匹配(结合 SNI / Host),提升域名规则命中率。"
             checked={flags.extended_matching ?? false}
             onChange={(v) => update({ surge_flags: { ...flags, extended_matching: v } })}
           />
           <ToggleRow
             label="pre-matching"
-            hint="在建立连接前预匹配规则,可降低延迟。Surge 专属。"
+            hint="在建立连接前预匹配规则,可降低延迟。"
             checked={flags.pre_matching ?? false}
             onChange={(v) => update({ surge_flags: { ...flags, pre_matching: v } })}
           />
           <ToggleRow
             label="dns-failed"
             badge={<Badge variant="outline" className="px-1 py-0 text-xs font-normal text-muted-foreground">FINAL</Badge>}
-            hint="仅用于 FINAL 规则:DNS 解析失败的流量交给该策略处理。Surge 专属。"
+            hint="仅用于 FINAL 规则:DNS 解析失败的流量交给该策略处理。"
             checked={flags.dns_failed ?? false}
             onChange={(v) => update({ surge_flags: { ...flags, dns_failed: v } })}
           />
           <ToggleRow
             label="force-remote-dns"
-            hint="命中的域名强制使用远程 DNS 解析(走代理侧解析)。Surge 专属。"
+            hint="命中的域名强制使用远程 DNS 解析(走代理侧解析)。"
             checked={flags.force_remote_dns ?? false}
             onChange={(v) => update({ surge_flags: { ...flags, force_remote_dns: v } })}
           />
@@ -269,7 +218,7 @@ export function RuleSetVisualForm({ data, update }: Props) {
       <FieldGroup
         icon={<Ban className="h-3.5 w-3.5" />}
         title="Surge REJECT 行为"
-        hint="当该规则集的策略为 REJECT 时,自定义拒绝方式与通知。仅 Surge 生效。"
+        hint="当该规则集的策略为 REJECT 时,自定义拒绝方式与通知。"
         trailing={
           <Switch
             checked={!!reject}

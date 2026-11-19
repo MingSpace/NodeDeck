@@ -2,7 +2,6 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { profileRepo, providerRepo } from "../storage/repos.js";
 import { resolveProfile } from "../generators/profile-resolver.js";
-import { generateClashConfig } from "../generators/clash.js";
 import { generateSurgeConfig } from "../generators/surge.js";
 import { env } from "../env.js";
 import { loadConfig } from "../storage/config-store.js";
@@ -34,7 +33,6 @@ const nodePoolPreviewSchema = z.object({
 const previewBodySchema = z
   .object({
     profile: z.unknown().optional(),
-    target: z.enum(["clash", "surge"]).optional(),
   })
   .optional();
 
@@ -110,11 +108,6 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
   }
   const body = parsedBody.data ?? {};
 
-  const target = body.target ?? c.req.query("target") ?? "clash";
-  if (target !== "clash" && target !== "surge") {
-    return c.json({ error: "target must be clash or surge" }, 400);
-  }
-
   const resolution = await resolveDraftProfile(id, body.profile);
   if (resolution.status === "not_found") {
     return c.json({ error: "not found" }, 404);
@@ -122,37 +115,10 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
   const { profile, validationWarnings } = resolution.result;
 
   // 预览走 stale-while-revalidate:有 cache(含 stale)立即返回,无 cache 的机场后台刷新、不同步等网络。
-  const resolved = await resolveProfile(profile, {
-    staleWhileRevalidate: true,
-    loadRemoteModules: target === "surge",
-  });
+  const resolved = await resolveProfile(profile, { staleWhileRevalidate: true });
   const allWarnings = [...validationWarnings, ...resolved.warnings];
   const revalidating = (resolved.revalidating?.length ?? 0) > 0;
 
-  if (target === "clash") {
-    const text = generateClashConfig({
-      profile,
-      nodes: resolved.nodes,
-      providers: resolved.providers,
-      groups: resolved.groups,
-      allKnownGroupNames: resolved.allKnownGroupNames,
-      rules: resolved.rules,
-      finalRule: resolved.finalRule,
-      geoipFallback: resolved.geoipFallback,
-      general: resolved.general,
-      warnings: allWarnings,
-    });
-    logger.debug(
-      {
-        profileId: id,
-        target,
-        nodeCount: resolved.nodes.length,
-        warningCount: allWarnings.length,
-      },
-      "Profile preview",
-    );
-    return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length, revalidating });
-  }
   allWarnings.push(...resolved.surgeWarnings);
   const cfg = await loadConfig();
   const baseUrl = cfg.public_base_url ?? env.PUBLIC_BASE_URL ?? new URL(c.req.url).origin;
@@ -179,23 +145,21 @@ profilePreviewRouter.post("/:id/preview", async (c) => {
   logger.debug(
     {
       profileId: id,
-      target,
       nodeCount: resolved.nodes.length,
       warningCount: allWarnings.length,
     },
     "Profile preview",
   );
-  return c.json({ target, text, warnings: allWarnings, node_count: resolved.nodes.length, revalidating });
+  return c.json({ text, warnings: allWarnings, node_count: resolved.nodes.length, revalidating });
 });
 
 profilePreviewRouter.get("/:id/url", async (c) => {
   const id = c.req.param("id");
-  const target = c.req.query("target") ?? "clash";
   const entry = await profileRepo.get(id);
   if (!entry) return c.json({ error: "not found" }, 404);
   const cfg = await loadConfig();
   const baseUrl = cfg.public_base_url ?? env.PUBLIC_BASE_URL ?? new URL(c.req.url).origin;
-  const url = `${baseUrl}/sub?profile=${entry.data.id}&target=${target}&t=${entry.data.token}`;
+  const url = `${baseUrl}/sub?profile=${entry.data.id}&target=surge&t=${entry.data.token}`;
   return c.json({ url });
 });
 
@@ -229,7 +193,7 @@ profilePreviewRouter.post("/:id/node-pool-preview", async (c) => {
     source_prefix: "conflict" as const,
   };
   // 与 generator 入口管线保持同序(filter → sort → uniquify),预览名即订阅名。
-  // Surge 端的 escapeSurgeNames 与链式改写发生在 target 相关的 generator 内,预览不做。
+  // Surge 端的 escapeSurgeNames 与链式改写发生在 generator 内,预览不做。
   const filteredRaw = applyNodeFilter(pool.nodes, filter);
   const sorted = filter.sort_by_region ? sortNodesByRegion(filteredRaw) : filteredRaw;
   const renameWarnings: string[] = [];

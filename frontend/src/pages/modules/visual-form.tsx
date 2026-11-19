@@ -73,7 +73,7 @@ export function SurgeModuleVisualForm({ data, update }: Props) {
           Surge 模块 · 可被 Profile 引用(并进 .conf),也可以单独在设备上安装(列表里的「安装到 Surge」)
           <InfoHint>
             并进 Profile 时按 Surge 模块语义合并:[General] / [MITM] 支持 %APPEND% / %INSERT%,规则等行排在
-            Profile 原有内容之前,{"{{{参数}}}"} 用 #!arguments 的默认值。仅 Surge 输出生效。
+            Profile 原有内容之前,{"{{{参数}}}"} 用 #!arguments 的默认值。
           </InfoHint>
         </span>
       </div>

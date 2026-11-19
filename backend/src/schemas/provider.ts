@@ -14,16 +14,6 @@ export const parserHintSchema = z.enum([
   "mixed",
 ]);
 
-// Clash Mihomo 的 proxy-provider 配置(可选,Profile 启用 use_proxy_providers 时生效)。
-// 启用后每个 provider 的节点不再内联进 proxies,而是 mihomo 客户端自己去拉取
-// /sub/provider/:id/clash.yaml,带来更小的主订阅 + 各机场独立健康检查。
-export const clashProxyProviderSchema = z.object({
-  enabled: z.boolean().default(false),
-  // Mihomo proxy-provider 必填,默认值见 mihomo 文档。这里用 url-test 风格的最常见组合。
-  health_check_url: z.string().url().default("http://www.gstatic.com/generate_204"),
-  health_check_interval: z.number().int().min(60).max(86400).default(300),
-});
-
 const localDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式为 YYYY-MM-DD")
@@ -114,12 +104,7 @@ const providerObjectSchema = z
       .refine((s) => !/[=,"\r\n【】]/.test(s), "前缀不能包含 = , \" 【 】")
       .optional(),
     notes: z.string().optional(),
-    clash_proxy_provider: clashProxyProviderSchema.default({
-      enabled: false,
-      health_check_url: "http://www.gstatic.com/generate_204",
-      health_check_interval: 300,
-    }),
-    // 针对该节点源的 DNS 解析覆盖([CS] hosts);emit_hosts 控制是否在订阅输出时自动带出。
+    // 针对该节点源的 DNS 解析覆盖([Host] 段);emit_hosts 控制是否在订阅输出时自动带出。
     // 典型用途:机场为规避封锁,给代理节点域名指定多个 server: DoH(同 key 多行)。
     hosts: z.record(z.union([z.string(), z.array(z.string())])).optional(),
     emit_hosts: z.boolean().default(true),

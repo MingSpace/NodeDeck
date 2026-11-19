@@ -243,7 +243,7 @@ describe("notifySubError / notifySubWarnings", () => {
   });
 
   it("sub_warnings 默认关闭不推送;开启后按内容 hash 去重", async () => {
-    await notifySubWarnings("home", "clash", ["w1"]);
+    await notifySubWarnings("home", "surge", ["w1"]);
     expect(mockedSendBark).not.toHaveBeenCalled();
 
     mockedLoadConfig.mockResolvedValue(
@@ -251,9 +251,9 @@ describe("notifySubError / notifySubWarnings", () => {
         c.events.sub_warnings.enabled = true;
       }),
     );
-    await notifySubWarnings("home", "clash", ["w1", "w2"]);
-    await notifySubWarnings("home", "clash", ["w1", "w2"]);
-    await notifySubWarnings("home", "clash", ["w3"]);
+    await notifySubWarnings("home", "surge", ["w1", "w2"]);
+    await notifySubWarnings("home", "surge", ["w1", "w2"]);
+    await notifySubWarnings("home", "surge", ["w3"]);
     expect(mockedSendBark).toHaveBeenCalledTimes(2);
   });
 

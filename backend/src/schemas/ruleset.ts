@@ -3,24 +3,23 @@ import { idSchema } from "./common.js";
 
 /**
  * RuleSet represents a logical block of rules (a list URL, an inline list, geosite category, etc.)
- * - [CS] core fields (id/name/type/behavior/url/payload)
- * - [C]  format (yaml/text/mrs)
- * - [S]  surge_flags, surge_reject_options
+ * - core fields: id / name / type / url / payload
+ * - Surge 细节: surge_format / surge_flags / surge_reject_options
  */
 
 export const surgeRejectTypeSchema = z.enum([
-  "REJECT", // [CS] (clash also has)
-  "REJECT-DROP", // [S]
-  "REJECT-NO-DROP", // [S]
-  "REJECT-TINYGIF", // [S]
+  "REJECT",
+  "REJECT-DROP",
+  "REJECT-NO-DROP",
+  "REJECT-TINYGIF",
 ]);
 
 export const surgeFlagsSchema = z.object({
-  no_resolve: z.boolean().optional(), // [CS] both support
-  extended_matching: z.boolean().optional(), // [S]
-  pre_matching: z.boolean().optional(), // [S]
-  dns_failed: z.boolean().optional(), // [S] FINAL only
-  force_remote_dns: z.boolean().optional(), // [S]
+  no_resolve: z.boolean().optional(),
+  extended_matching: z.boolean().optional(),
+  pre_matching: z.boolean().optional(),
+  dns_failed: z.boolean().optional(), // FINAL only
+  force_remote_dns: z.boolean().optional(),
 });
 
 export const surgeRejectOptionsSchema = z.object({
@@ -36,12 +35,7 @@ export const rulesetTypeSchema = z.enum(["remote_url", "inline_list", "geosite",
 // 注意 LAN 会触发 DNS 查询(文档原文 "this ruleset will trigger a DNS lookup")。
 export const surgeInternalRulesetNameSchema = z.enum(["SYSTEM", "LAN"]);
 
-export const rulesetBehaviorSchema = z.enum(["domain", "ipcidr", "classical"]);
-
-export const rulesetFormatSchema = z.enum(["yaml", "text", "mrs"]); // [C]
-
-export const clashFormatSchema = z.enum(["rule_provider", "inline"]); // [C]
-export const surgeFormatSchema = z.enum(["rule_set", "inline_ruleset", "domain_set"]); // [S]
+export const surgeFormatSchema = z.enum(["rule_set", "inline_ruleset", "domain_set"]);
 
 export const rulesetSchema = z
   .object({
@@ -53,25 +47,17 @@ export const rulesetSchema = z
     type: rulesetTypeSchema.default("remote_url"),
     url: z.string().url().optional(),
     payload: z.array(z.string()).optional(),
-    behavior: rulesetBehaviorSchema.default("classical"),
-    format: rulesetFormatSchema.default("yaml"),
 
-    // 当 type=geosite 时,优先使用此分类名(如 "cn"/"youtube")作为 GEOSITE 关键字;
-    // 缺省时回退到 id。url 字段仅在 Surge 端走 DOMAIN-SET fallback 时使用。
-    geosite_category: z.string().min(1).optional(),
-    // 当 type=geoip 时,优先使用此国家代码(如 "CN"/"US")作为 GEOIP 关键字;
-    // 缺省时回退到 id。url 字段保留给后续可能的 Mihomo 自定义 mmdb 拉取。
+    // type=geosite:Surge 没有原生 GEOSITE,生成时 payload 展开为内联规则,否则 url 走 DOMAIN-SET。
+    // 当 type=geoip 时,优先使用此国家代码(如 "CN"/"US")作为 GEOIP 关键字;缺省时回退到 id。
     geoip_country_code: z.string().min(1).optional(),
 
     // 当 type=surge_internal 时,指定 Surge 内置 ruleset 名(SYSTEM / LAN)。
-    // Clash 端没有等价物:LAN 自动展开为 DOMAIN-SUFFIX/IP-CIDR 内联规则;
-    // SYSTEM 含 USER-AGENT 等 Clash 不支持的规则,会被跳过并 warning。
     surge_internal_name: surgeInternalRulesetNameSchema.optional(),
 
     surge_flags: surgeFlagsSchema.optional(),
     surge_reject_options: surgeRejectOptionsSchema.optional(),
 
-    clash_format: clashFormatSchema.default("rule_provider"),
     surge_format: surgeFormatSchema.default("rule_set"),
 
     update_interval: z.number().int().min(60).default(86400),

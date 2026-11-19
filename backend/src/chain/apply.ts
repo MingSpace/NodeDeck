@@ -83,7 +83,7 @@ export function matchesSelector(node: Node, selector: ChainSelectorLike, ctx?: C
   const nodeScope = selector.include_nodes ?? [];
   const groupScope = selector.include_groups ?? [];
   if (nodeScope.length > 0 || groupScope.length > 0) {
-    // 节点名是 Clash/Surge 的主键,精确比较、不做大小写折叠;加来源前缀前的名字也认。
+    // 节点名是 Surge 的主键,精确比较、不做大小写折叠;加来源前缀前的名字也认。
     const byNode = nodeNameIn(nodeScope, node);
     const byGroup = !byNode && groupScope.some((g) => ctx?.groupMembers?.get(g)?.has(node.name) === true);
     if (!byNode && !byGroup) return false;
@@ -205,7 +205,7 @@ export interface ChainPath {
 /**
  * 展开每个带 chain_via 节点的完整链路,用于 UI 展示 `节点 → 前置A → 前置B` 这样的多跳路径。
  *
- * 多跳不是单条规则能表达的(Clash dialer-proxy / Surge underlying-proxy 都是单值);
+ * 多跳不是单条规则能表达的(Surge underlying-proxy 是单值);
  * 它由"前置本身也被某条规则挂上了 chain_via"自然形成,所以这里必须沿着图走一遍才能看到全貌。
  *
  * 调用时机应在 validateChain **之后** — 那时悬空与环都已清理,terminal 只会是

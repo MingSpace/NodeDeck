@@ -36,7 +36,6 @@ function profile(rules: Profile["chain_rules"]): Profile {
     managed_config_url: "auto",
     managed_config_interval: 86400,
     managed_config_strict: false,
-    clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
   };
 }
 
@@ -126,7 +125,7 @@ describe("matchesSelector", () => {
     expect(matchesSelector(n, { include_nodes: ["🇭🇰 HK-01"] })).toBe(true);
     expect(matchesSelector(n, { include_nodes: ["other", "🇭🇰 HK-01"] })).toBe(true);
     expect(matchesSelector(n, { include_nodes: ["HK-01"] })).toBe(false);
-    // 节点名是 Clash/Surge 的主键,精确匹配不做大小写折叠(与 include_regex 相反)
+    // 节点名是 Surge 的主键,精确匹配不做大小写折叠(与 include_regex 相反)
     expect(matchesSelector(n, { include_nodes: ["🇭🇰 hk-01"] })).toBe(false);
   });
 

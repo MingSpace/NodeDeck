@@ -16,11 +16,9 @@ const SCOPE_LABEL: Partial<Record<PullClient["ip_scope"], string>> = {
 export function PullClientList({
   clients,
   profileName,
-  targetColor,
 }: {
   clients: PullClient[];
   profileName: (id: string) => string;
-  targetColor: Record<PullClient["target"], string>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shown = expanded ? clients : clients.slice(0, COLLAPSED);
@@ -34,7 +32,6 @@ export function PullClientList({
             key={`${d.ip}|${d.client}`}
             client={d}
             profile={profileName(d.profile_id)}
-            dotClass={targetColor[d.target]}
           />
         ))}
       </ul>
@@ -53,7 +50,7 @@ export function PullClientList({
   );
 }
 
-function ClientRow({ client: d, profile, dotClass }: { client: PullClient; profile: string; dotClass: string }) {
+function ClientRow({ client: d, profile }: { client: PullClient; profile: string }) {
   const firstSeen = useRelativeTime(d.first_seen);
   const version = d.version && (/^\d+$/.test(d.version) ? `build ${d.version}` : d.version);
   // 机型和系统合成一段:「Pixel 8 · Android 14」;都没有就不占位
@@ -63,8 +60,7 @@ function ClientRow({ client: d, profile, dotClass }: { client: PullClient; profi
   const rawUa = !version && !platform && d.components.length === 0 && d.user_agent && d.user_agent !== d.client;
 
   return (
-    <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-3 py-2.5">
-      <span className={cn("mt-[5px] h-2 w-2 rounded-full", dotClass)} aria-hidden />
+    <li className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-3 py-2.5">
 
       <div className="min-w-0 space-y-0.5" title={d.user_agent || undefined}>
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">

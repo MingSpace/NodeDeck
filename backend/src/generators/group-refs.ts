@@ -2,13 +2,8 @@ import type { Node } from "../schemas/node.js";
 import type { ProxyGroup } from "../schemas/proxy-group.js";
 
 /**
- * Clash / Surge 共有的内置 policy(可以直接出现在 group.proxies 中,运行时由客户端解析)。
- * - DIRECT / REJECT 两端都有
- * - REJECT-DROP / REJECT-NO-DROP / REJECT-TINYGIF 是 Surge 子类型,Clash 端会在
- *   downgradeClashPolicy 处映射为 REJECT;但保留在 group.proxies 中不会让 Clash 加载失败
- *   (Clash 把它当成一个不存在的代理名 → 实际客户端表现为 REJECT 的等价行为)
- * - PASS / COMPATIBLE 是 mihomo 专属,Surge 没有,但写在 Surge group 里只会被
- *   当成不存在的代理名,这里宁可保留(用户故意写)也不删
+ * Surge 内置 policy(可以直接出现在 group.proxies 中,运行时由客户端解析):
+ * DIRECT / REJECT 及 REJECT-DROP / REJECT-NO-DROP / REJECT-TINYGIF 子类型。
  */
 export const GROUP_BUILTIN_POLICIES: ReadonlySet<string> = new Set([
   "DIRECT",
@@ -16,8 +11,6 @@ export const GROUP_BUILTIN_POLICIES: ReadonlySet<string> = new Set([
   "REJECT-DROP",
   "REJECT-NO-DROP",
   "REJECT-TINYGIF",
-  "PASS",
-  "COMPATIBLE",
 ]);
 
 const PREVIEW_LIMIT = 5;
@@ -50,7 +43,7 @@ function formatNameList(names: string[]): string {
  *      per-group 重复 warning 噪音太大,大概率根因是 provider 拉取失败或 node_filter 过激)
  *    - 节点池**非空**:per-group warning,列前 5 个 + "和另外 X 个"(更可能是个别节点被过滤,
  *      用户需要知道是哪些)
- * 2. **notImported** - 该名字在系统的 group yaml 中存在,但当前 profile.proxy_groups 没把它启用:
+ * 2. **notImported** - 该名字在系统的 group 实体中存在,但当前 profile.proxy_groups 没把它启用:
  *    - 单独 per-group warning,文案明确指引到 Profile 编辑器加进来,避免用户被"是被过滤的节点"
  *      错误诊断误导而去翻 node_filter
  *
@@ -58,8 +51,8 @@ function formatNameList(names: string[]): string {
  * 本身不会产生悬空引用。
  *
  * 不动 g.include_other_group / g.nested_groups:
- * 这是组名引用,即使被引用的组里所有节点都被过滤光,组本身仍是合法的(Mihomo/Surge
- * 运行时会把空组当成 DIRECT 或报组级别 warning,但不会因引用方加载失败)。
+ * 这是组名引用,即使被引用的组里所有节点都被过滤光,组本身仍是合法的(生成时空组兜底
+ * DIRECT,Surge 不会因引用方加载失败)。
  * 老字段 g.selector.include_other_group 已被 schema transform 迁移到 g.nested_groups,
  * 这里也不再考虑它。
  *
@@ -111,7 +104,7 @@ export function validateGroupRefs(
       if (seen.has(ref)) continue;
       seen.add(ref);
 
-      // 优先判断 notImported:系统里有这个 group yaml,只是没在当前 profile 启用
+      // 优先判断 notImported:系统里有这个 group,只是没在当前 profile 启用
       if (knownGroupNames.has(ref)) {
         droppedNotImported.push(ref);
       } else {
@@ -156,7 +149,7 @@ export function validateGroupRefs(
 }
 
 /**
- * 校验 `g.underlying_proxy`([S] 组级链式)指向的策略是否存在,悬空则清空 + warning
+ * 校验 `g.underlying_proxy`(组级链式)指向的策略是否存在,悬空则清空 + warning
  * (与 validateChain 处理 node.chain_via 悬空的口径一致:宁可降级为不链式,也不让客户端加载报错)。
  *
  * 只查一层直接自引用(`A` 的组级链式指回 `A` 自己)。更深的环 —— 比如 A 经 B、B 的成员又经 A ——

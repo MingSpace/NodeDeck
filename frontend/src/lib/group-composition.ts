@@ -1,11 +1,10 @@
 // 策略组「最终成员」的前端预估口径。
 // 与 backend/src/generators/group-members.ts 的 filterNodesBySelector /
-// resolveGroupMemberEntries 保持同步 —— 那边是写进 yaml/conf 的唯一真相,这里只是拿
+// resolveGroupMemberEntries 保持同步 —— 那边是写进 .conf 的唯一真相,这里只是拿
 // /api/dashboard/node-pool 的全量节点做同样的推演,给列表页/编辑器显示数字。
 //
 // 与后端的已知差异(都是 profile 维度的信息,策略组模板本身无从得知):
 //   - profile.hidden_nodes 会从 selector 动态匹配里剔除节点
-//   - Clash use_proxy_providers 模式下,被 `use:` 引用的机场节点不进 proxies 列表
 //   - Surge include-all-proxies / policy-regex-filter 由客户端自行展开
 // 所以这里的 auto 数是「上限估算」,UI 文案不要写成绝对值。
 

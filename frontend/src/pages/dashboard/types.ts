@@ -42,7 +42,7 @@ export interface ProfileHealth {
 
 // 与 backend/src/stats/pull-stats.ts PullSummary 保持同步
 export interface PullSummary {
-  days: { date: string; clash: number; surge: number }[];
+  days: { date: string; count: number }[];
   today: number;
   since?: string;
   rejected: number;
@@ -56,7 +56,6 @@ export interface PullClient {
   client: string;
   user_agent: string;
   profile_id: string;
-  target: "clash" | "surge";
   first_seen: number;
   last_seen: number;
   count: number;

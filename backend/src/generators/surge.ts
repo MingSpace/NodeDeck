@@ -175,7 +175,7 @@ export function generateSurgeConfig(input: SurgeGenerateInput): string {
     if (rs.surge_reject_options) {
       const subtype = rs.surge_reject_options.type;
       const mapped = REJECT_TYPE_MAP[subtype];
-      if (mapped?.surge) policy = mapped.surge;
+      if (mapped) policy = mapped;
       if (rs.surge_reject_options.notification_text) {
         extraParams.push(`'notification-text="${rs.surge_reject_options.notification_text}"'`);
       }
@@ -338,7 +338,6 @@ function appendGeneralLines(lines: string[], g: GeneralPreset): void {
     ["geoip-maxmind-url", g.geoip_maxmind_url],
     ["ipv6", g.ipv6],
     ["ipv6-vif", g.ipv6_vif],
-    ["allow-lan", g.allow_lan],
     ["loglevel", g.log_level === "info" ? "notify" : g.log_level],
     ["exclude-simple-hostnames", g.exclude_simple_hostnames],
     ["show-error-page-for-reject", g.show_error_page_for_reject],
@@ -454,12 +453,12 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
       if (node.password !== undefined) params.push(`password=${escapeValue(node.password)}`);
       // Surge hysteria2 仅支持 download-bandwidth(单位 Mbps,纯数字),不支持 upload-bandwidth。
       // 参考: https://manual.nssurge.com/policy/proxy.html#parameter-for-hysteria-2
-      // up 字段在转 Surge 时静默丢弃(mihomo 端仍会用),不发 warning 避免日志噪音。
+      // up 字段(来自机场 Clash YAML 的上行带宽)静默丢弃,不发 warning 避免日志噪音。
       if (node.down) params.push(`download-bandwidth=${stripBandwidthUnit(node.down)}`);
       // Surge 端没有 hysteria2 的 obfs=/obfs-password= 键,混淆按类型用单键表达:
       // salamander → salamander-password=(iOS 5.17.0+ / Mac 6.4.3+)
       // gecko → gecko-password=(iOS 5.20.0+ / Mac 6.7.0+)
-      // mihomo 的 obfs: + obfs-password: 两键在这里折叠成一键;其他 obfs 类型 Surge 不支持。
+      // 内部模型的 obfs + obfs_password 两个字段在这里折叠成一键;其他 obfs 类型 Surge 不支持。
       if (node.obfs === "gecko") {
         if (node.obfs_password) {
           params.push(`gecko-password=${escapeValue(node.obfs_password)}`);
@@ -483,9 +482,9 @@ export function buildSurgeProxyLine(node: Node, warnings: string[]): string | nu
       if (node.hop_interval !== undefined) params.push(`port-hopping-interval=${node.hop_interval}`);
       break;
     case "tuic":
-      // Surge TUIC v5 与 mihomo 一样用 uuid + password,version=5 必须显式标注以区分 v4(token-only)。
+      // Surge TUIC v5 用 uuid + password,version=5 必须显式标注以区分 v4(token-only)。
       // 参考: https://surge.tel/20/2559 与 manual.nssurge.com/policy/proxy.html
-      // mihomo TUIC v4 (用 token 字段) 当前不在 schema 里,生成时统一按 v5 输出。
+      // TUIC v4(token 字段)当前不在 schema 里,生成时统一按 v5 输出。
       if (node.uuid) params.push(`uuid=${node.uuid}`);
       if (node.password !== undefined) params.push(`password=${escapeValue(node.password)}`);
       params.push(`version=${node.tuic_version ?? 5}`);
@@ -593,13 +592,14 @@ function sanitizeWireGuardSectionId(name: string, idx: number): string {
 /**
  * 构造 [WireGuard <id>] 段的全部行(不含尾部空行,主流程负责追加)。
  *
- * mihomo 端的 wireguard 既可以把 server/port/public_key 直接写在节点根,也可以用 peers[] 数组承载多 peer。
+ * 内部模型的 wireguard 既可以把 server/port/public_key 直接放在节点根,也可以用 peers[] 数组承载多 peer
+ * (与机场 Clash YAML 的两种写法对应)。
  * Surge 端 [WireGuard <id>] 段允许多个 `peer = (...)` 并列。这里:
  * - 没有 peers[] 时,从节点根字段合成单 peer(allowed-ips 默认全开)
  * - 有 peers[] 时,逐 peer 输出
  *
  * 不支持的字段会发 warning(reserved 在 Surge 写法是 `client-id = a/b/c` 三字节十进制;
- * mihomo 的 base64 reserved 不做自动转换,避免猜错)。
+ * 输入里 base64 形式的 reserved 不做自动转换,避免猜错)。
  */
 function buildSurgeWireGuardSection(
   sectionId: string,
@@ -670,7 +670,7 @@ function pushTransport(params: string[], node: Node): void {
   }
 }
 
-/** 内部统一用 mihomo 的 ip-version 枚举,Surge 侧键名相同但取值不同。 */
+/** 内部 ip_version 枚举沿用 Clash YAML 输入的取值,Surge 侧键名相同但取值不同。 */
 const SURGE_IP_VERSION: Record<NonNullable<Node["ip_version"]>, string> = {
   dual: "dual",
   ipv4: "v4-only",
@@ -713,9 +713,8 @@ function buildSurgeProxyGroup(
     }
   }
   const params: string[] = [];
-  // g.url 刻意不输出:Surge 现行版本已把组行上的 `url=` 列为 legacy 且完全无效,测速 URL 只认
-  // per-policy 的 `test-url` 或 [General] 的 proxy-test-url / internet-test-url。该字段仍保留在
-  // schema 里,因为 mihomo 的 url-test / fallback 组需要它(见 clash.ts)。
+  // Surge 现行版本组行上的 `url=` 已 legacy 无效,测速 URL 只认 per-policy 的 `test-url`
+  // 或 [General] 的 proxy-test-url / internet-test-url。
   // interval 对 Smart 组同样无效(manual.nssurge.com/policy-groups/smart.html),不输出免噪音。
   if (g.interval !== undefined && g.type !== "smart") params.push(`interval=${g.interval}`);
   if (g.tolerance !== undefined) params.push(`tolerance=${g.tolerance}`);
@@ -741,12 +740,8 @@ function buildSurgeProxyGroup(
 
 function resolveSurgeGroupMembers(g: ProxyGroup, allNodes: Node[], hiddenNodes: Set<string>): string[] {
   // 顶层 g.include_other_group 是 Surge 原生 include-other-group 参数(语义是平铺展开其它组的
-  // 成员节点),保留为 params 而不是成员,故 inlineIncludeOtherGroup=false。
+  // 成员节点),保留为 params 而不是成员(resolveGroupMemberEntries 不展开它)。
   // 注意 include-all-proxies / policy-regex-filter 由 Surge 客户端自己展开 [Proxy] 段,
   // 本地过滤不到 —— 那类组仍会把隐藏节点列出来。
-  return resolveGroupMemberEntries(g, allNodes, {
-    hiddenNodes,
-    inlineIncludeOtherGroup: false,
-    emptyFallback: true,
-  }).map((m) => m.name);
+  return resolveGroupMemberEntries(g, allNodes, { hiddenNodes }).map((m) => m.name);
 }

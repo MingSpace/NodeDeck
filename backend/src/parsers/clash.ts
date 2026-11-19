@@ -49,7 +49,7 @@ function clashProxyToNode(p: ClashProxy): Node | null {
     mptcp: typeof p.mptcp === "boolean" ? p.mptcp : undefined,
     tls: typeof p.tls === "boolean" ? p.tls : undefined,
     // vmess/vless 写的是 servername,其余协议写 sni;内部统一折叠进 sni,
-    // 由 generator 按协议决定输出哪个键(见 generators/clash.ts)。
+    // Surge generator 只输出 sni。
     sni: p.sni ? String(p.sni) : (p.servername ? String(p.servername) : undefined),
     name_cert_verify: p["name-cert-verify"] ? String(p["name-cert-verify"]) : undefined,
     ip_version: IP_VERSIONS.has(String(p["ip-version"]))
@@ -68,8 +68,8 @@ function clashProxyToNode(p: ClashProxy): Node | null {
   switch (p.type) {
     case "ss": {
       // shadow-tls plugin 归一化到内部 shadow_tls_* 字段(与 Surge 侧共用抽象),
-      // 生成 Clash 时由 buildClashProxy 对称重建;其它 plugin(obfs/v2ray-plugin)原样透传。
-      // 缺 password 时不做归一化(空串会被两端 generator 的 falsy 判断丢掉整个 plugin),
+      // 其它 plugin(obfs/v2ray-plugin)原样透传。
+      // 缺 password 时不做归一化(空串会被 generator 的 falsy 判断丢掉整个 plugin),
       // 走下面的透传分支原样保留,保证 roundtrip 不丢字段。
       if (p.plugin === "shadow-tls" && (p["plugin-opts"] as Record<string, unknown> | undefined)?.password) {
         const po = (p["plugin-opts"] as Record<string, unknown>) ?? {};

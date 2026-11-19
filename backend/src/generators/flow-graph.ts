@@ -9,7 +9,7 @@ import { resolveGroupMemberEntries, type GroupMemberOrigin } from "./group-membe
  * Web UI「流转」视图的数据模型:把 规则 → 策略组 → 成员(含嵌套组 / 链式前置) 拍平成一张图,
  * 让用户不用读产物就能看懂一次请求实际怎么走。
  *
- * 成员顺序直接复用 `resolveGroupMemberEntries` —— 与两端 generator 写进产物的顺序同源。
+ * 成员顺序直接复用 `resolveGroupMemberEntries` —— 与 Surge generator 写进产物的顺序同源。
  * 这一点对 `fallback` 组是**语义**而不只是展示:客户端按声明顺序取第一个可用的成员,
  * 视图里顺序错了就等于教用户配错优先级。
  */
@@ -32,21 +32,18 @@ export interface FlowNote {
 export interface FlowGroup {
   name: string;
   type: ProxyGroup["type"];
-  /** Clash 端实际落地的类型(smart→url-test / ssid→select),两端不一致时 UI 要提示 */
-  clash_type: string;
   members: FlowMember[];
   /** selector 命中但没列进 members 的节点数(只回样本,避免几百个节点撑爆响应) */
   selector_omitted: number;
   /** 递归展开嵌套组之后,这个组实际覆盖的真实节点总数 */
   node_total: number;
-  url?: string;
   interval?: number;
   timeout?: number;
   tolerance?: number;
   include_other_group?: string;
   include_all_proxies?: boolean;
   policy_regex_filter?: string;
-  /** [S] 组级链式出口,组内全体代理成员都经它出站 */
+  /** 组级链式出口,组内全体代理成员都经它出站 */
   underlying_proxy?: string;
   notes: FlowNote[];
 }
@@ -80,12 +77,6 @@ const SELECTION_SEMANTICS: Record<ProxyGroup["type"], string> = {
   ssid: "按当前接入的网络(SSID / 蜂窝 / 有线)选择",
 };
 
-const AUTO_TEST_TYPES = new Set<ProxyGroup["type"]>(["url-test", "fallback", "load-balance"]);
-
-function clashType(type: ProxyGroup["type"]): string {
-  return type === "smart" ? "url-test" : type === "ssid" ? "select" : type;
-}
-
 export interface BuildFlowGraphInput {
   groups: ProxyGroup[];
   nodes: Node[];
@@ -114,13 +105,7 @@ export function buildFlowGraph(input: BuildFlowGraphInput): FlowGraph {
           : "missing";
 
   const groups = input.groups.map((g) => {
-    const entries = resolveGroupMemberEntries(g, input.nodes, {
-      hiddenNodes: input.hiddenNodes,
-      // 流转视图按"用户配了什么"呈现,不模拟 Clash proxy-providers 的 use: 剥离 ——
-      // 那是单端输出细节,混进来只会让同一份配置在视图里凭空少掉一批节点。
-      inlineIncludeOtherGroup: false,
-      emptyFallback: true,
-    });
+    const entries = resolveGroupMemberEntries(g, input.nodes, { hiddenNodes: input.hiddenNodes });
 
     const members: FlowMember[] = [];
     let selectorSampled = 0;
@@ -149,11 +134,9 @@ export function buildFlowGraph(input: BuildFlowGraphInput): FlowGraph {
     return {
       name: g.name,
       type: g.type,
-      clash_type: clashType(g.type),
       members,
       selector_omitted: selectorOmitted,
       node_total: input.groupMembers.get(g.name)?.size ?? 0,
-      url: g.url,
       interval: g.interval,
       timeout: g.timeout,
       tolerance: g.tolerance,
@@ -176,7 +159,7 @@ export function buildFlowGraph(input: BuildFlowGraphInput): FlowGraph {
     policy_kind: policyKind(r.policy),
   }));
 
-  // 顺序与两端 generator 的 [Rule] / rules 段一致:规则模块 → GEOIP 兜底 → FINAL。
+  // 顺序与 Surge generator 的 [Rule] 段一致:规则模块 → GEOIP 兜底 → FINAL。
   if (input.geoipFallback) {
     entries.push({
       kind: "geoip",
@@ -202,7 +185,8 @@ export function buildFlowGraph(input: BuildFlowGraphInput): FlowGraph {
 function describeRuleset(rs: RuleSet): string | undefined {
   switch (rs.type) {
     case "geosite":
-      return `GEOSITE,${rs.geosite_category ?? rs.id}`;
+      // Surge 没有原生 GEOSITE:生成时 payload 展开为内联规则,否则 url 走 DOMAIN-SET
+      return rs.payload?.length ? `内联 ${rs.payload.length} 条` : rs.url && `DOMAIN-SET,${rs.url}`;
     case "geoip":
       return `GEOIP,${rs.geoip_country_code ?? rs.id}`;
     case "inline_list":
@@ -253,24 +237,10 @@ function buildNotes(g: ProxyGroup, members: FlowMember[]): FlowNote[] {
       text: "没有设置 interval,Surge 默认 600 秒才复测一次,成员挂掉后最长要等这么久才切换",
     });
   }
-  if (AUTO_TEST_TYPES.has(g.type) && g.url) {
-    notes.push({
-      level: "info",
-      text: "测试 URL 只对 Clash 生效;Surge 已废弃组级 url,一律用 [General] 的 proxy-test-url",
-    });
-  }
-
   if (g.underlying_proxy) {
     notes.push({
       level: "info",
-      text: `组级链式:全体代理成员都经 ${g.underlying_proxy} 出站(仅 Surge;Clash 端忽略该参数)`,
-    });
-  }
-
-  if (g.type === "smart" || g.type === "ssid") {
-    notes.push({
-      level: "info",
-      text: `Clash 没有 ${g.type} 组,输出时会降级为 ${clashType(g.type)}`,
+      text: `组级链式:全体代理成员都经 ${g.underlying_proxy} 出站`,
     });
   }
 

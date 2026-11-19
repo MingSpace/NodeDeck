@@ -40,7 +40,6 @@ function fakeProfile(overrides: Partial<Profile> = {}): Profile {
     managed_config_url: "auto",
     managed_config_interval: 86400,
     managed_config_strict: false,
-    clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
     ...overrides,
   } as Profile;
 }
@@ -82,7 +81,7 @@ afterEach(() => {
 });
 
 describe("GET /api/dashboard/profiles", () => {
-  it("节点数按 node_filter 过滤后计,两端 warnings 去重合并", async () => {
+  it("节点数按 node_filter 过滤后计,warnings 去重", async () => {
     mockedProfileList.mockResolvedValue([
       { id: "home", path: "", mtimeMs: 0, data: fakeProfile({ node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false, source_prefix: "conflict", exclude_regex: "HK" } }) },
     ]);
@@ -96,7 +95,7 @@ describe("GET /api/dashboard/profiles", () => {
     expect(body.items).toHaveLength(1);
     expect(body.items[0].id).toBe("home");
     expect(body.items[0].node_count).toBe(2);
-    // resolver 的 warning 两端各带一份,合并后只剩一条
+    // resolver 的 warning 只出现一次
     expect(body.items[0].warnings.filter((w) => w.includes('"gone"'))).toHaveLength(1);
   });
 

@@ -22,7 +22,6 @@ function baseProfile(overrides: Partial<Profile> = {}): Profile {
     managed_config_url: "auto",
     managed_config_interval: 86400,
     managed_config_strict: false,
-    clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
     ...overrides,
   };
 }
@@ -32,8 +31,6 @@ describe("generateSurgeConfig", () => {
     const general: GeneralPreset = {
       id: "home",
       name: "home",
-      allow_lan: false,
-      mode: "rule",
       log_level: "notify",
       ipv6: false,
       proxy_test_url: "http://cp.cloudflare.com/generate_204",
@@ -80,7 +77,6 @@ describe("generateSurgeConfig", () => {
         proxies: ["🇭🇰 HK-01", "🇭🇰 HK-SS"],
         nested_groups: [],
         selector: { from_providers: [], exclude_type: [], include_region: [] },
-        url: "http://cp.cloudflare.com",
         interval: 600,
         tolerance: 10,
       },
@@ -94,10 +90,7 @@ describe("generateSurgeConfig", () => {
           name: "CN",
           type: "remote_url",
           url: "https://example.com/cn.list",
-          behavior: "classical",
-          format: "yaml",
           surge_flags: { no_resolve: true },
-          clash_format: "rule_provider",
           surge_format: "rule_set",
           update_interval: 86400,
         } satisfies RuleSet,
@@ -110,15 +103,12 @@ describe("generateSurgeConfig", () => {
           name: "Ad",
           type: "remote_url",
           url: "https://example.com/ad.list",
-          behavior: "domain",
-          format: "yaml",
           surge_reject_options: {
             type: "REJECT-DROP",
             notification_text: "blocked by nodedeck",
             notification_interval: 60,
           },
           surge_flags: { extended_matching: true, pre_matching: true, no_resolve: true },
-          clash_format: "rule_provider",
           surge_format: "rule_set",
           update_interval: 86400,
         } satisfies RuleSet,
@@ -143,6 +133,8 @@ describe("generateSurgeConfig", () => {
     expect(out).toContain("[General]");
     expect(out).toContain("loglevel = notify");
     expect(out).toContain("proxy-test-url = http://cp.cloudflare.com/generate_204");
+    // allow-lan 不是 Surge 的 [General] 键,即使存量 general yaml 里残留 allow_lan 也不输出
+    expect(out).not.toMatch(/^allow-lan/m);
 
     expect(out).toContain("[Proxy]");
     expect(out).toContain("DIRECT = direct");
@@ -155,7 +147,7 @@ describe("generateSurgeConfig", () => {
 
     expect(out).toContain("[Proxy Group]");
     // 组行不带 url= —— Surge 现行版本已废弃组级测试 URL(只认 per-policy test-url /
-    // [General] proxy-test-url),g.url 只服务于 Clash 端。
+    // [General] proxy-test-url),schema 也已不提供组级 url。
     expect(out).toContain("Proxys = url-test,🇭🇰 HK-01,🇭🇰 HK-SS,interval=600,tolerance=10");
 
     expect(out).toContain("[Rule]");
@@ -220,7 +212,6 @@ describe("generateSurgeConfig", () => {
 
   it("filters group members by selector.include_region (whitelist)", () => {
     // include_region 白名单:只保留 node.region 命中的节点;region 未识别(undefined)的节点也排除。
-    // 与 clash 端等价测试同步,确保两端行为一致。
     const nodes: Node[] = [
       { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", tags: [] },
       { name: "HK-01", type: "ss", server: "h.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "HK", tags: [] },
@@ -310,7 +301,7 @@ describe("generateSurgeConfig", () => {
   });
 
   it("nested_groups: 把其它组作为嵌套引用加进 [Proxy Group] 行的成员段", () => {
-    // 跟 clash 的同名测试对称 — 验证 v2 nested_groups 字段在 surge 端的契约。
+    // 验证 v2 nested_groups 字段在 surge 端的契约。
     // Surge 客户端把每个组成员段(逗号分隔)里的"组名"识别成嵌套引用,
     // 用户在 Stream 里选 Japan 会跳到 Japan 组的选择器。
     const nodes: Node[] = [
@@ -323,7 +314,6 @@ describe("generateSurgeConfig", () => {
         type: "url-test",
         proxies: ["JP-01"],
         nested_groups: [],
-        url: "http://cp.cloudflare.com",
         interval: 300,
       },
       {
@@ -349,7 +339,7 @@ describe("generateSurgeConfig", () => {
     expect(streamLine).toContain("DIRECT"); // 独立 builtin
   });
 
-  it("组级 underlying-proxy: 输出到 [Proxy Group] 行,legacy 组级 url 不再输出", () => {
+  it("组级 underlying-proxy: 输出到 [Proxy Group] 行,组行不输出 url=", () => {
     const nodes: Node[] = [
       { name: "JP-01", type: "ss", server: "j.com", port: 8388, cipher: "aes-128-gcm", password: "x", region: "JP", tags: [] },
       { name: "Relay", type: "ss", server: "r.com", port: 8388, cipher: "aes-128-gcm", password: "x", tags: [] },
@@ -361,7 +351,6 @@ describe("generateSurgeConfig", () => {
         type: "url-test",
         proxies: ["Relay"],
         nested_groups: [],
-        url: "http://cp.cloudflare.com",
         interval: 300,
       },
       {
@@ -385,7 +374,7 @@ describe("generateSurgeConfig", () => {
     });
     const lines = out.split(/\r?\n/);
     expect(lines.find((l) => l.startsWith("Landing = "))).toBe("Landing = select,JP-01,underlying-proxy=Front");
-    // 同一份配置里,组级 url 被丢弃但 interval 仍保留
+    // 组行没有 url=,interval 照常保留
     const frontLine = lines.find((l) => l.startsWith("Front = "))!;
     expect(frontLine).not.toContain("url=");
     expect(frontLine).toContain("interval=300");
@@ -491,7 +480,7 @@ describe("generateSurgeConfig", () => {
     });
     const line = out.split(/\r?\n/).find((l) => l.startsWith("N = "))!;
     expect(line).toContain("server-cert-verify-name=real.example.com");
-    // 内部用 mihomo 枚举,Surge 侧取值不同,必须映射
+    // 内部枚举沿用 Clash YAML 输入的取值,Surge 侧取值不同,必须映射
     expect(line).toContain("ip-version=prefer-v4");
     expect(line).toContain("test-url=http://cp.cloudflare.com/generate_204");
     expect(line).toContain("test-timeout=3");
@@ -539,9 +528,6 @@ describe("generateSurgeConfig", () => {
       name: id,
       type: "remote_url",
       url: `https://example.com/${id}.list`,
-      behavior: "classical",
-      format: "text",
-      clash_format: "rule_provider",
       surge_format: format,
       update_interval: interval,
     });
@@ -645,9 +631,6 @@ describe("generateSurgeConfig", () => {
             name: "Stream",
             type: "inline_list",
             payload: ["DOMAIN-SUFFIX,netflix.com", "DOMAIN-SUFFIX,nflxvideo.net"],
-            behavior: "domain",
-            format: "yaml",
-            clash_format: "inline",
             surge_format: "inline_ruleset",
             update_interval: 86400,
           } satisfies RuleSet,
@@ -684,10 +667,7 @@ describe("generateSurgeConfig", () => {
               "IP-CIDR6,fd00::/8,no-resolve",
               "PROCESS-NAME,Transmission",
             ],
-            behavior: "classical",
-            format: "yaml",
             surge_flags: { no_resolve: true, extended_matching: true },
-            clash_format: "inline",
             surge_format: "rule_set",
             update_interval: 86400,
           } satisfies RuleSet,
@@ -707,8 +687,8 @@ describe("generateSurgeConfig", () => {
     expect(out).not.toContain("IP-CIDR6,fd00::/8,no-resolve,DEVICE:MS-MACMINI");
   });
 
-  // Clash 端会按行跳过 SUBNET 等 Surge 专属类型;Surge 端必须原样保留,
-  // 否则「按接入网络切策略」这类配置会两端一起失效。
+  // SUBNET 等按接入网络 / 设备环境匹配的规则类型必须原样保留,
+  // 否则「按接入网络切策略」这类配置会失效。
   it("keeps Surge-only rule types (SUBNET / PROTOCOL / CELLULAR-*) in the output", () => {
     const warnings: string[] = [];
     const out = generateSurgeConfig({
@@ -724,9 +704,6 @@ describe("generateSurgeConfig", () => {
             name: "Home",
             type: "inline_list",
             payload: ["SUBNET,ROUTER:10.0.0.12", "SUBNET,SSID:Forever.", "PROTOCOL,QUIC"],
-            behavior: "classical",
-            format: "yaml",
-            clash_format: "inline",
             surge_format: "rule_set",
             update_interval: 86400,
           } satisfies RuleSet,
@@ -755,9 +732,6 @@ describe("generateSurgeConfig", () => {
             name: "SYSTEM",
             type: "surge_internal",
             surge_internal_name: "SYSTEM",
-            behavior: "classical",
-            format: "text",
-            clash_format: "rule_provider",
             surge_format: "rule_set",
             update_interval: 86400,
           } satisfies RuleSet,
@@ -770,11 +744,8 @@ describe("generateSurgeConfig", () => {
             name: "LAN",
             type: "surge_internal",
             surge_internal_name: "LAN",
-            behavior: "classical",
-            format: "text",
             // 模拟用户带 no-resolve 的边界,确认 flags 也能透传
             surge_flags: { no_resolve: true },
-            clash_format: "rule_provider",
             surge_format: "rule_set",
             update_interval: 86400,
           } satisfies RuleSet,
@@ -827,8 +798,6 @@ describe("generateSurgeConfig", () => {
       general: {
         id: "g",
         name: "g",
-        allow_lan: false,
-        mode: "rule",
         log_level: "notify",
         ipv6: false,
         skip_proxy: ["127.0.0.1"],
@@ -920,8 +889,6 @@ describe("generateSurgeConfig", () => {
         general: {
           id: "g",
           name: "g",
-          allow_lan: false,
-          mode: "rule",
           log_level: "notify",
           ipv6: false,
           http_api: parsed,
@@ -944,7 +911,7 @@ describe("generateSurgeConfig", () => {
       nodes: [],
       groups: [],
       rules: [],
-      general: { id: "g", name: "g", allow_lan: false, mode: "rule", log_level: "notify", ipv6: false, ssid_rules },
+      general: { id: "g", name: "g", log_level: "notify", ipv6: false, ssid_rules },
       surgeModules: [],
       warnings,
     });
@@ -996,8 +963,6 @@ describe("generateSurgeConfig", () => {
       general: {
         id: "g",
         name: "g",
-        allow_lan: false,
-        mode: "rule",
         log_level: "notify",
         ipv6: false,
         include_all_networks: true,

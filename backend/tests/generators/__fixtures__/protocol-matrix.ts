@@ -16,7 +16,6 @@ export function emptyProfile(overrides: Partial<Profile> = {}): Profile {
     managed_config_url: "auto",
     managed_config_interval: 86400,
     managed_config_strict: false,
-    clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
     ...overrides,
   };
 }
@@ -181,8 +180,8 @@ export const protocolFixtures: { name: string; node: Node }[] = [
   },
   {
     // 机场常见形态:伪装 SNI(ixigua.com)+ 服务器证书 SHA256 锁定。
-    // 验证 fingerprint -> clash `fingerprint:` / surge `server-cert-fingerprint-sha256=`。
-    // reuse=false: AnyTLS 规范默认开启连接复用,显式关闭仅 Surge 端有键(mihomo 无对应)。
+    // 验证 fingerprint -> surge `server-cert-fingerprint-sha256=`。
+    // reuse=false: AnyTLS 规范默认开启连接复用,显式关闭。
     name: "anytls-cert-pinning",
     node: {
       name: "🇭🇰 HK-AnyTLS",
@@ -201,7 +200,6 @@ export const protocolFixtures: { name: string; node: Node }[] = [
   },
   {
     // Shadow TLS 混淆叠加在 ss 上:
-    // clash → plugin: shadow-tls + plugin-opts { password, host, version }
     // surge → shadow-tls-password= / shadow-tls-sni= / shadow-tls-version=
     name: "ss-shadow-tls",
     node: {
@@ -219,7 +217,7 @@ export const protocolFixtures: { name: string; node: Node }[] = [
     },
   },
   {
-    // Snell v6(iOS 5.20.0+/Mac 6.7.0+ beta)+ 连接复用;Clash 端整节点跳过 + warning。
+    // Snell v6(iOS 5.20.0+/Mac 6.7.0+ beta)+ 连接复用。
     name: "snell-v6",
     node: {
       name: "🇹🇼 TW-Snell-v6",

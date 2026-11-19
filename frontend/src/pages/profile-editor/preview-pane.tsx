@@ -3,7 +3,6 @@ import { ChevronLeft, ChevronRight, Eye, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { YamlEditor } from "@/components/yaml-editor";
 import { useGeneratedPreview } from "./use-profile-form";
 import type { Profile } from "./types";
@@ -47,8 +46,7 @@ function readStoredWidth(): number {
 export function PreviewPane({ profileId, draft, enabled }: Props) {
   // 手机宽度下编辑区本来就窄,预览默认收起成右侧一条竖栏,要看再展开
   const [collapsed, setCollapsed] = useState(() => window.matchMedia("(max-width: 767px)").matches);
-  const [target, setTarget] = useState<"clash" | "surge">("clash");
-  const preview = useGeneratedPreview(profileId, target, draft, enabled && !collapsed);
+  const preview = useGeneratedPreview(profileId, draft, enabled && !collapsed);
   const [diffStats, setDiffStats] = useState<{ added: number; removed: number } | null>(null);
   const diffTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -183,16 +181,7 @@ export function PreviewPane({ profileId, draft, enabled }: Props) {
           <Eye className="h-3.5 w-3.5" />
           实时预览
         </button>
-        <Tabs value={target} onValueChange={(v) => setTarget(v as "clash" | "surge")}>
-          <TabsList className="h-7">
-            <TabsTrigger value="clash" className="text-xs px-2 py-0.5" title="Clash YAML">
-              Clash
-            </TabsTrigger>
-            <TabsTrigger value="surge" className="text-xs px-2 py-0.5" title="Surge .conf">
-              Surge
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <span className="text-xs text-muted-foreground font-mono">Surge .conf</span>
         <div className="flex-1" />
         <Button size="sm" variant="ghost" onClick={() => preview.refetch()} disabled={preview.isFetching}>
           <RefreshCw className={preview.isFetching ? "h-3.5 w-3.5 animate-spin" : "h-3.5 w-3.5"} />
@@ -254,7 +243,7 @@ export function PreviewPane({ profileId, draft, enabled }: Props) {
           <YamlEditor
             value={preview.data.text}
             onChange={() => {}}
-            language={target === "clash" ? "yaml" : "ini"}
+            language="ini"
             readOnly
             height="100%"
             highlightChanges

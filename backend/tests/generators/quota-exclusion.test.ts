@@ -43,7 +43,6 @@ function fakeProfile(providers: string[]): Profile {
     managed_config_url: "auto",
     managed_config_interval: 86400,
     managed_config_strict: false,
-    clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
   } as Profile;
 }
 
@@ -75,7 +74,6 @@ describe("resolveProfile - 流量用完 / 到期的节点源临时排除", () =>
     const resolved = await resolveProfile(fakeProfile(["flower", "kuro"]));
 
     expect(mockedPool).toHaveBeenCalledWith(expect.objectContaining({ providerIds: ["kuro"] }));
-    expect(resolved.excludedProviderIds).toEqual(new Set(["flower"]));
     expect(resolved.providers.map((p) => p.id)).toEqual(["flower", "kuro"]);
     expect(resolved.warnings).toContain(
       "节点源「FlowerCloud」流量已用完(手动标记),已从订阅中临时排除,预计 2099-11-02 恢复",
@@ -94,8 +92,7 @@ describe("resolveProfile - 流量用完 / 到期的节点源临时排除", () =>
     });
     const resolved = await resolveProfile(fakeProfile(["kuro", "flower"]));
 
-    // 两个都被排除 → 兜底不排除
-    expect(resolved.excludedProviderIds.size).toBe(0);
+    // 两个都被排除 → 兜底不排除,两个源照常进节点池
     expect(mockedPool).toHaveBeenCalledWith(expect.objectContaining({ providerIds: ["kuro", "flower"] }));
     expect(resolved.warnings).toContain("所有节点源都流量用完或已到期,本次不做排除,照常输出全部节点");
   });
@@ -105,7 +102,6 @@ describe("resolveProfile - 流量用完 / 到期的节点源临时排除", () =>
     const resolved = await resolveProfile(fakeProfile(["kuro"]));
 
     expect(mockedPool).toHaveBeenCalledWith(expect.objectContaining({ providerIds: ["kuro"] }));
-    expect(resolved.excludedProviderIds.size).toBe(0);
     expect(resolved.warnings).toEqual([]);
   });
 });

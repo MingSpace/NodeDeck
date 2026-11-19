@@ -1,5 +1,5 @@
 /**
- * inline payload 行(不带策略)→ [Rule] / rules: 整行(带策略)的转换。
+ * inline payload 行(不带策略)→ [Rule] 整行(带策略)的转换。
  *
  * 规则行的语法是 `TYPE,VALUE,POLICY[,option...]`,策略必须紧跟在 VALUE 之后
  * (manual.nssurge.com/rules/overview.html#composition)。而 ruleset 文件 /
@@ -10,13 +10,14 @@
  * 客户端会把 `no-resolve` 当成策略名。
  *
  * 另一件事是修饰符的适用范围:`no-resolve` 只对「目标 IP」类规则有意义
- * (Surge: IP-CIDR / IP-CIDR6 / GEOIP / IP-ASN;mihomo 另有 IP-SUFFIX),
+ * (IP-CIDR / IP-CIDR6 / GEOIP / IP-ASN,外加从 Clash 规则集抄来的 IP-SUFFIX),
  * `extended-matching` 只对域名类规则有意义。规则集级别的开关展开到混合 payload
  * (域名 + IP 混写)时按行分发,避免给不适用的行挂上无效修饰符。
  */
 
 // 目标 IP 类规则:匹配前需要拿到解析后的 IP,因此支持 no-resolve。
 // SRC-* 系列匹配来源 IP,不触发解析,不在此列。
+// IP-SUFFIX 不是 Surge 关键字,留在集合里只为不改变混合 payload 的 no-resolve 分发结果。
 const IP_RULE_TYPES = new Set(["IP-CIDR", "IP-CIDR6", "IP-SUFFIX", "IP-ASN", "GEOIP"]);
 
 // 域名类规则:支持 extended-matching(同时匹配 TLS SNI 与 HTTP Host)。
@@ -28,28 +29,6 @@ const DOMAIN_RULE_TYPES = new Set([
   "URL-REGEX",
 ]);
 
-/**
- * 只有 Surge 认识的规则类型。这几条匹配的都是「客户端自身所处的网络 / 设备环境」,
- * 而不是请求的目标 —— mihomo 的规则类型表里没有对应关键字
- * (已逐条核对 https://wiki.metacubex.one/config/rules/ 的完整清单)。
- * 原样写进 clash yaml 会让 mihomo 加载时报未知规则、整份配置失效,
- * 因此 Clash 端按行跳过 + warning;Surge 端照常输出。
- *
- * 来源:https://manual.nssurge.com/rules/protocol-and-network.html
- */
-const SURGE_ONLY_RULE_TYPES = new Set([
-  "SUBNET", // 当前接入的网络:SSID / BSSID / ROUTER / TYPE / MCCMNC
-  "PROTOCOL", // mihomo 只有语义更窄的 NETWORK(仅 tcp/udp),关键字不通用
-  "HOSTNAME-TYPE", // Mac 5.7.3+
-  "CELLULAR-RADIO", // iOS 独占
-  "CELLULAR-CARRIER", // iOS 独占
-]);
-
-/** 该规则类型是否为 Surge 独有(Clash 端应整行跳过)。 */
-export function isSurgeOnlyRuleType(ruleType: string): boolean {
-  return SURGE_ONLY_RULE_TYPES.has(ruleType.trim().toUpperCase());
-}
-
 // 行尾可能出现的无值 option。用于把行内自带的 option 与 VALUE 区分开。
 const INLINE_OPTION_FLAGS = new Set([
   "no-resolve",
@@ -57,7 +36,9 @@ const INLINE_OPTION_FLAGS = new Set([
   "pre-matching",
   "force-remote-dns",
   "requires-resolve",
-  "src", // mihomo 专属:把目标 IP 匹配转为来源 IP 匹配
+  // 不是 Surge 参数(源自 Clash 规则集写法),但必须留着:靠它把行尾 src 识别为 option、挪到策略之后,
+  // 删掉会改变 [Rule] 行的切分结果
+  "src",
 ]);
 
 // 行尾可能出现的 key=value option。

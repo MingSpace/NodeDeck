@@ -57,7 +57,7 @@ export function dedupAgainstPool(toImport: Node[], pool: Node[]): DedupResult<No
 // 设计原则:
 // 1. identity 由"语义关键字段"组成,不掺入仅 UI 用途字段(name/description/id)。
 //    这样同一份文件二次导入(name 由文件名生成、id 由 slug 生成)能命中已存在条目。
-// 2. 输入时机:`importClashYaml` / `importSurgeConf` 还没过 zod schema,所以字段可能
+// 2. 输入时机:`importSurgeConf` 的产物还没过 zod schema,所以字段可能
 //    为 undefined;identity 函数必须对 undefined 容错(用 ?? "" 兜底)。
 // 3. 哈希用 sha1 截断,只是为了得到稳定字符串;不需要密码学强度。
 
@@ -78,9 +78,10 @@ function stableJson(value: unknown): string {
 
 /**
  * RuleSet identity:
- * - remote_url 走 type|url|behavior|format|policy 组合(同 URL 不同 policy 视为两条规则块)
+ * - remote_url 走 type|url|surge_format|policy 组合(同 URL 不同 policy 视为两条规则块;
+ *   同 URL 的 RULE-SET 与 DOMAIN-SET 引用也视为两条)
  * - inline_list 加入 payload(排序后哈希)
- * - geosite/geoip 走分类码 + policy
+ * - geoip 走国家码 + policy
  *
  * 故意不包含 surge_flags / surge_reject_options 等"导出风格"字段:用户对同一份资源
  * 的两次导入只会拿到完全一致的 flags(由 importer 推断),不会区分。
@@ -89,10 +90,8 @@ export function rulesetIdentity(r: Partial<RuleSet>): string {
   const parts = [
     r.type ?? "remote_url",
     r.url ?? "",
-    r.behavior ?? "",
-    r.format ?? "",
+    r.surge_format ?? "",
     r.policy ?? "",
-    r.geosite_category ?? "",
     r.geoip_country_code ?? "",
     // surge_internal 同名(SYSTEM/LAN)挂同 policy 视为同一条;
     // 不同 policy 应被视为两条 ruleset,所以 policy 已经在上面参与了 identity。
@@ -106,7 +105,7 @@ export function rulesetIdentity(r: Partial<RuleSet>): string {
  * ProxyGroup identity:
  * - name + type + 排序后的成员列表。
  * - 成员排序不影响身份,但实际导入时会保留 toImport 的原顺序。
- * - 故意不带 url/interval/timeout 等测速参数,因为同一组重复导入时这些值会一致。
+ * - 故意不带 interval/timeout 等测速参数,因为同一组重复导入时这些值会一致。
  */
 export function proxyGroupIdentity(g: Partial<ProxyGroup>): string {
   const parts = [
@@ -130,7 +129,7 @@ export function surgeModuleIdentity(m: Partial<SurgeModule>): string {
 
 /**
  * GeneralPreset identity: 哈希除 id/name 外的全部字段。
- * 这样同一份 .conf / yaml 二次导入,即便 file_name 相同 ⇒ name 相同,
+ * 这样同一份 .conf 二次导入,即便 file_name 相同 ⇒ name 相同,
  * 真正驱动去重的是底下的 dns / mitm / http_listen 等设置。
  */
 export function generalPresetIdentity(g: Partial<GeneralPreset>): string {

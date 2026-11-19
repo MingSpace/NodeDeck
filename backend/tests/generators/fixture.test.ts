@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { generateClashConfig } from "../../src/generators/clash.js";
 import { generateSurgeConfig } from "../../src/generators/surge.js";
 import { profile, nodes, groups, rules, finalRule, general } from "./__fixtures__/example-profile.input.js";
 
@@ -17,19 +16,6 @@ function normalize(text: string): string {
 }
 
 describe("generator fixtures", () => {
-  it("clash output matches snapshot", () => {
-    const out = generateClashConfig({
-      profile,
-      nodes,
-      groups,
-      rules,
-      finalRule,
-      general,
-      warnings: [],
-    });
-    expect(normalize(out)).toMatchSnapshot();
-  });
-
   it("surge output matches snapshot", () => {
     const out = generateSurgeConfig({
       profile,

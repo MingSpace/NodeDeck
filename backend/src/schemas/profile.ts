@@ -56,8 +56,8 @@ export const chainSelectorSchema = selectorSchema.extend({
 });
 
 /**
- * 「隐藏节点」选择器:命中的节点照常写进 Clash `proxies:` / Surge `[Proxy]`,所以仍然是
- * chain_via(clash `dialer-proxy` / surge `underlying-proxy`)的合法目标 —— 但不会被任何
+ * 「隐藏节点」选择器:命中的节点照常写进 Surge `[Proxy]`,所以仍然是
+ * chain_via(Surge `underlying-proxy`)的合法目标 —— 但不会被任何
  * 策略组的 selector 动态匹配捞进去。效果是客户端里选不到它们,只能经链式使用,
  * 或由某个组的 `proxies` 显式点名(显式点名视为用户的明确意图,不剔除)。
  *
@@ -80,7 +80,7 @@ export const hiddenNodeSelectorSchema = z.object({
 
 /**
  * `mode` 决定命中后如何处理节点**已有**的 chain_via
- * (机场上游 Clash `dialer-proxy` / Surge `underlying-proxy` 解析进来的值):
+ * (从机场订阅里的 Clash `dialer-proxy` / Surge `underlying-proxy` 解析进来的值):
  * - `override` — 覆盖(默认,与 v1 行为一致)
  * - `fill`     — 只给尚无 chain_via 的节点补,已有的保持不动
  */
@@ -117,7 +117,7 @@ export const profileSchema = z.object({
   // rules
   rule_modules: z.array(ruleModuleRefSchema).default([]),
 
-  // surge-only
+  // Surge 模块
   surge_modules: z.array(idSchema).default([]),
 
   // general
@@ -138,15 +138,6 @@ export const profileSchema = z.object({
   managed_config_url: z.union([z.literal("auto"), z.literal("none"), z.string().url()]).default("auto"),
   managed_config_interval: z.number().int().min(60).default(86400),
   managed_config_strict: z.boolean().default(false),
-
-  // emit clash format details
-  clash_options: z
-    .object({
-      use_proxy_providers: z.boolean().default(false),
-      flag: z.enum(["mihomo", "stash"]).default("mihomo"),
-      group_style: z.enum(["block", "flow"]).default("flow"),
-    })
-    .default({ use_proxy_providers: false, flag: "mihomo", group_style: "flow" }),
 });
 
 export type Profile = z.infer<typeof profileSchema>;

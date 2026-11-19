@@ -43,7 +43,7 @@ interface Props {
 /**
  * Host(DNS 解析覆盖)行编辑器。允许同一域名多行(如多个 server: 上游 DNS) —— 这是
  * Surge [Host] 的合法用法,机场常借此给代理节点域名配多个 DoH 规避封锁。
- * 内部以"行列表"为真相,向上聚合成 Record(同 key 合并数组);后端 generator 决定两端展开方式。
+ * 内部以"行列表"为真相,向上聚合成 Record(同 key 合并数组);后端 generator 决定展开方式。
  */
 export function HostRowsEditor({ value, onChange }: Props) {
   const [rows, setRows] = useState<Row[]>(() => mapToRows(value));
@@ -66,13 +66,9 @@ export function HostRowsEditor({ value, onChange }: Props) {
   return (
     <div className="space-y-2">
       <div className="text-xs text-muted-foreground leading-relaxed">
-        域名解析覆盖;同一域名可添加多行(如多个 server: 上游 DNS),多个 IP 也可写成多行或逗号分隔。含{" "}
-        <span className="font-mono">server:</span> 的条目:Surge 写入{" "}
-        <span className="font-mono">[Host]</span>,Clash 写入{" "}
-        <span className="font-mono">dns.proxy-server-nameserver-policy</span>(按域名,需在 generals DNS 配{" "}
-        <span className="font-mono">proxy-server-nameserver</span> 才生效);
-        <span className="font-mono">DOMAIN-SET:</span> /{" "}
-        <span className="font-mono">RULE-SET:</span> 为 Surge 专属,Clash 跳过。
+        域名解析覆盖,写入 Surge 的 <span className="font-mono">[Host]</span> 段;同一域名可添加多行(如多个{" "}
+        <span className="font-mono">server:</span> 上游 DNS),多个 IP 也可写成多行或逗号分隔。也支持{" "}
+        <span className="font-mono">DOMAIN-SET:</span> / <span className="font-mono">RULE-SET:</span> 写法。
       </div>
       {rows.length === 0 && (
         <div className="text-xs text-muted-foreground border border-dashed rounded p-3 text-center">

@@ -4,22 +4,19 @@ import { cn } from "@/lib/utils";
 import type { PoolSummary, Profile, PullSummary } from "./types";
 import { PullClientList } from "./client-list";
 
-// Surge / Clash 用同一色相的深浅两档:只区分来源,不和状态色(绿 / 黄 / 红)抢语义
-const TARGET_COLOR = {
-  surge: "bg-sky-600 dark:bg-sky-400",
-  clash: "bg-sky-300 dark:bg-sky-700",
-} as const;
+// 柱色不用状态色(绿 / 黄 / 红),免得和健康度语义混在一起
+const BAR_COLOR = "bg-sky-600 dark:bg-sky-400";
 
 function shortDate(date: string): string {
   const [, m, d] = date.split("-");
   return `${Number(m)}/${Number(d)}`;
 }
 
-/** 订阅拉取:近 30 天每日柱状(Surge / Clash 堆叠)+ 最近 7 天拉过的客户端 */
+/** 订阅拉取:近 30 天每日柱状 + 最近 7 天拉过的客户端 */
 export function PullsPanel({ data, profiles }: { data?: PullSummary; profiles: Profile[] }) {
   const days = data?.days ?? [];
-  const max = Math.max(1, ...days.map((d) => d.clash + d.surge));
-  const total = days.reduce((s, d) => s + d.clash + d.surge, 0);
+  const max = Math.max(1, ...days.map((d) => d.count));
+  const total = days.reduce((s, d) => s + d.count, 0);
   const devices = data?.devices ?? [];
   const profileName = new Map(profiles.map((p) => [p.id, p.name]));
   // 统计是上线后才开始攒的:起始日落在窗口里时标出来,免得前面一排空柱被当成「没人用」
@@ -28,13 +25,7 @@ export function PullsPanel({ data, profiles }: { data?: PullSummary; profiles: P
 
   return (
     <Card className="p-4 sm:p-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-sm font-medium text-muted-foreground">订阅拉取</h3>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <Legend className={TARGET_COLOR.surge} label="Surge" />
-          <Legend className={TARGET_COLOR.clash} label="Clash" />
-        </div>
-      </div>
+      <h3 className="text-sm font-medium text-muted-foreground">订阅拉取</h3>
       <div className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1">
         <Figure value={data?.today ?? "…"} unit="次" label="今天" />
         <Figure value={data ? total : "…"} unit="次" label="近 30 天" />
@@ -44,7 +35,7 @@ export function PullsPanel({ data, profiles }: { data?: PullSummary; profiles: P
       <div className="mt-4">
         <div className="flex h-24 items-end gap-[3px]" role="img" aria-label={`近 30 天共拉取 ${total} 次`}>
           {days.map((d) => {
-            const sum = d.clash + d.surge;
+            const sum = d.count;
             return (
               <Tooltip key={d.date}>
                 <TooltipTrigger asChild>
@@ -53,17 +44,14 @@ export function PullsPanel({ data, profiles }: { data?: PullSummary; profiles: P
                       <div className="h-px bg-border" />
                     ) : (
                       <div
-                        className="flex flex-col overflow-hidden rounded-[2px] group-hover:opacity-80"
+                        className={cn("rounded-[2px] group-hover:opacity-80", BAR_COLOR)}
                         style={{ height: `${Math.max(4, (sum / max) * 100)}%` }}
-                      >
-                        <div className={TARGET_COLOR.surge} style={{ flexGrow: d.surge }} />
-                        <div className={TARGET_COLOR.clash} style={{ flexGrow: d.clash }} />
-                      </div>
+                      />
                     )}
                   </div>
                 </TooltipTrigger>
                 <TooltipContent>
-                  {shortDate(d.date)}:{sum === 0 ? "没有拉取" : `Surge ${d.surge} 次 · Clash ${d.clash} 次`}
+                  {shortDate(d.date)}:{sum === 0 ? "没有拉取" : `${sum} 次`}
                 </TooltipContent>
               </Tooltip>
             );
@@ -86,14 +74,13 @@ export function PullsPanel({ data, profiles }: { data?: PullSummary; profiles: P
 
       {data && devices.length === 0 ? (
         <p className="mt-4 border-t pt-3 text-xs text-muted-foreground">
-          还没有客户端拉过订阅。在 Surge 或 Clash 里导入订阅链接后,这里会列出拉取的客户端。
+          还没有客户端拉过订阅。在 Surge 里导入订阅链接后,这里会列出拉取的客户端。
         </p>
       ) : (
         devices.length > 0 && (
           <PullClientList
             clients={devices}
             profileName={(id) => profileName.get(id) ?? id}
-            targetColor={TARGET_COLOR}
           />
         )
       )}
@@ -206,14 +193,5 @@ function Figure({ value, unit, label }: { value: React.ReactNode; unit: string; 
       <span className="ml-0.5 text-xs text-muted-foreground">{unit}</span>
       <span className="ml-1.5 text-xs text-muted-foreground">{label}</span>
     </div>
-  );
-}
-
-function Legend({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={cn("h-2 w-2 rounded-[2px]", className)} aria-hidden />
-      {label}
-    </span>
   );
 }

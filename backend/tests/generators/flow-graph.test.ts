@@ -23,9 +23,6 @@ function ruleset(id: string, overrides: Partial<RuleSet> = {}): RuleSet {
     name: id,
     type: "remote_url",
     url: "https://example.com/list.conf",
-    behavior: "classical",
-    format: "yaml",
-    clash_format: "rule_provider",
     surge_format: "rule_set",
     update_interval: 86400,
     ...overrides,
@@ -42,10 +39,7 @@ describe("resolveGroupMemberEntries", () => {
       nested_groups: ["AI-Backup"],
       selector: { include_region: ["JP"], include_other_group: [], from_providers: [], exclude_type: [] },
     });
-    const entries = resolveGroupMemberEntries(g, [...nodes, node("Landing")], {
-      inlineIncludeOtherGroup: false,
-      emptyFallback: true,
-    });
+    const entries = resolveGroupMemberEntries(g, [...nodes, node("Landing")]);
     // fallback 组的顺序就是优先级,这条断言是在钉死"落地在前、兜底在后"能被配出来
     expect(entries).toEqual([
       { name: "Landing", origin: "explicit" },
@@ -60,27 +54,16 @@ describe("resolveGroupMemberEntries", () => {
       proxies: ["JP-01"],
       selector: { include_region: ["JP"], include_other_group: [], from_providers: [], exclude_type: [] },
     });
-    const entries = resolveGroupMemberEntries(g, nodes, {
-      inlineIncludeOtherGroup: false,
-      emptyFallback: true,
-    });
+    const entries = resolveGroupMemberEntries(g, nodes);
     expect(entries).toEqual([
       { name: "JP-01", origin: "explicit" },
       { name: "JP-02", origin: "selector" },
     ]);
   });
 
-  it("inlines include_other_group only for the clash side", () => {
+  it("keeps top-level include_other_group as a group param, not a member", () => {
     const g = group("G", { proxies: ["JP-01"], include_other_group: "Other" });
-    expect(
-      resolveGroupMemberEntries(g, nodes, { inlineIncludeOtherGroup: true, emptyFallback: true }),
-    ).toEqual([
-      { name: "JP-01", origin: "explicit" },
-      { name: "Other", origin: "other_group" },
-    ]);
-    expect(
-      resolveGroupMemberEntries(g, nodes, { inlineIncludeOtherGroup: false, emptyFallback: true }),
-    ).toEqual([{ name: "JP-01", origin: "explicit" }]);
+    expect(resolveGroupMemberEntries(g, nodes)).toEqual([{ name: "JP-01", origin: "explicit" }]);
   });
 
   it("keeps explicitly pinned hidden nodes but drops them from selector matching", () => {
@@ -90,20 +73,13 @@ describe("resolveGroupMemberEntries", () => {
     });
     const entries = resolveGroupMemberEntries(g, nodes, {
       hiddenNodes: new Set(["JP-01", "JP-02"]),
-      inlineIncludeOtherGroup: false,
-      emptyFallback: true,
     });
     expect(entries).toEqual([{ name: "JP-01", origin: "explicit" }]);
   });
 
-  it("falls back to DIRECT only when asked", () => {
+  it("falls back to DIRECT when the group has no members", () => {
     const g = group("Empty");
-    expect(
-      resolveGroupMemberEntries(g, nodes, { inlineIncludeOtherGroup: false, emptyFallback: true }),
-    ).toEqual([{ name: "DIRECT", origin: "fallback" }]);
-    expect(
-      resolveGroupMemberEntries(g, nodes, { inlineIncludeOtherGroup: false, emptyFallback: false }),
-    ).toEqual([]);
+    expect(resolveGroupMemberEntries(g, nodes)).toEqual([{ name: "DIRECT", origin: "fallback" }]);
   });
 });
 

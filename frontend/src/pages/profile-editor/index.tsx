@@ -275,7 +275,7 @@ export function ProfileEditorPage() {
         open={confirmRegen}
         onOpenChange={setConfirmRegen}
         title="重新生成订阅 token?"
-        description="旧的订阅链接会立即失效,已经导入的 Clash / Surge 客户端需要重新复制链接导入。"
+        description="旧的订阅链接会立即失效,已经导入的 Surge 客户端需要重新复制链接导入。"
         confirmLabel="重新生成"
         onConfirm={() => void onRegenerateToken()}
       />

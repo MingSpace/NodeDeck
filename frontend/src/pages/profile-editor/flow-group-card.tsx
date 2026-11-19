@@ -16,7 +16,6 @@ const KIND_LABEL: Record<FlowMemberKind, string> = {
 const ORIGIN_LABEL: Record<FlowMemberOrigin, string> = {
   explicit: "手动点名",
   nested: "嵌套引用",
-  other_group: "平铺展开",
   selector: "条件自动匹配",
   fallback: "空组兜底",
 };
@@ -97,13 +96,11 @@ export function FlowGroupCard({
 
 function TestParams({ group }: { group: FlowGroup }) {
   const parts: string[] = [];
-  if (group.url) parts.push(`Clash 测速 ${group.url}`);
   if (group.interval !== undefined) parts.push(`每 ${group.interval}s 复测`);
   if (group.timeout !== undefined) parts.push(`超时 ${group.timeout}s`);
   if (group.tolerance !== undefined) parts.push(`容差 ${group.tolerance}ms`);
   if (group.include_other_group) parts.push(`平铺 ${group.include_other_group} 的成员`);
   if (group.underlying_proxy) parts.push(`成员统一经 ${group.underlying_proxy} 出站`);
-  if (group.clash_type !== group.type) parts.push(`Clash 端降级为 ${group.clash_type}`);
   if (parts.length === 0) return null;
   return (
     <div className="mt-1 flex items-start gap-1.5 text-xs text-muted-foreground/80">

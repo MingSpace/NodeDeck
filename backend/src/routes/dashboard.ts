@@ -3,7 +3,6 @@ import { listProvidersWithCache, buildNodePool } from "../providers/pool.js";
 import { readProviderCache } from "../providers/cache-store.js";
 import { providerRepo, profileRepo } from "../storage/repos.js";
 import { resolveProfile } from "../generators/profile-resolver.js";
-import { generateClashConfig } from "../generators/clash.js";
 import { generateSurgeConfig } from "../generators/surge.js";
 import { applyNodeFilter } from "../generators/node-filter.js";
 import { summarizePulls } from "../stats/pull-stats.js";
@@ -42,13 +41,14 @@ dashboardRouter.get("/airports", async (c) => {
 
 /**
  * 仪表板 Profile 卡片上的流水线:每个 Profile 最终出几个节点、生成时有哪些警告。
- * 两端各生成一遍收集 warnings(有的只在一端出现,如 Clash 忽略组级 underlying_proxy;
- * Clash 按设计跳过的 DEVICE: / SUBNET / SYSTEM 走 notes,不算警告),
- * 与编辑器实时预览同一套管线;走 SWR,没有 cache 的节点源不在这里同步等网络。
+ * 生成一遍 Surge 产物收集 warnings,与编辑器实时预览同一套管线;
+ * 走 SWR,没有 cache 的节点源不在这里同步等网络。
  */
 async function profileHealth(profile: Profile) {
   const resolved = await resolveProfile(profile, { staleWhileRevalidate: true });
-  const base = {
+  const warnings = [...resolved.warnings, ...resolved.surgeWarnings];
+  // managed_config_url 只影响产物头部,不产生 warning,这里不必拼真实地址
+  generateSurgeConfig({
     profile,
     nodes: resolved.nodes,
     providers: resolved.providers,
@@ -58,16 +58,13 @@ async function profileHealth(profile: Profile) {
     finalRule: resolved.finalRule,
     geoipFallback: resolved.geoipFallback,
     general: resolved.general,
-  };
-  const clashWarnings = [...resolved.warnings];
-  const surgeWarnings = [...resolved.warnings, ...resolved.surgeWarnings];
-  generateClashConfig({ ...base, warnings: clashWarnings });
-  // managed_config_url 只影响产物头部,不产生 warning,这里不必拼真实地址
-  generateSurgeConfig({ ...base, surgeModules: resolved.surgeModules, warnings: surgeWarnings });
+    surgeModules: resolved.surgeModules,
+    warnings,
+  });
   return {
     id: profile.id,
     node_count: applyNodeFilter(resolved.nodes, profile.node_filter).length,
-    warnings: [...new Set([...clashWarnings, ...surgeWarnings])],
+    warnings: [...new Set(warnings)],
     revalidating: resolved.revalidating.length > 0,
   };
 }
@@ -88,7 +85,7 @@ dashboardRouter.get("/profiles", async (c) => {
   return c.json({ items });
 });
 
-/** 订阅拉取统计:近 30 天每日次数(分 Clash / Surge)、各 Profile 近 7 天次数、最近 7 天拉过的设备 */
+/** 订阅拉取统计:近 30 天每日次数、各 Profile 近 7 天次数、最近 7 天拉过的设备 */
 dashboardRouter.get("/pulls", (c) => c.json(summarizePulls(30)));
 
 /**

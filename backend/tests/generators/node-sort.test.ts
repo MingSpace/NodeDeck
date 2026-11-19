@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
-import yaml from "js-yaml";
 import { sortNodesByRegion } from "../../src/generators/node-sort.js";
-import { generateClashConfig } from "../../src/generators/clash.js";
+import { generateSurgeConfig } from "../../src/generators/surge.js";
 import type { Node } from "../../src/schemas/node.js";
 import type { Profile } from "../../src/schemas/profile.js";
 import type { ProxyGroup } from "../../src/schemas/proxy-group.js";
@@ -81,7 +80,29 @@ describe("sortNodesByRegion", () => {
   });
 });
 
-describe("generateClashConfig with sort_by_region", () => {
+/** 取 [Proxy] 段的节点名,以及 [Proxy Group] 段某个组的成员 */
+function sectionLines(out: string, section: string): string[] {
+  const lines = out.split("\n");
+  const start = lines.indexOf(`[${section}]`);
+  if (start < 0) return [];
+  const body: string[] = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.startsWith("[")) break;
+    if (line.trim()) body.push(line);
+  }
+  return body;
+}
+function proxyNames(out: string): string[] {
+  return sectionLines(out, "Proxy")
+    .map((l) => l.slice(0, l.indexOf(" = ")))
+    .filter((n) => n !== "DIRECT");
+}
+function groupMembers(out: string, name: string): string[] {
+  const line = sectionLines(out, "Proxy Group").find((l) => l.startsWith(`${name} = `))!;
+  return line.slice(`${name} = `.length).split(",").slice(1);
+}
+
+describe("generateSurgeConfig with sort_by_region", () => {
   function baseProfile(overrides: Partial<Profile> = {}): Profile {
     return {
       id: "home",
@@ -97,12 +118,11 @@ describe("generateClashConfig with sort_by_region", () => {
       managed_config_url: "auto",
       managed_config_interval: 86400,
       managed_config_strict: false,
-      clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
       ...overrides,
     };
   }
 
-  it("proxies 段与 selector 组成员都按地区聚类", () => {
+  it("[Proxy] 段与 selector 组成员都按地区聚类", () => {
     const nodes = [
       ssNode("US-01", "US"),
       ssNode("Hong Kong 1", "HK"),
@@ -120,25 +140,22 @@ describe("generateClashConfig with sort_by_region", () => {
         selector: { from_providers: [], exclude_type: [], include_region: [] },
       },
     ];
-    const out = generateClashConfig({
+    const out = generateSurgeConfig({
       profile: baseProfile({ proxy_groups: ["Proxys"] }),
       nodes,
       groups,
       rules: [],
       finalRule: { policy: "Proxys" },
+      surgeModules: [],
       warnings: [],
     });
-    const parsed = yaml.load(out) as Record<string, unknown>;
-    const proxies = (parsed.proxies as Array<{ name: string }>).map((p) => p.name);
-    expect(proxies).toEqual(["Hong Kong 1", "香港 1", "日本 1", "US-01", "Unknown-01"]);
-    const proxyGroups = parsed["proxy-groups"] as Array<Record<string, unknown>>;
-    const members = proxyGroups.find((g) => g.name === "Proxys")!.proxies as string[];
-    expect(members).toEqual(["Hong Kong 1", "香港 1", "日本 1", "US-01", "Unknown-01"]);
+    expect(proxyNames(out)).toEqual(["Hong Kong 1", "香港 1", "日本 1", "US-01", "Unknown-01"]);
+    expect(groupMembers(out, "Proxys")).toEqual(["Hong Kong 1", "香港 1", "日本 1", "US-01", "Unknown-01"]);
   });
 
   it("sort_by_region=false 时保持原始顺序", () => {
     const nodes = [ssNode("US-01", "US"), ssNode("香港 1", "HK")];
-    const out = generateClashConfig({
+    const out = generateSurgeConfig({
       profile: baseProfile({
         node_filter: { rename_rules: [], exclude_types: [], sort_by_region: false },
       }),
@@ -146,10 +163,9 @@ describe("generateClashConfig with sort_by_region", () => {
       groups: [],
       rules: [],
       finalRule: { policy: "DIRECT" },
+      surgeModules: [],
       warnings: [],
     });
-    const parsed = yaml.load(out) as Record<string, unknown>;
-    const proxies = (parsed.proxies as Array<{ name: string }>).map((p) => p.name);
-    expect(proxies).toEqual(["US-01", "香港 1"]);
+    expect(proxyNames(out)).toEqual(["US-01", "香港 1"]);
   });
 });

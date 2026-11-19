@@ -6,8 +6,8 @@
 
 ## 1. 定位
 
-- 个人自用的 Clash + Surge 订阅转换器
-- 不支持 quanx/loon/v2rayn 等其他客户端输出
+- 个人自用的 Surge 订阅转换器;机场订阅支持 Clash (mihomo) YAML / Surge .conf / 节点 URI / base64 列表输入
+- 只输出 Surge,不支持 Clash(mihomo / Stash)/ quanx / loon / v2rayn 等其他客户端输出(Clash 输出已移除,旧的 Clash 订阅地址失效)
 - 单 Docker 镜像 + 文件系统持久化 + 改完不重启
 
 ## 2. 技术栈
@@ -51,35 +51,32 @@ Providers → Fetch + Cache → Parse → Normalize (region/level/line tag)
          → Profile Filter + Rename (node_filter: include/exclude/rename)
          → [可选] sort_by_region 地区聚类
          → uniquifyNodeNames (撞名 / 全部加来源前缀,见 node_filter.source_prefix)
-         → [仅 Surge] escapeSurgeNames (净化 = , ")
+         → escapeSurgeNames (净化 = , ")
          → resolveHiddenNodeNames (hidden_nodes: 算出"仅供链式使用"的节点)
          → applyChainRules (写 chain_via)
          → validateChain (悬空降级 + 环检测)
          → validateGroupRefs (剔除 group.proxies 里的悬空引用)
-         → Output Generator (Clash YAML / Surge .conf)
+         → Output Generator (Surge .conf)
 ```
 
 ## 5. 输出 Generator
 
-- `clash.ts`: 生成 Mihomo 兼容 YAML,完整 proxies/proxy-groups/rule-providers/dns/tun
 - `surge.ts`: 生成 Surge .conf,完整段顺序 + #!MANAGED-CONFIG + RULE-SET flags + REJECT 子类型 + inline ruleset + module 合并(按 Surge 模块语义,见 generators/surge-module-merge.ts) + MITM + MTProto(Telegram 入站代理)
-- 共享 `protocol-mapping.ts` 作为字段映射权威源
+- 字段名统一查 `protocol-mapping.ts`(字段映射权威源);输入里 Surge 不支持的协议(vless / ssr)生成时整节点跳过 + warning
 
 详见 [`protocol-mapping.md`](protocol-mapping.md)。
 
 ## 6. 链式代理
 
-`Profile.chain_rules` 顺序匹配 selector,首条命中给节点写 `chain_via`:
-
-- Clash 输出 → `dialer-proxy: <name>`
-- Surge 输出 → `underlying-proxy=<name>`
+`Profile.chain_rules` 顺序匹配 selector,首条命中给节点写 `chain_via`,Surge 输出为 `underlying-proxy=<name>`。
+机场订阅原文自带的前置(Clash YAML 的 `dialer-proxy` / Surge 的 `underlying-proxy`)解析时读进 `chain_via`。
 
 作用域可按**策略组成员**(`include_groups`)、**点名节点**(`include_nodes`)、机场、地区、协议、
 名称正则圈定;前两者之间是 OR,与其余条件之间是 AND。按组圈定所需的"组 name → 成员节点名"索引由
 `generators/group-members.ts` 的 `buildGroupMemberIndex` 在 generator 入口计算(与写进产物的组成员同源)。
 每条规则另有 `enabled` 开关与 `mode`(`override` 覆盖 / `fill` 仅补空缺)。
 
-由于两端的链式字段都是**每节点单值**,一个节点只能有一条链 —— 命中多条时以最靠前的为准,
+由于 Surge 的 `underlying-proxy` 是**每节点单值**,一个节点只能有一条链 —— 命中多条时以最靠前的为准,
 Web UI 会把冲突和"被遮蔽"的规则显式标出来(`POST /api/profiles/:id/chain-preview`)。
 
 generator 入口会做两层校验:
@@ -87,7 +84,7 @@ generator 入口会做两层校验:
 2. **环检测**: A→B→A 的环被发现后,把环上所有节点的 chain_via 清空并 warning,不再让用户看到 500。
 
 `Profile.hidden_nodes`(`generators/hidden-nodes.ts`)解决"落地节点只想经链式使用"的诉求:
-命中的节点照常写进 `proxies:` / `[Proxy]`(所以 chain_via 指得到),但不参与任何策略组
+命中的节点照常写进 `[Proxy]`(所以 chain_via 指得到),但不参与任何策略组
 selector 的动态匹配 —— 组的 `proxies` 显式点名仍保留,这是用户使用链式落地的入口。
 选择器字段与 chain selector 同名同义(判定复用 `matchesSelector`),唯独**全空 = 不隐藏**。
 
@@ -104,7 +101,7 @@ selector 的动态匹配 —— 组的 `proxies` 显式点名仍保留,这是用
 
 ## 8. URL + 鉴权
 
-- 订阅: `GET /sub?profile={id}&target={clash|surge}&t={token}` (token 12 字符 nanoid)
+- 订阅: `GET /sub?profile={id}&target=surge&t={token}`(`target` 可省略,缺省即 surge,其它值 400;另有等价的 `GET /sub/surge/{id}?t={token}`;token 12 字符 nanoid)
 - Web UI: cookie session(HMAC),首次登录强制改密
 - 可选 IP 白名单(`ip_allowlist`):只保护**需登录的管理 API**(`/api/entities|providers|dashboard|import|profiles|config|notification|logs`);登录接口 `/api/auth/*`、健康检查 `/api/health`/`/api/version`、静态前端 `/` 与订阅 `/sub` 均**不受**其约束
 

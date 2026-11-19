@@ -64,7 +64,6 @@ export function DashboardPage() {
         managed_config_url: "auto",
         managed_config_interval: 86400,
         managed_config_strict: false,
-        clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
       };
       await saveProfile.mutateAsync({ ...newProfile, ...(extras as Record<string, unknown>) } as Profile);
       // 建完直接进编辑器并选中名称,省掉「回到列表再点编辑」这一步
@@ -111,7 +110,7 @@ export function DashboardPage() {
           <EmptyState
             icon={Rss}
             title="还没有 Profile"
-            description="Profile 把节点源、策略组和规则模块组合成一份订阅,生成 Clash 和 Surge 两种订阅链接,导入客户端即可使用。"
+            description="Profile 把节点源、策略组和规则模块组合成一份订阅,生成 Surge 订阅链接,导入客户端即可使用。"
             action={
               <Button size="sm" variant="outline" onClick={() => void onCreateProfile()} disabled={creating}>
                 <Plus className="h-3.5 w-3.5" />

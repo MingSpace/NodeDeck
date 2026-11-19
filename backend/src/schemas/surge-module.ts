@@ -3,7 +3,7 @@ import { idSchema } from "./common.js";
 import { fetchViaSchema } from "./provider.js";
 
 /**
- * SurgeModule = 一个 Surge 模块(.sgmodule)。Surge 专属,Clash 输出完全忽略。
+ * SurgeModule = 一个 Surge 模块(.sgmodule)。
  *
  * 两种来源:
  * - `local`:内容存在本文件,按段原文编辑(content_sections);

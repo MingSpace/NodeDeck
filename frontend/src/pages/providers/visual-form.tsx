@@ -45,12 +45,6 @@ export interface ProviderRefresh {
   interval: RefreshInterval;
 }
 
-export interface ClashProxyProvider {
-  enabled: boolean;
-  health_check_url: string;
-  health_check_interval: number;
-}
-
 export interface ProviderData {
   id: string;
   name: string;
@@ -71,7 +65,6 @@ export interface ProviderData {
   // 与 backend/src/schemas/provider.ts name_prefix 保持同步
   name_prefix?: string;
   notes?: string;
-  clash_proxy_provider: ClashProxyProvider;
   // 针对该节点源的 DNS 解析覆盖;emit_hosts 控制订阅输出时是否自动带出(默认带出)。
   hosts?: Record<string, string | string[]>;
   emit_hosts?: boolean;
@@ -88,11 +81,6 @@ export const DEFAULT_PROVIDER_TEMPLATE: Partial<ProviderData> = {
   parser_hint: "auto",
   enabled: true,
   tags: [],
-  clash_proxy_provider: {
-    enabled: false,
-    health_check_url: "http://www.gstatic.com/generate_204",
-    health_check_interval: 300,
-  },
   emit_hosts: true,
 };
 
@@ -107,11 +95,6 @@ export const INLINE_PROVIDER_TEMPLATE: Partial<ProviderData> = {
   parser_hint: "auto",
   enabled: true,
   tags: [],
-  clash_proxy_provider: {
-    enabled: false,
-    health_check_url: "http://www.gstatic.com/generate_204",
-    health_check_interval: 300,
-  },
   emit_hosts: true,
 };
 
@@ -144,12 +127,6 @@ interface Props {
 export function ProviderVisualForm({ data, update, isNew }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const refresh = data.refresh ?? { interval: "12h" };
-  const cpp =
-    data.clash_proxy_provider ?? {
-      enabled: false,
-      health_check_url: "http://www.gstatic.com/generate_204",
-      health_check_interval: 300,
-    };
   const tabValue =
     data.type === "http" ? "http" : data.type === "inline" ? "inline" : "";
 
@@ -218,7 +195,6 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
   const tagsText = (data.tags ?? []).join(", ");
 
   // 各折叠模块「有数据则默认展开」的判定:让用户一打开节点源就看到已配置的内容,无需逐个点开。
-  const hasClashProvider = cpp.enabled === true;
   // 手动追加的 host 或上游自动解析到的 host 任一非空,都算"有数据"展开;
   // 只看手动 hosts 会让自动解析条目被折叠藏起来(emit_hosts 开着却看不到带出了什么)。
   const hasHosts =
@@ -401,61 +377,6 @@ export function ProviderVisualForm({ data, update, isNew }: Props) {
           onChange={(quota) => update({ quota })}
         />
       </Section>
-
-      <CollapsibleSection title="Clash proxy-providers 暴露 (mihomo)" autoOpen={hasClashProvider}>
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Switch
-              checked={cpp.enabled}
-              onCheckedChange={(v) =>
-                update({ clash_proxy_provider: { ...cpp, enabled: v } })
-              }
-            />
-            <Label className="text-xs">
-              启用后主订阅顶部会写出{" "}
-              <code className="font-mono">proxy-providers:</code> 段
-            </Label>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="健康检查 URL">
-              <Input
-                value={cpp.health_check_url}
-                onChange={(e) =>
-                  update({
-                    clash_proxy_provider: {
-                      ...cpp,
-                      health_check_url: e.target.value,
-                    },
-                  })
-                }
-                placeholder="http://www.gstatic.com/generate_204"
-              />
-            </Field>
-            <Field label="健康检查间隔 (秒, 60-86400)">
-              <Input
-                type="number"
-                min={60}
-                max={86400}
-                value={cpp.health_check_interval}
-                onChange={(e) =>
-                  update({
-                    clash_proxy_provider: {
-                      ...cpp,
-                      health_check_interval: Math.max(
-                        60,
-                        Math.min(
-                          86400,
-                          parseInt(e.target.value || "300", 10) || 300,
-                        ),
-                      ),
-                    },
-                  })
-                }
-              />
-            </Field>
-          </div>
-        </div>
-      </CollapsibleSection>
 
       <CollapsibleSection title="节点源 Host (DNS 解析覆盖)" autoOpen={hasHosts}>
         <div className="space-y-3">

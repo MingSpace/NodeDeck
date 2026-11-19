@@ -8,20 +8,17 @@
 
 ---
 
-## 客户端语法差异
+## 输出字段
 
-| 客户端 | 字段名 | 位置 |
-|---|---|---|
-| Clash (Mihomo v1.18+) | `dialer-proxy: <name>` | `proxies` 内某节点字段 |
-| Surge | `underlying-proxy=<name>` | `[Proxy]` 中节点行末参数 |
+NodeDeck 只生成 Surge 订阅,链式输出为 `[Proxy]` 节点行末参数 `underlying-proxy=<name>`。
 
-> 注意: Mihomo v1.19.17 起完全移除了旧 `relay` 类型 group,统一使用 `dialer-proxy`。
+解析机场订阅时,Clash (mihomo) YAML 节点里的 `dialer-proxy` 与 Surge 节点行里的 `underlying-proxy` 都会读进 `chain_via`。
 
 ---
 
 ## NodeDeck 抽象
 
-NodeDeck 用统一字段 `chain_via` 抽象,在生成 Clash / Surge 时翻译为正确的字段名。
+NodeDeck 用统一字段 `chain_via` 抽象,在生成 Surge 时翻译为 `underlying-proxy`。
 
 `chain_via` 的值可以是:
 
@@ -60,7 +57,7 @@ chain_rules:
       exclude_type: [wireguard]
     via: WARP-Cloudflare
 
-  # 规则 4: 机场原文已经带了 dialer-proxy 的节点保持不动,只给其余节点兜底
+  # 规则 4: 机场原文已经带了前置的节点保持不动,只给其余节点兜底
   - selector: {}
     via: Front-Relay
     mode: fill
@@ -113,7 +110,7 @@ chain_rules:
 
 ## 一个节点只能有一条链
 
-Clash `dialer-proxy` 与 Surge `underlying-proxy` 都是**每个节点单值**的字段,所以同一个节点在不同策略组里
+Surge `underlying-proxy` 是**每个节点单值**的字段,所以同一个节点在不同策略组里
 走不同前置,协议层面表达不出来。NodeDeck 因此采用"首条命中即生效":
 
 - 某节点同时落在规则 #1 和 #3 的范围内 → 只有 #1 生效
@@ -123,13 +120,13 @@ Clash `dialer-proxy` 与 Surge `underlying-proxy` 都是**每个节点单值**�
 需要"同一落地节点配两种前置"时,正确做法是在客户端侧建两个策略组分别指向两个**不同的**落地节点,
 而不是指望同一节点分裂成两份。
 
-> **Surge 用户的例外**:组级 `underlying_proxy`(见下一节)是按"组"而不是按"节点"挂链的,
+> **例外**:组级 `underlying_proxy`(见下一节)是按"组"而不是按"节点"挂链的,
 > 同一个节点在 A 组里带链、在 B 组里不带链,在 Surge 端是可以表达的 —— 客户端会把带链的那份
-> 显示成派生策略 `节点名 (via 前置名)`。Clash 端没有这个能力。
+> 显示成派生策略 `节点名 (via 前置名)`。
 
 ---
 
-## 组级链式(`underlying_proxy`,仅 Surge)
+## 组级链式(`underlying_proxy`)
 
 除了"给某个节点挂前置",Surge 还支持"给某个**策略组的全体代理成员**挂同一个前置":
 
@@ -150,17 +147,16 @@ underlying_proxy: 前置池        # ← 组内每个代理成员都经「前置
 | 不受影响的成员 | 成员里的**策略组**(嵌套组可自己声明)、`DIRECT` / `REJECT` 等内置策略 |
 | 与节点级的优先级 | 组级**覆盖**成员自带的 `chain_via` |
 | 客户端展示 | 派生策略 `成员名 (via 前置名)`,带独立测速结果 |
-| Clash | **无等价物**,输出时忽略 + warning;要两端一致就用上面的 `chain_rules` |
 
-目前只能在策略组编辑器的「YAML 高级」tab 里填(与其它 Surge 专属参数一致)。悬空或直接自引用会被
+目前只能在策略组编辑器的「YAML 高级」tab 里填。悬空或直接自引用会被
 `validateGroupRefs` 清空 + warning;更深的环靠 Surge 客户端自己检测。
 
 ### 该用哪一个
 
 | 场景 | 用法 |
 |---|---|
-| 落地节点固定走某个前置,两端都要生效 | `chain_rules` + `via`(可填策略组名,前置由该组动态选) |
-| 只有 Surge,想让整组成员共用一个前置 | 组级 `underlying_proxy` |
+| 落地节点固定走某个前置,对单个节点精确生效 | `chain_rules` + `via`(可填策略组名,前置由该组动态选) |
+| 想让整组成员共用一个前置 | 组级 `underlying_proxy` |
 | 想同时看到某节点"直连"和"链式"两个延迟 | 组级 `underlying_proxy` —— 派生策略与原策略各测各的 |
 
 ---
@@ -186,29 +182,7 @@ Web UI 的「链式代理」tab 底部「解析后的链路」会把完整路径
 
 ## 输出示例
 
-假设 Profile 中有一个来自 inline Provider 的 WARP 节点 `name: WARP-Cloudflare` 和一个 HK 节点 `name: HK-01` 命中了上面规则 1:
-
-### Clash 输出
-
-```yaml
-proxies:
-  - name: WARP-Cloudflare
-    type: wireguard
-    server: engage.cloudflareclient.com
-    port: 2408
-    private-key: ...
-    public-key: ...
-    ip: 172.16.0.2/32
-  - name: HK-01
-    type: trojan
-    server: gz.example.com
-    port: 443
-    password: secret
-    sni: m.ctrip.com
-    dialer-proxy: WARP-Cloudflare    # ← 链式输出
-```
-
-### Surge 输出
+假设 Profile 中有一个来自 inline Provider 的 WARP 节点 `name: WARP-Cloudflare` 和一个 HK 节点 `name: HK-01` 命中了上面规则 1,Surge 输出:
 
 ```ini
 [Proxy]
@@ -239,7 +213,6 @@ warning 会出现在订阅文件头部的 `# WARN:` 注释和 Web UI 的预览�
   name: WARP-Front-Pool
   type: url-test
   proxies: [WARP-Tokyo, WARP-Singapore, WARP-LA]
-  url: http://cp.cloudflare.com/generate_204
   interval: 600
 
 # 在 profile 的 chain_rules
@@ -269,7 +242,7 @@ hidden_nodes:
 
 | 行为 | 说明 |
 |---|---|
-| 写进 `proxies:` / `[Proxy]` | 照常输出 —— 否则 `dialer-proxy` / `underlying-proxy` 会悬空 |
+| 写进 `[Proxy]` | 照常输出 —— 否则 `underlying-proxy` 会悬空 |
 | 可以作为 `chain_rules.via` | 不受影响 |
 | 被策略组 selector 动态匹配 | **不再收纳**(地区组 / 自动测速组里都看不到) |
 | 被组的 `proxies` 显式点名 | **保留** —— 建一个组把落地节点列进去,从那个组选中它就是走完整的链 |
@@ -277,12 +250,8 @@ hidden_nodes:
 与 `chain_rules.selector` 的唯一语义差异:**所有条件留空 = 不隐藏任何节点**(链式规则留空是"匹配全部")。
 Profile 编辑器 →「链式代理」tab 顶部有可视化配置区,实时显示命中了哪些节点。
 
-两种"隐藏会失效"的情况:
-
-- Clash `use_proxy_providers` 模式下,隐藏节点来自 proxy-provider 机场 —— 组靠 `use: [机场]`
-  引用、成员由客户端展开,本地挡不住(生成时给 warning)
-- Surge 组手动开了 `include_all_proxies=true` / `policy_regex_filter` —— 成员同样由客户端从
-  `[Proxy]` 段展开
+一种"隐藏会失效"的情况:Surge 组手动开了 `include_all_proxies=true` / `policy_regex_filter` ——
+成员由客户端从 `[Proxy]` 段展开,本地挡不住。
 
 ---
 
@@ -291,12 +260,11 @@ Profile 编辑器 →「链式代理」tab 顶部有可视化配置区,实时显
 | 症状 | 检查 |
 |---|---|
 | Surge 报"underlying-proxy not found" | 确认 `via` 指向的节点/组名拼写一致(注意空格);UI 里出口会标红为「未找到」 |
-| Clash 报"dialer-proxy: not found" | 同上 |
 | 规则填了但命中数是 0 | UI 顶部看节点池是否为空;`include_nodes` 写的名字要与节点池里的最终名或加前缀前的原名一致;`include_groups` 要写组 **name** 而不是 id |
 | 规则命中了但一个都不生效(UI 标「被遮蔽」) | 命中的节点全被更靠前的规则抢走了;拖动卡片把它排到前面 |
 | `include_groups` 选不到某个组 | 候选只列 `profile.proxy_groups` 已引入的组 —— 先到「规则 & 策略组」tab 把它加进来 |
 | 订阅头出现 `# WARN: Chain cycle detected` | chain_rules 形成了 A→B 又 B→A 的环,环上节点已被自动降级为直连;修正规则消除环即可恢复 |
 | 订阅头出现 `# WARN: Chain dangling` | `via` 指向的节点/组不在过滤后的节点池里(被 node_filter 过滤,或该组没加进 profile.proxy_groups) |
 | 链式生效但延迟很高 | WARP/前置节点本身慢;考虑用 url-test pool |
-| 配了 `hidden_nodes` 但客户端里还能选到 | ① 某个组的 `proxies` 显式点名了它(设计如此,显式优先);② Clash `use_proxy_providers` 模式(看订阅头 warning);③ Surge 组开了 `include_all_proxies` |
+| 配了 `hidden_nodes` 但客户端里还能选到 | ① 某个组的 `proxies` 显式点名了它(设计如此,显式优先);② Surge 组开了 `include_all_proxies` |
 | 配了 `hidden_nodes` 后策略组空了 | 条件写太宽把普通节点也隐藏了;到「链式代理」tab 顶部看命中样例 |

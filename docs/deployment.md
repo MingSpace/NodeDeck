@@ -148,12 +148,12 @@ Caddy 会自动申请 Let's Encrypt 证书。
 
 ---
 
-## 在 Clash / Surge 客户端导入
+## 在 Surge 客户端导入
 
 1. 在 NodeDeck Web UI 创建 Profile,得到订阅 URL
-2. 把 URL 填入客户端订阅:
-   - **Surge**: 设置 → 通用 → 配置 → 「Sync」→ 「Managed Config」→ 粘贴 surge URL
-   - **Clash Verge / Mihomo Party**: 配置 → 新建 → URL 模式 → 粘贴 clash URL
+2. 把 URL 填入 Surge:设置 → 通用 → 配置 → 「Sync」→ 「Managed Config」→ 粘贴订阅 URL
+
+> NodeDeck 已不再生成 Clash 订阅,旧的 Clash 订阅地址(`target=clash`、`/sub/clash/<profile>`、`/sub/provider/<id>/clash.yaml`)请求会失败;Clash Verge / Mihomo Party 等客户端里的旧订阅需要自行删除。
 
 ---
 

@@ -80,23 +80,25 @@ describe("dedupAgainstPool", () => {
 });
 
 describe("entity identities", () => {
-  it("rulesetIdentity ignores name/id but discriminates by url + behavior + policy", () => {
+  it("rulesetIdentity ignores name/id but discriminates by url + surge_format + policy", () => {
     const a: Partial<RuleSet> = {
       id: "imported-rule-1",
       name: "cn",
       type: "remote_url",
       url: "https://x/cn.list",
-      behavior: "classical",
-      format: "text",
+      surge_format: "rule_set",
       policy: "DIRECT",
     };
     const sameContentDifferentName: Partial<RuleSet> = { ...a, id: "imported-rule-99", name: "cn-2" };
     const differentPolicy: Partial<RuleSet> = { ...a, policy: "REJECT" };
     const differentUrl: Partial<RuleSet> = { ...a, url: "https://x/cn-v2.list" };
+    // 同一 URL 作 RULE-SET 与 DOMAIN-SET 引用是两条不同的规则
+    const asDomainSet: Partial<RuleSet> = { ...a, surge_format: "domain_set" };
 
     expect(rulesetIdentity(a)).toBe(rulesetIdentity(sameContentDifferentName));
     expect(rulesetIdentity(a)).not.toBe(rulesetIdentity(differentPolicy));
     expect(rulesetIdentity(a)).not.toBe(rulesetIdentity(differentUrl));
+    expect(rulesetIdentity(a)).not.toBe(rulesetIdentity(asDomainSet));
   });
 
   it("rulesetIdentity discriminates surge_internal name (SYSTEM vs LAN)", () => {
@@ -105,8 +107,6 @@ describe("entity identities", () => {
       name: "SYSTEM",
       type: "surge_internal",
       surge_internal_name: "SYSTEM",
-      behavior: "classical",
-      format: "text",
       policy: "DIRECT",
     };
     const lan: Partial<RuleSet> = { ...sys, name: "LAN", surge_internal_name: "LAN" };
@@ -121,7 +121,6 @@ describe("entity identities", () => {
       name: "Auto",
       type: "url-test",
       proxies: ["HK-01", "JP-01", "SG-01"],
-      url: "http://cp.cloudflare.com/generate_204",
       interval: 600,
     };
     const sameMembersReordered: Partial<ProxyGroup> = { ...a, proxies: ["SG-01", "HK-01", "JP-01"] };
@@ -152,10 +151,8 @@ describe("entity identities", () => {
     const a: Partial<GeneralPreset> = {
       id: "imported",
       name: "Imported from a.conf",
-      mode: "rule",
       log_level: "notify",
       ipv6: false,
-      allow_lan: false,
     };
     const renamed: Partial<GeneralPreset> = { ...a, id: "imported-x", name: "Imported from b.conf" };
     const flippedFlag: Partial<GeneralPreset> = { ...a, ipv6: true };

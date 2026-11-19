@@ -33,21 +33,17 @@ vi.mock("../../src/auth/secret.js", () => ({
   getSessionSecret: () => "test-secret-0123456789abcdef",
 }));
 
-import { profileRepo, providerRepo, proxyGroupRepo, rulesetRepo, surgeModuleRepo } from "../../src/storage/repos.js";
+import { profileRepo, providerRepo, surgeModuleRepo } from "../../src/storage/repos.js";
 import { loadRemoteModule } from "../../src/surge-modules/remote.js";
 import { moduleAccessToken } from "../../src/surge-modules/links.js";
 import { buildNodePool } from "../../src/providers/pool.js";
-import { loadProviderNodes } from "../../src/providers/load.js";
 import { aggregateUserInfo } from "../../src/userinfo/aggregate.js";
 import { loadConfig } from "../../src/storage/config-store.js";
 import { mountSubRoute } from "../../src/routes/sub.js";
 
 const mockedProfileGet = profileRepo.get as unknown as ReturnType<typeof vi.fn>;
 const mockedProviderGet = providerRepo.get as unknown as ReturnType<typeof vi.fn>;
-const mockedGroupGet = proxyGroupRepo.get as unknown as ReturnType<typeof vi.fn>;
-const mockedRulesetGet = rulesetRepo.get as unknown as ReturnType<typeof vi.fn>;
 const mockedBuildNodePool = buildNodePool as unknown as ReturnType<typeof vi.fn>;
-const mockedLoadProviderNodes = loadProviderNodes as unknown as ReturnType<typeof vi.fn>;
 const mockedAggregate = aggregateUserInfo as unknown as ReturnType<typeof vi.fn>;
 const mockedLoadConfig = loadConfig as unknown as ReturnType<typeof vi.fn>;
 
@@ -72,7 +68,6 @@ function fakeProfile(overrides: Partial<Profile> = {}): Profile {
     managed_config_url: "auto",
     managed_config_interval: 86400,
     managed_config_strict: false,
-    clash_options: { use_proxy_providers: false, flag: "mihomo", group_style: "flow" },
     ...overrides,
   };
 }
@@ -88,11 +83,6 @@ function fakeProvider(overrides: Partial<Provider> = {}): Provider {
     parser_hint: "auto",
     enabled: true,
     tags: [],
-    clash_proxy_provider: {
-      enabled: false,
-      health_check_url: "http://www.gstatic.com/generate_204",
-      health_check_interval: 300,
-    },
     ...overrides,
   };
 }
@@ -113,7 +103,7 @@ afterEach(() => {
 });
 
 describe("/sub route", () => {
-  it("400 when missing profile/target/t", async () => {
+  it("400 when missing profile/t", async () => {
     const app = buildApp();
     const res = await app.request("/sub");
     expect(res.status).toBe(400);
@@ -127,21 +117,36 @@ describe("/sub route", () => {
     expect(res.status).toBe(400);
   });
 
+  it("400 for target=clash: Clash 输出已移除", async () => {
+    const app = buildApp();
+    const res = await app.request("/sub?profile=home&target=clash&t=GOODtoken123");
+    expect(res.status).toBe(400);
+    expect(await res.text()).toBe("仅支持 target=surge（Clash 输出已移除）");
+    expect(mockedProfileGet).not.toHaveBeenCalled();
+  });
+
+  it("旧的 Clash 订阅路径已删除 → 404", async () => {
+    const app = buildApp();
+    expect((await app.request("/sub/clash/home?t=GOODtoken123")).status).toBe(404);
+    expect((await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123")).status).toBe(404);
+    expect(mockedProfileGet).not.toHaveBeenCalled();
+  });
+
   it("404 when profile not found", async () => {
     mockedProfileGet.mockResolvedValue(null);
     const app = buildApp();
-    const res = await app.request("/sub?profile=home&target=clash&t=GOODtoken123");
+    const res = await app.request("/sub?profile=home&target=surge&t=GOODtoken123");
     expect(res.status).toBe(404);
   });
 
   it("401 when token mismatch", async () => {
     mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
     const app = buildApp();
-    const res = await app.request("/sub?profile=home&target=clash&t=BADtoken");
+    const res = await app.request("/sub?profile=home&target=surge&t=BADtoken");
     expect(res.status).toBe(401);
   });
 
-  it("200 clash output with all expected headers", async () => {
+  it("200 without target(缺省即 surge)with all expected headers", async () => {
     mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
     mockedProviderGet.mockResolvedValue({ id: "airport-a", path: "", mtimeMs: 0, data: fakeProvider() });
     mockedBuildNodePool.mockResolvedValue({ nodes: [sampleNode], byProvider: new Map() });
@@ -154,20 +159,20 @@ describe("/sub route", () => {
     mockedLoadConfig.mockResolvedValue({});
 
     const app = buildApp();
-    const res = await app.request("/sub?profile=home&target=clash&t=GOODtoken123");
+    const res = await app.request("/sub?profile=home&t=GOODtoken123");
     expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toContain("text/yaml");
+    expect(res.headers.get("Content-Type")).toContain("text/plain");
     // 文件名由 profile.name(Home)派生,而不是 profile.id(home);同时带 RFC 5987 UTF-8 form
-    expect(res.headers.get("Content-Disposition")).toContain('filename="Home.yaml"');
-    expect(res.headers.get("Content-Disposition")).toContain("filename*=UTF-8''Home.yaml");
+    expect(res.headers.get("Content-Disposition")).toContain('filename="Home.conf"');
+    expect(res.headers.get("Content-Disposition")).toContain("filename*=UTF-8''Home.conf");
     expect(res.headers.get("Profile-Update-Interval")).toBe("24");
     expect(res.headers.get("Subscription-UserInfo")).toContain("upload=1000");
     expect(res.headers.get("X-NodeDeck-Userinfo-airport-a")).toContain("upload=1000");
 
     const body = await res.text();
-    expect(body).toContain("# Generated by NodeDeck");
-    expect(body).toContain("# !flag: mihomo");
-    expect(body).toContain("🇭🇰 HK-01");
+    // managed-config 地址格式不变,仍带 target=surge
+    expect(body).toMatch(/^#!MANAGED-CONFIG http:\/\/localhost\/sub\?profile=home&target=surge&t=GOODtoken123/);
+    expect(body).toContain("🇭🇰 HK-01 = ss,");
   });
 
   it("userinfo.enabled=false 时不发 Subscription-UserInfo / X-NodeDeck-Userinfo-* 响应头,且不调用聚合", async () => {
@@ -184,7 +189,7 @@ describe("/sub route", () => {
     mockedLoadConfig.mockResolvedValue({});
 
     const app = buildApp();
-    const res = await app.request("/sub?profile=home&target=clash&t=GOODtoken123");
+    const res = await app.request("/sub/surge/home?t=GOODtoken123");
     expect(res.status).toBe(200);
     expect(res.headers.get("Subscription-UserInfo")).toBeNull();
     expect(res.headers.get("X-NodeDeck-Userinfo-airport-a")).toBeNull();
@@ -226,13 +231,13 @@ describe("/sub route", () => {
     mockedLoadConfig.mockResolvedValue({});
 
     const app = buildApp();
-    const res = await app.request("/sub?profile=home&target=clash&t=GOODtoken123");
+    const res = await app.request("/sub?profile=home&target=surge&t=GOODtoken123");
     expect(res.status).toBe(200);
     const cd = res.headers.get("Content-Disposition") ?? "";
     // 中文净化掉之后只剩扩展名,ASCII fallback 回退到 id(home)
-    expect(cd).toContain('filename="home.yaml"');
+    expect(cd).toContain('filename="home.conf"');
     // RFC 5987 form 保留中文(percent-encoded UTF-8)
-    expect(cd).toContain(`filename*=UTF-8''${encodeURIComponent("家庭订阅.yaml")}`);
+    expect(cd).toContain(`filename*=UTF-8''${encodeURIComponent("家庭订阅.conf")}`);
   });
 
   it("文件名:name 含路径分隔符 / 通配符等非法字符时,统一替换为下划线", async () => {
@@ -254,186 +259,6 @@ describe("/sub route", () => {
     // 三类非法字符(/ * ")都应该被替换成 _,且不出现在 ASCII filename 里
     expect(cd).toContain('filename="Home _ Backup _bak_v2_.conf"');
     expect(cd).not.toMatch(/filename=".*[/*"].*"/);
-  });
-});
-
-describe("/sub/provider/:id/clash.yaml route", () => {
-  it("400 when missing profile/t", async () => {
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml");
-    expect(res.status).toBe(400);
-  });
-
-  it("404 when profile missing", async () => {
-    mockedProfileGet.mockResolvedValue(null);
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
-    expect(res.status).toBe(404);
-  });
-
-  it("401 when token mismatch", async () => {
-    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=BAD");
-    expect(res.status).toBe(401);
-  });
-
-  it("404 when clash_proxy_provider not enabled", async () => {
-    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
-    mockedProviderGet.mockResolvedValue({ id: "airport-a", path: "", mtimeMs: 0, data: fakeProvider() });
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
-    expect(res.status).toBe(404);
-  });
-
-  it("200 with proxies-only yaml when clash_proxy_provider enabled", async () => {
-    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
-    mockedProviderGet.mockResolvedValue({
-      id: "airport-a",
-      path: "",
-      mtimeMs: 0,
-      data: fakeProvider({
-        clash_proxy_provider: {
-          enabled: true,
-          health_check_url: "http://cp.cloudflare.com/generate_204",
-          health_check_interval: 300,
-        },
-      }),
-    });
-    // 这条路由输出的是全量池的一个切片,节点来自 resolveProfile → buildNodePool,
-    // 不是单独去 loadProviderNodes(命名/链式必须与主订阅同源,见 routes/sub.ts 的注释)。
-    mockedBuildNodePool.mockResolvedValue({ nodes: [sampleNode], byProvider: new Map() });
-
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
-    expect(res.status).toBe(200);
-    expect(res.headers.get("Content-Type")).toContain("text/yaml");
-    // 文件名由 provider.name(Airport A)派生;空格在 ASCII fallback 中合法(用双引号包裹),
-    // 在 RFC 5987 form 中编码为 %20
-    expect(res.headers.get("Content-Disposition")).toContain('filename="Airport A.yaml"');
-    expect(res.headers.get("Content-Disposition")).toContain("filename*=UTF-8''Airport%20A.yaml");
-    const body = await res.text();
-    expect(body).toContain("proxies:");
-    expect(body).toContain("🇭🇰 HK-01");
-    // 不应包含 proxy-groups / rules
-    expect(body).not.toContain("proxy-groups:");
-    expect(body).not.toContain("rules:");
-  });
-
-  it("节点名与 chain_via 跟主订阅同源:撞名前缀按全量池算,链式规则照常生效", async () => {
-    // 回归:早先这条路由只看本机场自己的节点,既不应用 chain_rules,改名也算不出
-    // 跨机场撞名的 `【标识】` 前缀 —— 结果是 use_proxy_providers 模式下链式整体失效,
-    // 且 provider yaml 里的名字与主订阅对不上。
-    const dup = (providerId: string): Node => ({
-      name: "🇯🇵 JP-01",
-      type: "ss",
-      server: `${providerId}.example.com`,
-      port: 8388,
-      cipher: "aes-128-gcm",
-      password: "pwd",
-      source_provider_id: providerId,
-      tags: [],
-    });
-    mockedProfileGet.mockResolvedValue({
-      id: "home",
-      path: "",
-      mtimeMs: 0,
-      data: fakeProfile({
-        providers: ["airport-a", "airport-b"],
-        chain_rules: [
-          {
-            enabled: true,
-            mode: "override",
-            selector: {
-              include_regex: "",
-              exclude_regex: "",
-              include_other_group: [],
-              from_providers: [],
-              exclude_type: [],
-              include_region: [],
-              include_groups: [],
-              include_nodes: [],
-              include_type: [],
-            },
-            via: "Landing",
-          },
-        ],
-      }),
-    });
-    mockedProviderGet.mockImplementation((id: string) =>
-      Promise.resolve({
-        id,
-        path: "",
-        mtimeMs: 0,
-        data: fakeProvider({
-          id,
-          name: id === "airport-a" ? "Alpha" : "Beta",
-          clash_proxy_provider: {
-            enabled: true,
-            health_check_url: "http://cp.cloudflare.com/generate_204",
-            health_check_interval: 300,
-          },
-        }),
-      }),
-    );
-    mockedBuildNodePool.mockResolvedValue({
-      nodes: [dup("airport-a"), dup("airport-b")],
-      byProvider: new Map(),
-    });
-
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
-    expect(res.status).toBe(200);
-    const body = await res.text();
-    // 只切出本机场的那一个节点
-    expect(body.match(/name:/g)).toHaveLength(1);
-    // 撞名前缀取自 provider 名(Alpha → 【A】),与主订阅算出来的一致
-    expect(body).toContain("【A】🇯🇵 JP-01");
-    // chain_rules 在这条路由上同样生效
-    expect(body).toContain("dialer-proxy: Landing");
-  });
-
-  it("404 when providerId not in profile.providers (即使该 provider 启用了 clash_proxy_provider)", async () => {
-    mockedProfileGet.mockResolvedValue({
-      id: "home",
-      path: "",
-      mtimeMs: 0,
-      data: fakeProfile({ providers: ["other-airport"] }),
-    });
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
-    expect(res.status).toBe(404);
-    const text = await res.text();
-    expect(text).toContain("not part of this profile");
-    // 不应进入到 providerRepo.get / loadProviderNodes — 早期返回省了一次磁盘读
-    expect(mockedGroupGet).not.toHaveBeenCalled();
-    expect(mockedRulesetGet).not.toHaveBeenCalled();
-    expect(mockedLoadProviderNodes).not.toHaveBeenCalled();
-  });
-
-  it("404 when providerRepo entry missing", async () => {
-    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
-    mockedProviderGet.mockResolvedValue(null);
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
-    expect(res.status).toBe(404);
-    const text = await res.text();
-    expect(text).toContain("provider not found");
-  });
-
-  it("404 when provider.enabled === false", async () => {
-    mockedProfileGet.mockResolvedValue({ id: "home", path: "", mtimeMs: 0, data: fakeProfile() });
-    mockedProviderGet.mockResolvedValue({
-      id: "airport-a",
-      path: "",
-      mtimeMs: 0,
-      data: fakeProvider({ enabled: false }),
-    });
-    const app = buildApp();
-    const res = await app.request("/sub/provider/airport-a/clash.yaml?profile=home&t=GOODtoken123");
-    expect(res.status).toBe(404);
-    const text = await res.text();
-    expect(text).toContain("provider disabled");
   });
 });
 

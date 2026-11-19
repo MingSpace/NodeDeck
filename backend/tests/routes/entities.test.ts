@@ -73,11 +73,6 @@ function fakeProviderBody(overrides: Partial<Provider> = {}): Record<string, unk
     parser_hint: "auto",
     enabled: true,
     tags: [],
-    clash_proxy_provider: {
-      enabled: false,
-      health_check_url: "http://www.gstatic.com/generate_204",
-      health_check_interval: 300,
-    },
     ...overrides,
   };
 }
@@ -92,9 +87,6 @@ function fakeRulesetBody(overrides: Partial<RuleSet> = {}): Record<string, unkno
     name: "ruleset 1",
     type: "inline_list",
     payload: ["DOMAIN-SUFFIX,example.com"],
-    behavior: "classical",
-    format: "yaml",
-    clash_format: "inline",
     surge_format: "inline_ruleset",
     update_interval: 86400,
     ...overrides,

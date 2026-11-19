@@ -32,7 +32,6 @@ export interface ProxyGroupData {
     exclude_type: string[];
     include_region: string[];
   };
-  url?: string;
   interval?: number;
   tolerance?: number;
   timeout?: number;
@@ -45,27 +44,21 @@ export interface ProxyGroupData {
   no_alert?: boolean;
   include_all_proxies?: boolean;
   /**
-   * [S] 组级链式:组内每个代理成员都经此策略出站(Surge 专属,Clash 输出忽略 + warning)。
-   * 与其它 Surge 专属参数一样只在「YAML 高级」tab 编辑。
+   * 组级链式:组内每个代理成员都经此策略出站。
+   * 与其它少用参数一样只在「YAML 高级」tab 编辑。
    * 与 backend/src/schemas/proxy-group.ts 保持同步。
    */
   underlying_proxy?: string;
-  /** [CS] 策略组图标;clash `icon` / surge `icon-url` */
+  /** 策略组图标,输出为 `icon-url` */
   icon_url?: string;
-  /** [S] Smart 组成员加权,`"正则:系数;正则:系数"` */
+  /** Smart 组成员加权,`"正则:系数;正则:系数"` */
   policy_priority?: string;
-  /** [C] mihomo 客户端侧筛选,proxy-providers 模式下唯一能生效的过滤手段 */
-  filter?: string;
-  exclude_filter?: string;
-  clash_exclude_type?: string;
   /**
-   * [S] Surge 原生 include-other-group:把另一个组的成员**平铺展开**进本组(客户端侧展开)。
+   * Surge 原生 include-other-group:把另一个组的成员**平铺展开**进本组(客户端侧展开)。
    * 与顶层 nested_groups(嵌套引用,成员里就是那个组名)不是一回事。可视化表单不编辑它,
    * 声明出来是为了让列表页的成员摘要能识别"本地数不全"的情形。
    */
   include_other_group?: string;
-  lazy?: boolean;
-  disable_udp?: boolean;
   ssid_params?: {
     default?: string;
     cellular?: string;
@@ -140,11 +133,11 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
   );
 
   // @business_rule: from_providers 为空 = 「全部来源(含未来新增机场)」,候选区显示整个节点池,
-  // 与后端 clash.ts / surge.ts / chain/apply.ts 的 "from_providers.length === 0 即不过滤" 语义一致。
+  // 与后端 group-members.ts / chain/apply.ts 的 "from_providers.length === 0 即不过滤" 语义一致。
   // 非空时只保留来源命中的节点。
   // @user_flow: 用户切换 from_providers / include_regex / exclude_regex / exclude_type / include_region
   // 任一筛选条件,候选立即跟随过滤(对齐后端 applyNodeFilter + 各 generator 的 selector pipeline),
-  // 无需重新请求后端。pipeline 顺序与后端 clash.ts / surge.ts 保持一致:
+  // 无需重新请求后端。pipeline 顺序与后端 group-members.ts 保持一致:
   //   from_providers → include_region → exclude_type → include_regex → exclude_regex
   const candidateNodes = useMemo<NodeCandidate[]>(() => {
     // selector 关闭时本组不动态引入任何节点,候选区必须为空 —— 与后端
@@ -249,14 +242,14 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
               <SelectItem value="url-test">url-test (自动选择最快)</SelectItem>
               <SelectItem value="fallback">fallback (按顺序故障转移)</SelectItem>
               <SelectItem value="load-balance">load-balance (负载均衡)</SelectItem>
-              <SelectItem value="smart">smart [Surge] (Clash 等价 url-test)</SelectItem>
+              <SelectItem value="smart">smart (Surge Smart)</SelectItem>
               {/*
                 subnet 组的行形状是「条件 = 策略」的键值对而不是成员列表(且必须有 default),
                 generator 还没有这条分支 —— 选了会输出普通组形状、缺 default,Surge 拒绝加载整份配置。
                 实现之前禁掉;存量 type: ssid 的组仍能显示当前值并改成别的类型。
               */}
               <SelectItem value="ssid" disabled>
-                ssid / subnet (按网络) [Surge] · 未实现
+                ssid / subnet (按网络) · 未实现
               </SelectItem>
             </SelectContent>
           </Select>
@@ -276,7 +269,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
       </div>
 
       {data.type === "smart" && (
-        <Field label="policy-priority [Surge] · Smart 组唯一的调参手段">
+        <Field label="policy-priority · Smart 组唯一的调参手段">
           <Input
             value={data.policy_priority ?? ""}
             onChange={(e) => update({ policy_priority: e.target.value || undefined })}
@@ -291,25 +284,20 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
             测速参数
             <span className="font-normal text-muted-foreground">
               {data.type === "smart"
-                ? " · 仅 Clash 需要填(降级为 url-test;Surge smart 用不到)"
+                ? " · Smart 组只用超时"
                 : " · Surge 已废弃组级测试 URL,改在「全局配置」里设 proxy-test-url"}
             </span>
           </legend>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="测试 URL (仅 Clash)">
-              <Input
-                value={data.url ?? ""}
-                onChange={(e) => update({ url: e.target.value })}
-                placeholder="http://cp.cloudflare.com/generate_204"
-              />
-            </Field>
-            <Field label="测试间隔 (秒)">
-              <Input
-                type="number"
-                value={data.interval ?? ""}
-                onChange={(e) => update({ interval: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-              />
-            </Field>
+            {data.type !== "smart" && (
+              <Field label="测试间隔 (秒)">
+                <Input
+                  type="number"
+                  value={data.interval ?? ""}
+                  onChange={(e) => update({ interval: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+                />
+              </Field>
+            )}
             {data.type === "url-test" && (
               <Field label="容差 (ms)">
                 <Input
@@ -329,10 +317,7 @@ export function ProxyGroupVisualForm({ data, update }: Props) {
           </div>
           {data.timeout !== undefined && (
             <p className="mt-3 border-t pt-2 text-xs leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">超时</span>在两端不是同一个东西。Surge:实测延迟高于此值的成员判为不可用。
-              mihomo 没有这个能力,它的 <code className="rounded bg-muted px-1 font-mono">timeout</code> 指健康检查请求自身的超时且单位是毫秒,
-              因此输出时按 ×1000 换算 —— 填 {data.timeout} 秒,clash.yaml 里是{" "}
-              <code className="rounded bg-muted px-1 font-mono">timeout: {data.timeout * 1000}</code>。
+              <span className="font-medium text-foreground">超时</span>:实测延迟高于此值的成员判为不可用。
             </p>
           )}
         </fieldset>
@@ -468,7 +453,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 }
 
 // @business_rule: from_providers 专用选择器 —— 空数组 = 「全部来源(含未来新增机场)」,
-// 与后端 clash.ts / surge.ts / chain/apply.ts 的 "from_providers.length === 0 即不过滤" 语义一致。
+// 与后端 group-members.ts / chain/apply.ts 的 "from_providers.length === 0 即不过滤" 语义一致。
 // 这样新增机场后无需回到策略组重新勾选,下次拉订阅自动带出。
 // @user_flow: 置顶一个「全部来源」chip(激活态 = 当前为空数组),与各 provider chip 互斥:
 //   - 点「全部来源」→ 清空(回到全部模式)

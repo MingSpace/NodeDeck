@@ -85,7 +85,7 @@ export function MitmSection({ data, update }: Props) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-        仅 Surge 输出生效 · 解密指定域名的 HTTPS 流量
+        解密指定域名的 HTTPS 流量
         <InfoHint>
           中间人(MITM)会用下方 CA 证书解密命中域名的 TLS 流量,供脚本 / 重写读取内容。需在设备上安装并信任该 CA 证书。
         </InfoHint>

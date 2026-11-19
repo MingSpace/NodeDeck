@@ -1,6 +1,5 @@
 import { Hono } from "hono";
 import { importSurgeConf } from "../import/surge.js";
-import { importClashYaml } from "../import/clash.js";
 import {
   dedupAgainstPool,
   dedupBy,
@@ -52,22 +51,8 @@ importRouter.post("/preview", async (c) => {
     );
     return c.json({ kind, ...redact(result) });
   }
-  if (kind === "clash") {
-    const result = importClashYaml(text, fileName);
-    logger.debug(
-      {
-        kind,
-        fileName: fileName ?? null,
-        nodes: result.manualNodes.length,
-        ruleSets: result.ruleSets.length,
-        groups: result.proxyGroups.length,
-        hasGeneral: !!result.general,
-      },
-      "Import preview",
-    );
-    return c.json({ kind, ...redact(result) });
-  }
-  return c.json({ error: "unable to detect format; specify kind=clash|surge" }, 400);
+  if (kind === "clash") return c.json({ error: CLASH_IMPORT_REMOVED }, 400);
+  return c.json({ error: unsupportedKind(kind) }, 400);
 });
 
 interface CommitStats {
@@ -103,10 +88,9 @@ importRouter.post("/commit", async (c) => {
     import_modules: true,
   };
 
-  let result: ReturnType<typeof importSurgeConf> | ReturnType<typeof importClashYaml>;
-  if (kind === "surge") result = importSurgeConf(text, fileName);
-  else if (kind === "clash") result = importClashYaml(text, fileName);
-  else return c.json({ error: "unable to detect format" }, 400);
+  if (kind === "clash") return c.json({ error: CLASH_IMPORT_REMOVED }, 400);
+  if (kind !== "surge") return c.json({ error: unsupportedKind(kind) }, 400);
+  const result = importSurgeConf(text, fileName);
 
   const stats: CommitStats = {
     general: 0,
@@ -153,37 +137,25 @@ importRouter.post("/commit", async (c) => {
     const { kept, duplicates } = dedupAgainstPool(result.manualNodes, poolNodes);
 
     if (kept.length > 0) {
-      const { content, warnings: serializeWarnings } = nodesToInlineContent(
-        kept,
-        kind as "clash" | "surge",
-      );
+      const { content, warnings: serializeWarnings } = nodesToInlineContent(kept);
       for (const w of serializeWarnings) result.warnings.push(w);
 
       const taken = new Set((await providerRepo.list()).map((e) => e.data.id));
       const desiredSlug = trimmedFileSlug(fileName) ?? kind;
       const id = ensureUniqueId(generateImportedId(desiredSlug), taken);
-      const niceLabel = trimmedFileSlug(fileName)
-        ? fileName!.trim()
-        : kind === "surge"
-        ? "Surge import"
-        : "Clash import";
+      const niceLabel = trimmedFileSlug(fileName) ? fileName!.trim() : "Surge import";
       const provider: Provider = {
         id,
         name: `Imported from ${niceLabel}`,
         type: "inline",
         content,
-        parser_hint: kind === "surge" ? "surge" : "clash",
+        parser_hint: "surge",
         user_agents: [],
         fetch_via: [],
         // inline 类型在 UI / 调度器都不会"上游刷新",标记 never 让 cron 跳过、UI 隐藏刷新按钮
         refresh: { interval: "never" },
         enabled: true,
         tags: ["imported"],
-        clash_proxy_provider: {
-          enabled: false,
-          health_check_url: "http://www.gstatic.com/generate_204",
-          health_check_interval: 300,
-        },
         emit_hosts: true,
       };
       await providerRepo.save(provider);
@@ -229,10 +201,9 @@ importRouter.post("/commit", async (c) => {
     pushSkippedWarning(result.warnings, "proxy-group(s)", skipped);
   }
 
-  if (kind === "surge" && opts.import_modules) {
-    const surgeRes = result as ReturnType<typeof importSurgeConf>;
+  if (opts.import_modules) {
     const { saved, skipped } = await importEntitiesWithDedup<SurgeModule>(
-      surgeRes.modules,
+      result.modules,
       surgeModuleRepo as Repo<never, SurgeModule>,
       surgeModuleIdentity,
       (m) => m.name,
@@ -261,10 +232,19 @@ importRouter.post("/commit", async (c) => {
   return c.json({ ok: true, stats, warnings: result.warnings });
 });
 
-function autoDetectKind(text: string): string | null {
+const CLASH_IMPORT_REMOVED = "Clash 整包导入已移除，仅支持导入 Surge .conf";
+
+const unsupportedKind = (kind: string) => `不支持的 kind: ${kind}，仅支持导入 Surge .conf`;
+
+/**
+ * 只支持 Surge 导入:带 `[General]` 的直接按 Surge;否则仍识别 Clash YAML 特征,
+ * 只为给出明确的「已移除」报错;其余一律按 Surge 解析(没有 `[General]` 的片段 /
+ * 模块式 .conf 也能导入,解析不出内容时由 importSurgeConf 的计数与 warnings 体现)。
+ */
+function autoDetectKind(text: string): "surge" | "clash" {
   if (/^\[General\]/im.test(text)) return "surge";
   if (/^\s*proxies\s*:/m.test(text) || /^\s*proxy-groups\s*:/m.test(text)) return "clash";
-  return null;
+  return "surge";
 }
 
 /** 把文件名(可能含路径/扩展名)收成 slug 用于 Provider id;无内容时返回 null */

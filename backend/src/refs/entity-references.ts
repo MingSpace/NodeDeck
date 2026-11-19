@@ -40,7 +40,7 @@ export interface EntityReference {
   /** 被引用的具体值(id 或 name),便于用户在源文件里定位 */
   value: string;
   /**
-   * false = 只影响 Web UI 的展示/默认值,不会让生成的 clash/surge 产物出错,
+   * false = 只影响 Web UI 的展示/默认值,不会让生成的 Surge 产物出错,
    * 所以不阻止删除。目前只有 `ruleset.policy`(generator 不读它,实际策略取自
    * profile.rule_modules[].policy)。
    */
@@ -151,17 +151,6 @@ function findProviderReferences(id: string, s: Sources): EntityReference[] {
         from_id: g.id,
         from_name: g.name,
         field: "selector.from_providers",
-        via: "id",
-        value: id,
-        blocking: true,
-      });
-    }
-    if (g.use?.includes(id)) {
-      refs.push({
-        from_kind: "groups",
-        from_id: g.id,
-        from_name: g.name,
-        field: "use",
         via: "id",
         value: id,
         blocking: true,

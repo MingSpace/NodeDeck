@@ -58,7 +58,7 @@ export function filterNodesBySelector<T extends Node>(nodes: T[], selector: Node
 }
 
 /** 一个成员是从 group 的哪个字段来的 —— 决定它在成员列表里的位置,也是流转视图的分组依据。 */
-export type GroupMemberOrigin = "explicit" | "other_group" | "nested" | "selector" | "fallback";
+export type GroupMemberOrigin = "explicit" | "nested" | "selector" | "fallback";
 
 export interface GroupMemberEntry {
   name: string;
@@ -66,12 +66,13 @@ export interface GroupMemberEntry {
 }
 
 /**
- * 计算写进 yaml / conf 的**成员列表**(含内置 policy 与被嵌套引用的组名本身),并标注每项的来源。
+ * 计算写进 Surge conf 的**成员列表**(含内置 policy 与被嵌套引用的组名本身),并标注每项的来源。
  *
- * 这是 clash / surge 两端 generator 与 Web UI 流转视图的**唯一**成员顺序真相 —— 顺序对
- * `fallback` 组是语义的一部分(按声明顺序取第一个可用),所以三处必须同源,不能各写一份。
+ * 这是 Surge generator 与 Web UI 流转视图的**唯一**成员顺序真相 —— 顺序对
+ * `fallback` 组是语义的一部分(按声明顺序取第一个可用),所以两处必须同源,不能各写一份。
  *
- * 固定顺序:`proxies` → (Clash 才展开的 `include_other_group`) → `nested_groups` → selector 动态匹配。
+ * 固定顺序:`proxies` → `nested_groups` → selector 动态匹配;成员为空时兜底一个 `DIRECT`。
+ * 顶层 `include_other_group` 是 Surge 原生的 include-other-group 组参数,不展开成成员。
  * 重名以**首次出现**的位置与来源为准(与原先 `new Set()` 的行为一致)。
  *
  * 与 `buildGroupMemberIndex` 的区别:那边递归展开成"真实节点名集合"给 chain 的 include_groups 用,
@@ -80,15 +81,7 @@ export interface GroupMemberEntry {
 export function resolveGroupMemberEntries(
   g: ProxyGroup,
   allNodes: Node[],
-  options: {
-    hiddenNodes?: Set<string>;
-    /** Clash proxy-providers 模式:这些机场的节点由 `use:` 引用,不再进 proxies 列表 */
-    excludeProviderIds?: Set<string>;
-    /** include_other_group 是否展开为成员(Clash 无原生字段)还是保留为 params(Surge) */
-    inlineIncludeOtherGroup: boolean;
-    /** 成员为空时是否兜底塞一个 DIRECT */
-    emptyFallback: boolean;
-  },
+  options: { hiddenNodes?: Set<string> } = {},
 ): GroupMemberEntry[] {
   const seen = new Map<string, GroupMemberOrigin>();
   const push = (name: string, origin: GroupMemberOrigin) => {
@@ -96,26 +89,18 @@ export function resolveGroupMemberEntries(
   };
 
   for (const p of g.proxies) push(p, "explicit");
-  if (options.inlineIncludeOtherGroup && g.include_other_group) {
-    push(g.include_other_group, "other_group");
-  }
   // `?? []` 是 defensive — 经 schema parse 的 group 一定有这个字段(default []),
   // 但测试里手动构造的 ProxyGroup literal 可能漏写。
   for (const other of g.nested_groups ?? []) push(other, "nested");
 
   if (g.selector) {
-    const exclude = options.excludeProviderIds;
-    const base =
-      exclude && exclude.size > 0
-        ? allNodes.filter((n) => !n.source_provider_id || !exclude.has(n.source_provider_id))
-        : allNodes;
     // 隐藏节点只挡 selector 动态匹配;上面 g.proxies 的显式点名是用户的明确意图,保留。
     const hidden = options.hiddenNodes;
-    const selectable = hidden && hidden.size > 0 ? base.filter((n) => !hidden.has(n.name)) : base;
+    const selectable = hidden && hidden.size > 0 ? allNodes.filter((n) => !hidden.has(n.name)) : allNodes;
     for (const n of filterNodesBySelector(selectable, g.selector)) push(n.name, "selector");
   }
 
-  if (seen.size === 0 && options.emptyFallback) push("DIRECT", "fallback");
+  if (seen.size === 0) push("DIRECT", "fallback");
 
   return [...seen].map(([name, origin]) => ({ name, origin }));
 }
@@ -123,15 +108,15 @@ export function resolveGroupMemberEntries(
 /**
  * 计算 "策略组名 → 该组最终包含的**节点名**集合"。
  *
- * 与 generator 里 resolveGroupMembers 的区别:那边产出的是写进 yaml/conf 的成员列表
+ * 与 resolveGroupMemberEntries 的区别:那边产出的是写进 conf 的成员列表
  * (含内置 policy、含被嵌套引用的组名本身);这里只关心"哪些真实节点落在这个组里",
  * 用于 chain_rules 的 `selector.include_groups`。因此:
  * - 内置 policy(DIRECT / REJECT*)与不存在的引用一律丢弃
  * - `nested_groups` / `include_other_group` 递归展开成对方组的节点(组引用成环时断环)
  * - `proxies` 里若写的是组名(历史数据把组名混进显式列表)也按组引用展开
  *
- * `options.hiddenNodes`(profile.hidden_nodes 的解析结果)必须与两端 generator 的
- * resolveGroupMembers 用同一套口径:只从 selector 动态匹配里剔除,显式 `proxies` 点名保留。
+ * `options.hiddenNodes`(profile.hidden_nodes 的解析结果)必须与 resolveGroupMemberEntries
+ * 用同一套口径:只从 selector 动态匹配里剔除,显式 `proxies` 点名保留。
  */
 export function buildGroupMemberIndex(
   groups: ProxyGroup[],

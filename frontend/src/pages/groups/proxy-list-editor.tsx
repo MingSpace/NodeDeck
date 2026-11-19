@@ -31,8 +31,7 @@ export interface ProviderRef {
   name: string;
 }
 
-// @business_rule: 与后端 backend/src/generators/group-refs.ts:13-21 的 GROUP_BUILTIN_POLICIES
-// 保持同步,只暴露常用的 5 项 (PASS / COMPATIBLE 是 mihomo 罕用项,不主动展示给用户避免误用)。
+// @business_rule: 与后端 backend/src/generators/group-refs.ts 的 GROUP_BUILTIN_POLICIES 保持同步。
 const BUILTIN_POLICIES = ["DIRECT", "REJECT", "REJECT-DROP", "REJECT-NO-DROP", "REJECT-TINYGIF"] as const;
 const BUILTIN_SET = new Set<string>(BUILTIN_POLICIES);
 
@@ -70,11 +69,11 @@ interface Props {
 // g.nested_groups 数组 (UI 里下方"嵌套引用的策略组"段)。
 //
 // 但组名写进 g.proxies 是**合法且有时必需**的: resolveGroupMemberEntries 的入列顺序是
-// proxies → include_other_group → nested_groups → selector, 显式 proxies 永远在最前。
+// proxies → nested_groups → selector, 显式 proxies 永远在最前。
 // 所以当需要"组排在内置 policy 之前"时 (典型是 fallback 组要 `代理组, DIRECT` —— 代理优先、
 // DIRECT 兜底), 组名只能写进 g.proxies; 挪到 nested_groups 会得到 `DIRECT, 代理组`,
 // 而 fallback 取首个可用成员、DIRECT 永远可用 → 全程直连且不产生任何 warning。
-// 详见 docs/cookbook.md §9.3。故已知组名单独归为 group-ref 态, 不再误报"未知引用"。
+// 详见 docs/cookbook.md §8.3。故已知组名单独归为 group-ref 态, 不再误报"未知引用"。
 //
 //   node-in: 在当前 selector 命中节点池 ∪ 内置 policy → 不显示额外徽标 (正常行/由 isSpecial 走"内置"徽标)
 //   node-out: 在全量节点池里但 selector 不命中 → 灰色"selector 不命中" hint
@@ -454,7 +453,7 @@ function Picker({
       {/* @user_flow: 嵌套引用其它策略组 chip 行,跟 BUILTIN_POLICIES 同一类"非节点池的 proxy 项"。
           chip 分两半:左半点击 = 加入/移除;右半图钉 = 在「嵌套组区域」与「显式列表」之间搬。
           @business_rule: 两个落点顺序语义不同,这是图钉存在的唯一理由 ——
-          resolveGroupMemberEntries 的入列顺序是 proxies → include_other_group → nested_groups → selector,
+          resolveGroupMemberEntries 的入列顺序是 proxies → nested_groups → selector,
           nested_groups 永远排在显式 proxies 之后。所以「组排最后」用嵌套组区域即可,
           而「组必须排在 DIRECT / 已锁定节点之前」(典型:fallback 组要「代理优先、DIRECT 兜底」)
           只能把组名放进 g.proxies。两处互斥,搬过去会从另一处移除,避免同名重复项。

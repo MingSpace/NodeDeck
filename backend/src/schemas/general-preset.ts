@@ -1,46 +1,12 @@
 import { z } from "zod";
 import { idSchema } from "./common.js";
 
+// 旧版还有 enable / listen / enhanced_mode / nameserver 等 Clash 键,存量 yaml 里的残留会被 strip
 const dnsSchema = z
   .object({
-    enable: z.boolean().default(true),
-    listen: z.string().optional(), // [C]
-    ipv6: z.boolean().optional(),
-    enhanced_mode: z.enum(["fake-ip", "redir-host"]).optional(), // [C]
-    fake_ip_range: z.string().optional(), // [C]
-    fake_ip_filter: z.array(z.string()).default([]).optional(), // [C]
-    nameserver: z.array(z.string()).default([]).optional(), // [C]
-    fallback: z.array(z.string()).default([]).optional(), // [C]
-    nameserver_policy: z.record(z.string()).optional(), // [C]
-    proxy_server_nameserver: z.array(z.string()).default([]).optional(), // [C] 节点域名解析兜底;host 的 server: 派生的 proxy-server-nameserver-policy 生效前提
-
-    // [S]
     server: z.array(z.string()).optional(), // surge dns-server
     encrypted_server: z.array(z.string()).optional(), // surge encrypted-dns-server
     hijack: z.array(z.string()).optional(), // surge hijack-dns
-  })
-  .optional();
-
-const tunSchema = z
-  .object({
-    enable: z.boolean().default(false),
-    stack: z.enum(["system", "gvisor", "mixed"]).default("system"),
-    auto_route: z.boolean().default(true),
-    auto_detect_interface: z.boolean().default(true),
-    dns_hijack: z.array(z.string()).default(["any:53"]),
-    mtu: z.number().int().optional(),
-  })
-  .optional();
-
-const snifferSchema = z
-  .object({
-    enable: z.boolean().default(false),
-    sniff: z
-      .object({
-        TLS: z.object({ ports: z.array(z.union([z.number(), z.string()])).optional() }).optional(),
-        HTTP: z.object({ ports: z.array(z.union([z.number(), z.string()])).optional() }).optional(),
-      })
-      .optional(),
   })
   .optional();
 
@@ -121,15 +87,15 @@ const ssidRuleSchema = z.preprocess(
   z.object({
     match: z.string(),
     suspend: z.boolean().optional(),
-    /** [S] iOS 独占:覆盖该网络下的 Wi-Fi 助理 / 混合网络行为 */
+    /** iOS 独占:覆盖该网络下的 Wi-Fi 助理 / 混合网络行为 */
     cellular_fallback: z.enum(["default", "off", "wifi-assist", "hybrid"]).optional(),
-    /** [S] Mac 独占:把该网络当计费网络,自动开启 Metered Network Mode */
+    /** Mac 独占:把该网络当计费网络,自动开启 Metered Network Mode */
     cellular_mode: z.boolean().optional(),
-    /** [S] iOS 4.12.0+ / Mac 4.5.0+ */
+    /** iOS 4.12.0+ / Mac 4.5.0+ */
     tfo_behaviour: z.enum(["auto", "force-enabled", "force-disabled"]).optional(),
-    /** [S] 该网络下的 DNS 上游,元素为 IP 或 `system` */
+    /** 该网络下的 DNS 上游,元素为 IP 或 `system` */
     dns_server: z.array(z.string()).optional(),
-    /** [S] 该网络下的加密 DNS,元素为 DoH/DoQ URL 或 `off`(全局配了加密 DNS 时必须显式 off 才回退传统 DNS) */
+    /** 该网络下的加密 DNS,元素为 DoH/DoQ URL 或 `off`(全局配了加密 DNS 时必须显式 off 才回退传统 DNS) */
     encrypted_dns_server: z.array(z.string()).optional(),
   }),
 );
@@ -138,16 +104,10 @@ const generalPresetBaseSchema = z.object({
   id: idSchema,
   name: z.string().min(1),
 
-  // [CS]
-  port: z.number().int().min(1).max(65535).optional(),
-  socks_port: z.number().int().min(1).max(65535).optional(),
-  mixed_port: z.number().int().min(1).max(65535).optional(),
-  allow_lan: z.boolean().default(false),
-  mode: z.enum(["rule", "global", "direct"]).default("rule"),
+  // 枚举含历史值,不要收窄;info 在生成时映射为 Surge 的 notify
   log_level: z.enum(["silent", "warning", "notify", "info", "debug", "verbose"]).default("info"),
   ipv6: z.boolean().default(false),
 
-  // [S]
   http_listen: z.string().optional(),
   socks5_listen: z.string().optional(),
   read_etc_hosts: z.boolean().optional(),
@@ -165,11 +125,11 @@ const generalPresetBaseSchema = z.object({
   exclude_simple_hostnames: z.boolean().optional(),
   always_real_ip: z.array(z.string()).optional(),
   show_error_page_for_reject: z.boolean().optional(),
-  // [S] 全局 QUIC 拦截策略(iOS 5.14.6+ / Mac 5.10.3+):
+  // 全局 QUIC 拦截策略(iOS 5.14.6+ / Mac 5.10.3+):
   // per-policy(默认,按各 policy 自身设置) / all-proxy(拦截所有代理) / all(连 DIRECT 一起拦) / always-allow
   block_quic: z.enum(["per-policy", "all-proxy", "all", "always-allow"]).optional(),
 
-  // [S] iOS 独占 —— VPN Tunnel Scope(manual: General Section → VPN Tunnel Scope)。
+  // iOS 独占 —— VPN Tunnel Scope(manual: General Section → VPN Tunnel Scope)。
   // 默认 iOS 允许 App 绑定物理网卡绕过 Surge VIF,这几个开关把这些流量也拉进隧道。
   // include_apns 是大陆 APNs 直连链路被干扰时让推送走代理的关键开关(系统推送链路默认不走代理)。
   // 后三项在 Surge 侧必须配合 include-all-networks=true 才生效,单开会被静默忽略 —— 见下方 superRefine。
@@ -180,28 +140,16 @@ const generalPresetBaseSchema = z.object({
 
   http_api: httpApiSchema,
 
-  // [C]
-  find_process_mode: z.enum(["strict", "always", "off"]).optional(),
-  external_controller: z.string().optional(),
-  external_ui: z.string().optional(),
-  secret: z.string().optional(),
-  global_client_fingerprint: z.string().optional(),
-  geodata_mode: z.boolean().optional(),
-  geo_auto_update: z.boolean().optional(),
-  geo_update_interval: z.number().int().optional(),
-
-  // [CS] both
+  // [Host] 段
   hosts: z.record(z.union([z.string(), z.array(z.string())])).optional(),
 
-  // [S] Subnet Settings,产物里的段名是 `[SSID Setting]`
+  // Subnet Settings,产物里的段名是 `[SSID Setting]`
   ssid_rules: z.array(ssidRuleSchema).optional(),
 
   // nested
   dns: dnsSchema,
-  tun: tunSchema, // [C]
-  sniffer: snifferSchema, // [C]
-  mitm: mitmSchema, // [S]
-  mtproto: mtprotoSchema, // [S] Telegram MTProto 入站代理
+  mitm: mitmSchema,
+  mtproto: mtprotoSchema, // Telegram MTProto 入站代理
 });
 
 /** 只有在 `include-all-networks = true` 时才生效的隧道范围子开关 → 对应 Surge key 名 */

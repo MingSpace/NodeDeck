@@ -257,8 +257,7 @@ export function ChainPanel({ profileId, draft, onChange, onHiddenNodesChange }: 
             title="还没有链式规则"
             description={
               <>
-                链式代理让节点先连一个前置出口再落地(Clash <code>dialer-proxy</code> / Surge{" "}
-                <code>underlying-proxy</code>)。常见用法:某个策略组的节点统一走 WARP 落地、
+                链式代理让节点先连一个前置出口再落地(Surge <code>underlying-proxy</code>)。常见用法:某个策略组的节点统一走 WARP 落地、
                 指定几个节点经国内跳板中转。
               </>
             }

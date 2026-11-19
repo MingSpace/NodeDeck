@@ -16,16 +16,14 @@ import { mergeHostMaps } from "./hosts.js";
 export interface ResolvedProfile {
   profile: Profile;
   nodes: Node[];
-  // 启用且被该 profile 引用的 provider 元数据(给 clash proxy-providers 模式合成 URL 用)。
+  // 启用且被该 profile 引用的 provider 元数据(节点名来源前缀 buildProviderLabels 用)。
   // 含被配额排除的源:节点名前缀在这批源之间消歧,排除谁都不能让其它源的前缀跟着变。
   providers: Provider[];
-  // 流量用完 / 已到期而被排除的 provider id(节点已不在 nodes 里,proxy-providers 段也要跳过)
-  excludedProviderIds: Set<string>;
   groups: ProxyGroup[];
   /**
    * 系统中**所有** group 的 name 集合(不只是 profile.proxy_groups 引用的)。
    * 仅供 generator 阶段做 *诊断*用:当某个被引用的名字不在 profile.groups 里、
-   * 但能在这里找到,就能精准提示"该 group 已存在 yaml,但未在 profile.proxy_groups 启用,
+   * 但能在这里找到,就能精准提示"该 group 已存在,但未在 profile.proxy_groups 启用,
    * 请到 Profile 编辑器加进来",而不是误报为"被 node_filter 过滤掉的悬空节点"。
    *
    * **不影响**实际加载哪些 group;profile.proxy_groups 仍是唯一真相。
@@ -35,12 +33,12 @@ export interface ResolvedProfile {
   finalRule?: { policy: string; dns_failed?: boolean };
   geoipFallback?: { policy: string };
   general?: GeneralPreset;
-  // general.hosts + 启用且 emit_hosts 的 provider.hosts 去重合并后的结果(两端 generator 消费)。
+  // general.hosts + 启用且 emit_hosts 的 provider.hosts 去重合并后的结果(Surge generator 消费)。
   hosts?: Record<string, string[]>;
   // 远程模块附带拉到的内容(remote_text);拉不到且无旧缓存的远程模块不在列表里
   surgeModules: SurgeModuleInput[];
   warnings: string[];
-  // 只与 Surge 输出相关的诊断(远程模块拉取失败等);生成 Surge 时并进 warnings,Clash 不带
+  // 远程模块拉取失败等诊断;只在生成 Surge 产物时并入 warnings(并入时机决定 # WARN 头部顺序),诊断类调用不带
   surgeWarnings: string[];
   // SWR 预览路径下,当前没有可用 cache、正在后台刷新的 provider id 列表(真实下发路径恒为空)。
   revalidating: string[];
@@ -50,7 +48,7 @@ export async function resolveProfile(
   profile: Profile,
   opts: {
     staleWhileRevalidate?: boolean;
-    /** 是否拉取远程 Surge 模块内容;只生成 Clash 时传 false,省掉无用的网络请求 */
+    /** 是否拉取远程 Surge 模块内容;诊断 / 流转视图等不生成产物的调用传 false,省掉无用的网络请求 */
     loadRemoteModules?: boolean;
   } = {},
 ): Promise<ResolvedProfile> {
@@ -127,7 +125,7 @@ export async function resolveProfile(
   // hosts 合并:general.hosts → 各启用 provider 的手动 hosts → 各 provider 上游自动解析的 hosts。
   // emit_hosts 关闭的 provider 两类都不带出。自动解析结果随刷新写入 provider cache
   // (buildNodePool 上面已跑过,on_request 源此刻 cache 是最新的),故"每次更新自动解析并应用"。
-  // 同 key 多值会在 Surge 端展开多行 / Clash 端走 proxy-server-nameserver-policy。
+  // 同 key 多值在 Surge 端合并成逗号列表。
   const providerCaches = await Promise.all(activeProviders.map((p) => readProviderCache(p.id)));
   const emitProviders = activeProviders
     .map((p, i) => ({ provider: p, cache: providerCaches[i] }))
@@ -143,7 +141,6 @@ export async function resolveProfile(
     profile,
     nodes: pool.nodes,
     providers,
-    excludedProviderIds,
     groups,
     allKnownGroupNames,
     rules,

@@ -22,7 +22,7 @@ export function HostsSection({ data, update }: Props) {
   return <HostRowsEditor value={data.hosts} onChange={(hosts) => update({ hosts })} />;
 }
 
-export function SurgeOnlySection({ data, update }: Props) {
+export function OtherOptionsSection({ data, update }: Props) {
   return (
     <div className="space-y-3">
       <FieldGroup

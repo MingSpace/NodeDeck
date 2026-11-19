@@ -74,7 +74,7 @@ export function parseSurgeProxyLine(line: string): Node | null {
   if (tokens.length === 0) return null;
   const type = tokens[0].trim().toLowerCase();
   // `direct` is Surge 伪节点 (e.g. `DIRECT = direct` 或 `DIRECT-en0 = direct, interface=en0`)。
-  // DIRECT 是 Surge/Clash 的内置策略,本项目两端 generator 也都跳过 direct 节点不输出。
+  // DIRECT 是 Surge 的内置策略,generator 也跳过 direct 节点不输出。
   // 而 nodeSchema 要求 port >= 1,所以这里直接 return null,让 importer 在调用层加 warning。
   if (type === "direct") {
     return null;

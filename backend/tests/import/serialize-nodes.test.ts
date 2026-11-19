@@ -1,7 +1,5 @@
 import { describe, expect, it } from "vitest";
-import yaml from "js-yaml";
 import { nodesToInlineContent } from "../../src/import/serialize-nodes.js";
-import { parseClashYaml } from "../../src/parsers/clash.js";
 import { parseSurgeConf } from "../../src/parsers/surge.js";
 import type { Node } from "../../src/schemas/node.js";
 
@@ -17,18 +15,15 @@ function summary(n: Node) {
     cipher: n.cipher,
     psk: n.psk,
     sni: n.sni,
-    tls: n.tls,
     skip_cert_verify: n.skip_cert_verify,
     network: n.network,
-    flow: n.flow,
     chain_via: n.chain_via,
     ws_opts: n.ws_opts,
-    reality_opts: n.reality_opts,
   };
 }
 
 describe("nodesToInlineContent", () => {
-  it("clash 路径: round-trip 出来的节点能被 parser 还原回去(覆盖 sni / tls / ws_opts / reality_opts / chain_via)", () => {
+  it("round-trip 出来的节点能被 Surge parser 还原回去(覆盖 sni / ws_opts / chain_via)", () => {
     const input: Node[] = [
       {
         name: "JP-1",
@@ -37,8 +32,8 @@ describe("nodesToInlineContent", () => {
         port: 443,
         password: "p@ss",
         sni: "jp.example.com",
-        tls: true,
         skip_cert_verify: true,
+        tags: [],
       },
       {
         name: "HK-1",
@@ -47,36 +42,22 @@ describe("nodesToInlineContent", () => {
         port: 8388,
         password: "secret",
         cipher: "aes-256-gcm",
+        tags: [],
       },
-      // ws 传输层 + headers 必须在 round-trip 中保留(generator 会写 ws-opts.path/headers,parser 读回)
+      // ws 传输层 + headers 必须在 round-trip 中保留(generator 写 ws=true / ws-path / ws-headers,parser 读回)
       {
         name: "SG-VMess-WS",
         type: "vmess",
         server: "sg.example.com",
         port: 443,
         uuid: "11111111-2222-3333-4444-555555555555",
-        alter_id: 0,
         cipher: "auto",
-        tls: true,
         sni: "sg.cdn.example.com",
         network: "ws",
         ws_opts: { path: "/vm", headers: { Host: "sg.cdn.example.com" } },
+        tags: [],
       },
-      // VLESS Reality:reality_opts.public_key/short_id 嵌套对象,Clash 用 reality-opts: {public-key:...}
-      // 故意不写 network: 因为 mihomo 把 tcp 当作默认值,generator 不会输出默认 network 字段,
-      // 否则 round-trip 后 network 字段会变成 undefined(语义等价但对象不等)。
-      {
-        name: "US-Reality",
-        type: "vless",
-        server: "us.example.com",
-        port: 443,
-        uuid: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
-        flow: "xtls-rprx-vision",
-        tls: true,
-        sni: "www.cloudflare.com",
-        reality_opts: { public_key: "PUB", short_id: "abcd1234" },
-      },
-      // chain_via 在 Clash 端写为 dialer-proxy,parser 读回应该恢复
+      // chain_via 写为 underlying-proxy,parser 读回应该恢复
       {
         name: "Chain-Front",
         type: "ss",
@@ -84,6 +65,7 @@ describe("nodesToInlineContent", () => {
         port: 8388,
         cipher: "aes-128-gcm",
         password: "front-pwd",
+        tags: [],
       },
       {
         name: "Chain-Back",
@@ -92,23 +74,20 @@ describe("nodesToInlineContent", () => {
         port: 443,
         password: "back-pwd",
         sni: "back.example.com",
-        tls: true,
         chain_via: "Chain-Front",
+        tags: [],
       },
     ];
 
-    const { content, warnings } = nodesToInlineContent(input, "clash");
+    const { content, warnings } = nodesToInlineContent(input);
     expect(warnings).toEqual([]);
+    expect(content.startsWith("[Proxy]\n")).toBe(true);
 
-    // 内容应该是合法 yaml,顶层有 proxies
-    const parsedYaml = yaml.load(content) as { proxies: unknown[] };
-    expect(Array.isArray(parsedYaml.proxies)).toBe(true);
-
-    const reparsed = parseClashYaml(content);
+    const reparsed = parseSurgeConf(content);
     expect(reparsed.map(summary)).toEqual(input.map(summary));
   });
 
-  it("surge 路径: 保留 snell 等 Surge-only 字段", () => {
+  it("保留 snell 等 Surge 字段", () => {
     const input: Node[] = [
       {
         name: "snell-server",
@@ -117,6 +96,7 @@ describe("nodesToInlineContent", () => {
         port: 30000,
         psk: "snellpsk",
         snell_version: 4,
+        tags: [],
       },
       {
         name: "trojan-1",
@@ -124,10 +104,11 @@ describe("nodesToInlineContent", () => {
         server: "t.example.com",
         port: 443,
         password: "p1",
+        tags: [],
       },
     ];
 
-    const { content, warnings } = nodesToInlineContent(input, "surge");
+    const { content, warnings } = nodesToInlineContent(input);
     expect(warnings).toEqual([]);
     expect(content).toMatch(/\[Proxy\]/);
     expect(content).toMatch(/snell-server\s*=\s*snell/);
@@ -137,27 +118,31 @@ describe("nodesToInlineContent", () => {
     expect(reparsed.find((n) => n.type === "snell")?.psk).toBe("snellpsk");
   });
 
-  // mihomo 原生支持 snell v1–v5(wiki.metacubex.one/config/proxies/snell),
-  // 只有 Surge 独占的 v6 才跳过。
-  it("clash 路径: snell v1-v5 正常输出", () => {
+  it("snell v6 正常输出(Surge 支持 v1-v6)", () => {
     const input: Node[] = [
-      { name: "snell-x", type: "snell", server: "x.example.com", port: 30000, psk: "k", snell_version: 4 },
+      { name: "snell-v6", type: "snell", server: "x.example.com", port: 30000, psk: "k", snell_version: 6, tags: [] },
     ];
-    const { content, warnings } = nodesToInlineContent(input, "clash");
+    const { content, warnings } = nodesToInlineContent(input);
     expect(warnings).toEqual([]);
-    const parsedYaml = yaml.load(content) as { proxies: Record<string, unknown>[] };
-    expect(parsedYaml.proxies).toHaveLength(1);
-    expect(parsedYaml.proxies[0]).toMatchObject({ type: "snell", psk: "k", version: 4 });
+    expect(content).toMatch(/^snell-v6 = snell, x\.example\.com, 30000, [^\n]*version=6/m);
   });
 
-  it("clash 路径: snell v6 是 Surge 独占,跳过并 emit warning", () => {
+  it("Surge 不支持的协议(vless)整节点跳过并 emit warning", () => {
     const input: Node[] = [
-      { name: "snell-v6", type: "snell", server: "x.example.com", port: 30000, psk: "k", snell_version: 6 },
+      {
+        name: "US-Reality",
+        type: "vless",
+        server: "us.example.com",
+        port: 443,
+        uuid: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+        flow: "xtls-rprx-vision",
+        tls: true,
+        reality_opts: { public_key: "PUB", short_id: "abcd1234" },
+        tags: [],
+      },
     ];
-    const { content, warnings } = nodesToInlineContent(input, "clash");
-    expect(warnings.length).toBeGreaterThan(0);
-    expect(warnings[0]).toMatch(/v6/);
-    const parsedYaml = yaml.load(content) as { proxies: unknown[] };
-    expect(parsedYaml.proxies.length).toBe(0);
+    const { content, warnings } = nodesToInlineContent(input);
+    expect(content).toBe("[Proxy]\n");
+    expect(warnings.some((w) => w.includes("US-Reality"))).toBe(true);
   });
 });
